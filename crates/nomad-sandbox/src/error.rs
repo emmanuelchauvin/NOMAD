@@ -25,3 +25,4 @@ pub enum SandboxError {
     #[error("Invalid decision returned: {0}")]
     MalformedDecision(String),
 }
+

@@ -94,3 +94,4 @@ impl SkillCapsule {
         self.parent_ids.is_empty()
     }
 }
+

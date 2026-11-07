@@ -188,4 +188,52 @@ impl PhylogenyGraph {
     pub fn to_dot(&self) -> String {
         format!("{:?}", Dot::with_config(&self.graph, &[Config::EdgeNoLabel]))
     }
+
+    /// Exports the graph in Mermaid flowchart syntax (`graph TD`) for markdown visualization.
+    pub fn to_mermaid(&self) -> String {
+        let mut mermaid = String::from("graph TD\n");
+
+        for idx in self.graph.node_indices() {
+            let node = &self.graph[idx];
+            let clean_id = node.id.0.replace('-', "_");
+            let style_suffix = if node.is_crossover {
+                ":::crossover"
+            } else if node.generation == 0 {
+                ":::root"
+            } else {
+                ":::mutation"
+            };
+            mermaid.push_str(&format!(
+                "    {}[\"{}\n(Gen {})\"{}]\n",
+                clean_id, node.name, node.generation, style_suffix
+            ));
+        }
+
+        for edge_idx in self.graph.edge_indices() {
+            if let Some((source_idx, target_idx)) = self.graph.edge_endpoints(edge_idx) {
+                let source = &self.graph[source_idx].id.0.replace('-', "_");
+                let target = &self.graph[target_idx].id.0.replace('-', "_");
+                let edge_weight = &self.graph[edge_idx];
+
+                let label = match edge_weight {
+                    LineageKind::InitialSeed => "",
+                    LineageKind::Mutation { .. } => "Mutation",
+                    LineageKind::Crossover { parent_role } => parent_role.as_str(),
+                };
+
+                if label.is_empty() {
+                    mermaid.push_str(&format!("    {} --> {}\n", source, target));
+                } else {
+                    mermaid.push_str(&format!("    {} -->|{}| {}\n", source, label, target));
+                }
+            }
+        }
+
+        mermaid.push_str("    classDef root fill:#3b82f6,stroke:#1d4ed8,color:#fff\n");
+        mermaid.push_str("    classDef mutation fill:#10b981,stroke:#047857,color:#fff\n");
+        mermaid.push_str("    classDef crossover fill:#8b5cf6,stroke:#6d28d9,color:#fff\n");
+
+        mermaid
+    }
 }
+

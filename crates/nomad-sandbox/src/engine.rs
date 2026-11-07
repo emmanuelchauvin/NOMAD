@@ -266,3 +266,4 @@ fn extract_bool_param(text: &str, param_name: &str) -> Option<bool> {
     }
     None
 }
+

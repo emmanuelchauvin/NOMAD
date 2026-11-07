@@ -9,3 +9,4 @@ pub enum OrchestratorError {
     #[error("Budget exceeded before initial population could be evaluated")]
     PrematureBudgetExhaustion,
 }
+

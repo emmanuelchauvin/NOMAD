@@ -7,7 +7,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use nomad_core::{ExperimentConfig, ExperimentalGroup};
 use nomad_evaluator::{Dataset, OracleEvaluator};
-use nomad_operator::DeterministicMockOperator;
+use nomad_operator::{DeterministicMockOperator, HttpLlamaOperator, SkillOperator};
 use nomad_orchestrator::EvolutionEngine;
 use nomad_sandbox::DeterministicSandbox;
 
@@ -45,9 +45,16 @@ impl From<GroupArg> for ExperimentalGroup {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+#[value(rename_all = "lowercase")]
+enum OperatorArg {
+    Mock,
+    Ollama,
+}
+
 #[derive(Subcommand)]
 enum Commands {
-    /// Display system positioning, hypotheses H1/H2, and pre-registered protocol.
+    /// Display system positioning, hypotheses H1/H2, and Ollama connection status.
     Info,
 
     /// Generate and inspect cryptographic SHA-256 fingerprints of benchmark datasets.
@@ -70,11 +77,20 @@ enum Commands {
         #[arg(short, long, default_value_t = 42)]
         seed: u64,
 
-        #[arg(short, long, default_value_t = 20)]
+        #[arg(short, long, default_value_t = 10)]
         pop_size: usize,
 
-        #[arg(short = 'n', long, default_value_t = 10)]
+        #[arg(short = 'n', long, default_value_t = 5)]
         generations: usize,
+
+        #[arg(long, value_enum, default_value_t = OperatorArg::Ollama)]
+        operator: OperatorArg,
+
+        #[arg(long, default_value = "http://localhost:11434/v1/chat/completions")]
+        ollama_url: String,
+
+        #[arg(long, default_value = "qwen2.5-coder:7b")]
+        model: String,
 
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -85,11 +101,20 @@ enum Commands {
         #[arg(short, long, default_value_t = 5)]
         runs: usize,
 
-        #[arg(short, long, default_value_t = 20)]
+        #[arg(short, long, default_value_t = 10)]
         pop_size: usize,
 
-        #[arg(short = 'n', long, default_value_t = 10)]
+        #[arg(short = 'n', long, default_value_t = 5)]
         generations: usize,
+
+        #[arg(long, value_enum, default_value_t = OperatorArg::Ollama)]
+        operator: OperatorArg,
+
+        #[arg(long, default_value = "http://localhost:11434/v1/chat/completions")]
+        ollama_url: String,
+
+        #[arg(long, default_value = "qwen2.5-coder:7b")]
+        model: String,
 
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -174,6 +199,9 @@ fn main() -> Result<()> {
             seed,
             pop_size,
             generations,
+            operator,
+            ollama_url,
+            model,
             output,
         } => {
             let exp_group: ExperimentalGroup = group.into();
@@ -185,9 +213,20 @@ fn main() -> Result<()> {
 
             let oracle = OracleEvaluator::new(seed);
             let sandbox = DeterministicSandbox::new();
-            let operator = DeterministicMockOperator::default();
 
-            let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+            let op_instance: Box<dyn SkillOperator> = match operator {
+                OperatorArg::Mock => Box::new(DeterministicMockOperator::default()),
+                OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
+                    ollama_url,
+                    model,
+                    "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364", // SHA256 digest of qwen2.5-coder:7b
+                    "Ollama API (Qwen 2.5 Coder 7B)",
+                    0.7,
+                    0.95,
+                )),
+            };
+
+            let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, op_instance.as_ref());
             let report = engine.execute_run()?;
 
             println!("\n============================================================");
@@ -230,6 +269,9 @@ fn main() -> Result<()> {
             runs,
             pop_size,
             generations,
+            operator,
+            ollama_url,
+            model,
             output,
         } => {
             println!("============================================================");
@@ -237,13 +279,24 @@ fn main() -> Result<()> {
             println!(" Number of Paired Runs: {}", runs);
             println!("============================================================");
 
+            let op_instance: Box<dyn SkillOperator> = match operator {
+                OperatorArg::Mock => Box::new(DeterministicMockOperator::default()),
+                OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
+                    ollama_url,
+                    model,
+                    "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+                    "Ollama API (Qwen 2.5 Coder 7B)",
+                    0.7,
+                    0.95,
+                )),
+            };
+
             let mut paired_results = Vec::new();
 
             for r in 0..runs {
                 let seed = 1000 + (r as u64) * 7;
                 let oracle = OracleEvaluator::new(seed);
                 let sandbox = DeterministicSandbox::new();
-                let operator = DeterministicMockOperator::default();
 
                 // Group D run
                 let mut config_d = ExperimentConfig::default();
@@ -251,7 +304,7 @@ fn main() -> Result<()> {
                 config_d.rng_seed = seed;
                 config_d.population_size = pop_size;
                 config_d.max_generations = generations;
-                let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, &operator);
+                let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref());
                 let report_d = engine_d.execute_run()?;
 
                 // Group C run
@@ -260,7 +313,7 @@ fn main() -> Result<()> {
                 config_c.rng_seed = seed;
                 config_c.population_size = pop_size;
                 config_c.max_generations = generations;
-                let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, &operator);
+                let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref());
                 let report_c = engine_c.execute_run()?;
 
                 println!(

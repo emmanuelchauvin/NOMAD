@@ -67,3 +67,4 @@ impl BudgetTracker {
         self.executions_consumed += count;
     }
 }
+
