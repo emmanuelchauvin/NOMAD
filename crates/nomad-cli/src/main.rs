@@ -52,10 +52,33 @@ enum OperatorArg {
     Ollama,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+#[value(rename_all = "lowercase")]
+enum GraphFormat {
+    Mermaid,
+    Dot,
+    Html,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Display system positioning, hypotheses H1/H2, and Ollama connection status.
     Info,
+
+    /// Export or visualize the phylogenetic DAG from a run report file.
+    Graph {
+        /// Path to the JSON run report file produced by `nomad run --output <file>`.
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Format for visualization: mermaid, dot, or html.
+        #[arg(short, long, value_enum, default_value_t = GraphFormat::Mermaid)]
+        format: GraphFormat,
+
+        /// Optional output file path (if omitted, prints to stdout).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 
     /// Generate and inspect cryptographic SHA-256 fingerprints of benchmark datasets.
     Dataset {
@@ -144,6 +167,78 @@ fn main() -> Result<()> {
             println!("Reproduction  : Mutation + Swarm Crossover (Group C) vs Mutation only (Group D).");
             println!("Oracle        : Independent, strict gas & validity constraints.");
             println!("============================================================");
+        }
+
+        Commands::Graph {
+            input,
+            format,
+            output,
+        } => {
+            let content = std::fs::read_to_string(&input)?;
+            let report: nomad_orchestrator::ExperimentRunReport = serde_json::from_str(&content)
+                .map_err(|e| anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e))?;
+
+            if report.phylogeny.node_count() == 0 {
+                eprintln!(
+                    "Warning: The report in {} does not contain any recorded phylogenetic nodes.",
+                    input.display()
+                );
+                return Ok(());
+            }
+
+            let rendered = match format {
+                GraphFormat::Mermaid => report.phylogeny.to_mermaid(),
+                GraphFormat::Dot => report.phylogeny.to_dot(),
+                GraphFormat::Html => {
+                    let mermaid_code = report.phylogeny.to_mermaid();
+                    format!(
+                        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>NOMAD Phylogeny Tree - {}</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 20px;
+      background: #0f172a;
+      color: #f8fafc;
+    }}
+    h1 {{ color: #38bdf8; }}
+    .meta {{ margin-bottom: 20px; color: #94a3b8; }}
+    .mermaid {{ background: #1e293b; padding: 20px; border-radius: 8px; }}
+  </style>
+</head>
+<body>
+  <h1>NOMAD Phylogenetic Lineage DAG</h1>
+  <div class="meta">
+    Group: <strong>{}</strong> | Seed: <strong>{}</strong> | Nodes: <strong>{}</strong> | Transitions: <strong>{}</strong>
+  </div>
+  <pre class="mermaid">
+{}
+  </pre>
+  <script>
+    mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});
+  </script>
+</body>
+</html>"#,
+                        report.best_capsule.name,
+                        report.group.name(),
+                        report.rng_seed,
+                        report.total_lineage_nodes,
+                        report.total_lineage_edges,
+                        mermaid_code
+                    )
+                }
+            };
+
+            if let Some(out_path) = output {
+                std::fs::write(&out_path, rendered.as_bytes())?;
+                println!("Phylogeny graph written to {}", out_path.display());
+            } else {
+                println!("{}", rendered);
+            }
         }
 
         Commands::Dataset { seed } => {

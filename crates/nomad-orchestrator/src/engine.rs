@@ -41,6 +41,8 @@ pub struct ExperimentRunReport {
     pub budget_consumed: BudgetTracker,
     pub total_lineage_nodes: usize,
     pub total_lineage_edges: usize,
+    #[serde(default)]
+    pub phylogeny: PhylogenyGraph,
 }
 
 /// The core NOMAD Evolutionary Engine.
@@ -158,6 +160,7 @@ impl<'a> EvolutionEngine<'a> {
             budget_consumed: self.budget.clone(),
             total_lineage_nodes: self.phylogeny.node_count(),
             total_lineage_edges: self.phylogeny.edge_count(),
+            phylogeny: self.phylogeny.clone(),
         })
     }
 
