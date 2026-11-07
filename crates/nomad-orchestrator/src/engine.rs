@@ -72,6 +72,12 @@ impl<'a> EvolutionEngine<'a> {
         }
     }
 
+    fn throttle_cooldown(&self) {
+        if self.config.cooldown_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(self.config.cooldown_ms));
+        }
+    }
+
     /// Executes the full evolutionary protocol for the configured group.
     pub fn execute_run(&mut self) -> Result<ExperimentRunReport, OrchestratorError> {
         info!(
@@ -178,6 +184,7 @@ impl<'a> EvolutionEngine<'a> {
                 .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
             self.budget.record_llm_call();
+            self.throttle_cooldown();
             self.phylogeny.insert_capsule(&capsule);
 
             let score = self.oracle.evaluate_in_distribution(
@@ -216,6 +223,7 @@ impl<'a> EvolutionEngine<'a> {
                         .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
                     self.budget.record_llm_call();
+                    self.throttle_cooldown();
                     self.phylogeny.insert_capsule(&mutated);
 
                     let score = self.oracle.evaluate_in_distribution(
@@ -242,6 +250,7 @@ impl<'a> EvolutionEngine<'a> {
                         .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
                     self.budget.record_llm_call();
+                    self.throttle_cooldown();
                     self.phylogeny.insert_capsule(&mutated);
 
                     let score = self.oracle.evaluate_in_distribution(
@@ -273,6 +282,7 @@ impl<'a> EvolutionEngine<'a> {
                         .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
                     self.budget.record_llm_call();
+                    self.throttle_cooldown();
                     self.phylogeny.insert_capsule(&mutated);
 
                     let score = self.oracle.evaluate_in_distribution(
@@ -318,6 +328,7 @@ impl<'a> EvolutionEngine<'a> {
                     };
 
                     self.budget.record_llm_call();
+                    self.throttle_cooldown();
                     self.phylogeny.insert_capsule(&child_capsule);
 
                     let score = self.oracle.evaluate_in_distribution(

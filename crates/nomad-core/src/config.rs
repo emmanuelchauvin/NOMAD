@@ -24,6 +24,9 @@ pub struct ExperimentConfig {
     pub memory_limit_bytes: usize,
     /// Bin capacity for the 1D Bin Packing problem (default: 100).
     pub bin_capacity: u32,
+    /// Optional cooldown pause in milliseconds between LLM calls to prevent GPU thermal throttling.
+    #[serde(default)]
+    pub cooldown_ms: u64,
 }
 
 impl Default for ExperimentConfig {
@@ -39,6 +42,7 @@ impl Default for ExperimentConfig {
             fuel_limit_per_call: 50_000,
             memory_limit_bytes: 4 * 1024 * 1024, // 4 MB
             bin_capacity: 100,
+            cooldown_ms: 0,
         }
     }
 }

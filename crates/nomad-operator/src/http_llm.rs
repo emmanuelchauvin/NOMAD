@@ -76,13 +76,13 @@ pub struct HttpLlamaOperator {
 impl Default for HttpLlamaOperator {
     fn default() -> Self {
         Self {
-            endpoint: "http://localhost:8080/v1/chat/completions".to_string(),
+            endpoint: "http://localhost:11434/v1/chat/completions".to_string(),
             model_name: "llama.cpp-local-model".to_string(),
             model_sha256: "unknown_model_hash".to_string(),
             engine_version: "llama.cpp server v1.0".to_string(),
             temperature: 0.7,
             top_p: 0.95,
-            timeout: Duration::from_secs(45),
+            timeout: Duration::from_secs(180),
         }
     }
 }
@@ -103,7 +103,7 @@ impl HttpLlamaOperator {
             engine_version: engine_version.into(),
             temperature,
             top_p,
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_secs(180),
         }
     }
 
@@ -125,30 +125,51 @@ impl HttpLlamaOperator {
             seed: (seed & 0x7FFF_FFFF) as i64,
         };
 
-        let response: ChatCompletionResponse = match ureq::post(&self.endpoint)
-            .timeout(self.timeout)
-            .send_json(&request_body)
-        {
-            Ok(resp) => resp
-                .into_json()
-                .map_err(|e| OperatorError::InferenceError(format!("Failed to parse JSON response: {}", e)))?,
-            Err(ureq::Error::Status(code, resp)) => {
-                let err_text = resp.into_string().unwrap_or_default();
-                return Err(OperatorError::InferenceError(format!(
-                    "Ollama HTTP {}: {}",
-                    code, err_text
-                )));
+        let max_attempts = 3;
+        let mut last_err = String::new();
+
+        for attempt in 1..=max_attempts {
+            match ureq::post(&self.endpoint)
+                .timeout(self.timeout)
+                .send_json(&request_body)
+            {
+                Ok(resp) => {
+                    let response: ChatCompletionResponse = resp
+                        .into_json()
+                        .map_err(|e| OperatorError::InferenceError(format!("Failed to parse JSON response: {}", e)))?;
+
+                    let raw_text = response
+                        .choices
+                        .first()
+                        .map(|c| c.message.content.clone())
+                        .ok_or_else(|| OperatorError::InferenceError("Empty choices returned by LLM".to_string()))?;
+
+                    return Ok(raw_text);
+                }
+                Err(ureq::Error::Status(code, resp)) => {
+                    let err_text = resp.into_string().unwrap_or_default();
+                    last_err = format!("Ollama HTTP {}: {}", code, err_text);
+                }
+                Err(e) => {
+                    last_err = format!("HTTP request failed: {}", e);
+                }
             }
-            Err(e) => return Err(OperatorError::InferenceError(format!("HTTP request failed: {}", e))),
-        };
 
-        let raw_text = response
-            .choices
-            .first()
-            .map(|c| c.message.content.clone())
-            .ok_or_else(|| OperatorError::InferenceError("Empty choices returned by LLM".to_string()))?;
+            if attempt < max_attempts {
+                tracing::warn!(
+                    "Ollama request attempt {}/{} failed ({}). Retrying in 4s...",
+                    attempt,
+                    max_attempts,
+                    last_err
+                );
+                std::thread::sleep(Duration::from_secs(4));
+            }
+        }
 
-        Ok(raw_text)
+        Err(OperatorError::InferenceError(format!(
+            "All {} attempts failed. Last error: {}",
+            max_attempts, last_err
+        )))
     }
 
     fn extract_code_block(raw: &str) -> String {

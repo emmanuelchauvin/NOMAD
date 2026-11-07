@@ -115,6 +115,10 @@ enum Commands {
         #[arg(long, default_value = "qwen2.5-coder:7b")]
         model: String,
 
+        /// Optional cooldown in milliseconds between LLM calls to prevent GPU overheating.
+        #[arg(long, default_value_t = 0)]
+        cooldown_ms: u64,
+
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
@@ -138,6 +142,10 @@ enum Commands {
 
         #[arg(long, default_value = "qwen2.5-coder:7b")]
         model: String,
+
+        /// Optional cooldown in milliseconds between LLM calls to prevent GPU overheating.
+        #[arg(long, default_value_t = 0)]
+        cooldown_ms: u64,
 
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -297,6 +305,7 @@ fn main() -> Result<()> {
             operator,
             ollama_url,
             model,
+            cooldown_ms,
             output,
         } => {
             let exp_group: ExperimentalGroup = group.into();
@@ -305,6 +314,7 @@ fn main() -> Result<()> {
             config.rng_seed = seed;
             config.population_size = pop_size;
             config.max_generations = generations;
+            config.cooldown_ms = cooldown_ms;
 
             let oracle = OracleEvaluator::new(seed);
             let sandbox = DeterministicSandbox::new();
@@ -367,11 +377,15 @@ fn main() -> Result<()> {
             operator,
             ollama_url,
             model,
+            cooldown_ms,
             output,
         } => {
             println!("============================================================");
             println!(" Running Paired Study: Group C (Swarm) vs Group D (Mutation)");
             println!(" Number of Paired Runs: {}", runs);
+            if cooldown_ms > 0 {
+                println!(" Thermal Cooldown: {} ms between LLM calls", cooldown_ms);
+            }
             println!("============================================================");
 
             let op_instance: Box<dyn SkillOperator> = match operator {
@@ -399,8 +413,12 @@ fn main() -> Result<()> {
                 config_d.rng_seed = seed;
                 config_d.population_size = pop_size;
                 config_d.max_generations = generations;
+                config_d.cooldown_ms = cooldown_ms;
                 let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref());
                 let report_d = engine_d.execute_run()?;
+
+                // GPU breathing pause between Group D and Group C
+                std::thread::sleep(std::time::Duration::from_secs(3));
 
                 // Group C run
                 let mut config_c = ExperimentConfig::default();
@@ -408,6 +426,7 @@ fn main() -> Result<()> {
                 config_c.rng_seed = seed;
                 config_c.population_size = pop_size;
                 config_c.max_generations = generations;
+                config_c.cooldown_ms = cooldown_ms;
                 let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref());
                 let report_c = engine_c.execute_run()?;
 
@@ -422,6 +441,13 @@ fn main() -> Result<()> {
                 );
 
                 paired_results.push((report_c, report_d));
+
+                // Incremental auto-save so partial results are never lost
+                if let Some(ref path) = output {
+                    if let Ok(serialized) = serde_json::to_string_pretty(&paired_results) {
+                        let _ = std::fs::write(path, serialized.as_bytes());
+                    }
+                }
             }
 
             if let Some(path) = output {
