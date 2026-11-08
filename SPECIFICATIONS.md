@@ -318,8 +318,8 @@ pub enum ProblemDomain {
 
 La validation empirique du framework repose sur 4 tests d'acceptation pré-enregistrés :
 
-### TEST 1 : Rupture du Plafond Glouton (Optimum 1265)
-* **Hypothèse :** La recombinaison AST permet de briser le plafond historique de Best-Fit (1 265 bacs sur le benchmark In-Distribution de 2 500 objets).
+### TEST 1 : Rupture du Palier Glouton Best-Fit (Optimum Empirique 1 265 bacs)
+* **Hypothèse :** La recombinaison AST permet de briser le palier historique de Best-Fit (1 265 bacs sur le benchmark In-Distribution de 2 500 objets, la borne théorique de volume $L_1$ étant de 1 158 bacs).
 * **Résultat validé :** Atteinte de **1 264 bacs** (excès +106, efficacité 91,86 %) par le champion `SwarmCross-g8-0f25-039a-mut-g8` avec émergence d'une modulation par horizon temporel non-stationnaire :
 
 $$\text{horizon\_multiplier} = \frac{\text{total\_items} - \text{step\_index}}{\text{total\_items}}$$

@@ -122,11 +122,12 @@ cargo run --release --bin nomad -- compare --domain scheduling --operator mock -
 
 ## 5. Scientific Validation & Testing
 
-NOMAD is verified by an automated test suite comprising **23 unit and integration tests** and 5 acceptance protocols:
+NOMAD is verified by an automated test suite comprising **23 unit and integration tests** and 6 acceptance protocols:
 - `cargo test --workspace` (All 23 unit & integration tests pass deterministically)
+- **Controlled Ablation Study (Group C vs Group D, 15 Generations) :** Recombinant champion `SwarmCross-g2-d93d-f902` certified `PassedLevel3Behavioral` achieving **16.14% fuel reduction** over mutation-only baseline locked at Generation 0 seed.
 - **Multi-Resource Cloud Scheduling :** SOTA record of **391 servers** ($CIF = 1.071\text{x}$, $R_{\text{herit}} = 100\%$, OOD-2: 1 731 servers).
 - **Online 1D Bin Packing :** Lookahead $k=2$ + Dynamic Horizon with **98.56% OOD-2 efficiency** and $R_{\text{herit}} = 100\%$.
-- Level 1-3 Anti-dead-code validation with surgical $C_{\text{null}}$ ablation.
+- Level 1-3 Anti-dead-code validation with surgical $C_{\text{null}}$ differential ablation.
 - Adaptive Operator Selection (AOS) for dynamic Swarm crossover control.
 - MAP-Elites niche competition & replacement with adaptive coordinate projection.
 - Cryptographic reproducibility across random seeds.
