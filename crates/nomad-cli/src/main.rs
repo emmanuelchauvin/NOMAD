@@ -294,6 +294,10 @@ fn main() -> Result<()> {
         } => {
             let content = std::fs::read_to_string(&input)?;
             let report: nomad_orchestrator::ExperimentRunReport = serde_json::from_str(&content)
+                .or_else(|_| {
+                    serde_json::from_str::<nomad_orchestrator::RebirthExperimentReport>(&content)
+                        .map(|r| r.epoch3_heritage.unwrap_or(r.epoch2_heritage))
+                })
                 .map_err(|e| anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e))?;
 
             if report.phylogeny.node_count() == 0 {
