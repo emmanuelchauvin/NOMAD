@@ -70,7 +70,7 @@ NOMAD/
 * **`nomad-evaluator` :** Oracle souverain indépendant. Contient les jeux de données d'évaluation sanctuarisés (In-Distribution, OOD-1 Échelle, OOD-2 Asymétrique), le calculateur exact de Lyapunov ($tLDR$), et le pipeline complet de validation Anti-Dead-Code à 3 niveaux avec génération de la capsule témoin d'ablation $C_{\text{null}}$.
 * **`nomad-operator` :** Couche cognitive d'inférence. Connecteurs HTTP pour modèles locaux (Ollama, llama.cpp, vLLM) et opérateur déterministe Mock traçant les hashes SHA-256 des poids, les graines, les températures et les invites complètes dans des audits de reproductibilité (`ReproducibilityAudit`).
 * **`nomad-orchestrator` :** Moteur d'orchestration de population. Grille 2D Quality-Diversity MAP-Elites (`MapElitesArchive`) avec compétition locale intra-niche et sélection par curiosité UCB, routage complémentaire `AgentPSO` avec mémoire de lignée, et exécution en double-aveugle du protocole "Mort et Renaissance".
-* **`nomad-cli` :** Point d'entrée binaire unifié offrant les sous-commandes de pilotage expérimental (`run`, `rebirth`, `archive`, `graph`, `baseline`, `dataset`).
+* **`nomad-cli` :** Point d'entrée binaire unifié offrant les sous-commandes de pilotage expérimental (`run`, `rebirth`, `compare`, `archive`, `graph`, `baseline`, `dataset`).
 
 ---
 
@@ -386,23 +386,38 @@ cargo run --bin nomad -- graph --report run_report_qwen_v2.json --format html --
 cargo run --release --bin nomad -- dataset
 
 # 6. Évaluation des heuristiques canoniques de référence
-cargo run --release --bin nomad -- baseline
+cargo run --release --bin nomad -- baseline --domain bin-packing
+cargo run --release --bin nomad -- baseline --domain scheduling
+
+# 7. Étude comparative pré-enregistrée (Groupe C vs Groupe D)
+cargo run --release --bin nomad -- compare --domain bin-packing --runs 5
+cargo run --release --bin nomad -- compare --domain scheduling --runs 5
 ```
 
-### Datasets Sanctuarisés (Empreintes SHA-256 officielles)
-* **In-Distribution (50 instances, $N=50$, $C=100$) :**  
+### Datasets Sanctuarisés (Empreintes SHA-256 officielles, Seed 42)
+
+#### 1. 1D Online Bin Packing ($C = 100$)
+* **In-Distribution (50 instances, $N=50$, $U(10,80)$) :**  
   `04966f900c382331a423fe5d9c0ceea9de8538bd5b00979939e9c3a121f9b504`
-* **OOD-1 Échelle (50 instances, $N=500$, $C=100$) :**  
+* **OOD-1 Échelle (50 instances, $N=500$, $U(10,80)$) :**  
   `6ec5507854441496733989883f5f555be65cc4ac6c1ad823de0c279ccaab51cf`
-* **OOD-2 Asymétrique (50 instances, $N=500$, $C=100$) :**  
+* **OOD-2 Asymétrique (50 instances, $N=500$, Loi de Puissance) :**  
   `511a4b597decc9a3817491ca099f499ad9fa888abf246c1cdae4a89544844564`
+
+#### 2. Multi-Resource Cloud Job Scheduling (Node: 32 CPU / 128 Go RAM)
+* **In-Distribution (50 instances, $N=50$ jobs) :**  
+  `7d61949fcac82188a01f02d607a6b6c5b4947aad1c564a49ff018dca12cacf4b`
+* **OOD-1 Échelle (50 instances, $N=300$ jobs) :**  
+  `fe72e54e8edbf8cd93f74a34abfd8ff15239212ee0e5e1147e848c8553f17cfa`
+* **OOD-2 Asymétrique (50 instances, $N=100$ jobs) :**  
+  `53b1c6f4b171b515a29e380e1511a2347ce8f6fcfe633e6fca4a62d769a9e107`
 
 ---
 
 # 14. Critère Final de Réussite de NOMAD V2
 
 NOMAD V2 est réputé formellement validé si et seulement si :
-1. **Intégrité Logicielle :** La suite de tests automatisés du workspace Rust réussit à 100 % (`cargo test --workspace`, 17 tests sur 17 réussis).
+1. **Intégrité Logicielle :** La suite de tests automatisés du workspace Rust réussit à 100 % (`cargo test --workspace`, 20 tests sur 20 réussis).
 2. **Rupture Expérimentale :** L'algorithme brise le plafond historique glouton stationnaire en atteignant un score strictement inférieur à 1 265 bacs sur le benchmark In-Distribution.
 3. **Causalité Anti-Dead-Code :** Les capsules hybrides issues de crossover prouvent que leur fragment greffé modifie de manière causale leurs décisions par rapport à la capsule d'ablation $C_{\text{null}}$.
 4. **Transmission Culturelle :** Le protocole "Mort et Renaissance" atteste d'un taux d'hérédité fonctionnelle $R_{\text{herit}} > 50\,\%$ et d'une expansion de niches significative par rapport à la population Tabula Rasa.
