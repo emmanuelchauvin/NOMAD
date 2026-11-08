@@ -75,20 +75,20 @@ impl SkillOperator for DeterministicMockOperator {
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let bin_variants = [
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}",
                 "Best Fit linear remaining capacity baseline",
             ),
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual < 10 {\n        score = score + 95.0;\n    }\n    score\n}",
-                "Best Fit with dead space penalty (< 10)",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 60.0;\n    }\n    if bin_residual < 10 {\n        score = score + 95.0;\n    }\n    score\n}",
+                "Best Fit with lookahead pairing bonus and dead space penalty",
             ),
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == 0 {\n        score = score - 50.0;\n    }\n    score\n}",
-                "Best Fit with exact closure bonus",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 50.0;\n    }\n    if bin_residual == 0 {\n        score = score - 50.0;\n    }\n    score\n}",
+                "Best Fit with exact closure and lookahead bonus",
             ),
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64 * 1.25;\n    score\n}",
-                "Scaled tightness scoring",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64 * 1.25;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 40.0;\n    }\n    score\n}",
+                "Scaled tightness scoring with lookahead",
             ),
         ];
 

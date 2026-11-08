@@ -255,15 +255,15 @@ impl HttpLlamaOperator {
 
         let code = match fallback_variant % 4 {
             0 => format!(
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64 * {:.2};\n    if bin_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {{\n    let mut score = bin_residual as f64 * {:.2};\n    if bin_residual == next_item_size && next_item_size > 0 {{\n        score = score - 60.0;\n    }}\n    if bin_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
                 alpha_val, penalty_val
             ),
             1 => format!(
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual == 0 {{\n        score = score - {:.1};\n    }}\n    score\n}}",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {{\n        score = score - 50.0;\n    }}\n    if bin_residual == 0 {{\n        score = score - {:.1};\n    }}\n    score\n}}",
                 bonus_val
             ),
-            2 => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    if (bin_residual as f64) < mean_residual {\n        score = score - 15.0;\n    }\n    score\n}".to_string(),
-            _ => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}".to_string(),
+            2 => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 55.0;\n    } else if (bin_residual as f64) < mean_residual {\n        score = score - 15.0;\n    }\n    score\n}".to_string(),
+            _ => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 50.0;\n    }\n    score\n}".to_string(),
         };
 
         let item_fn = parse_score_bin(&code).expect("Template must be valid Rust AST");
@@ -365,11 +365,15 @@ pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_inde
 ```\n\
 CRITICAL REQUIREMENTS FOR SOTA PERFORMANCE:\n\
 1. The candidate bin with the MINIMUM score is selected for placing item_size.\n\
+   SIGN CONVENTION: LOWER score is strictly BETTER.\n\
+   - To FAVOR a candidate bin (bonus): SUBTRACT from score (e.g., `score -= 60.0`).\n\
+   - To PENALIZE an undesirable bin: ADD to score (e.g., `score += 80.0`).\n\
+   - WARNING: NEVER multiply by 0 or add positive numbers to award a bonus!\n\
 2. To outperform standard Best-Fit, an advanced heuristic MUST be dynamic and multi-variable:\n\
    - Dynamic horizon awareness: Combine `bin_residual` with progress `step_index as f64 / total_items as f64`.\n\
    - In early stages (low progress): prioritize keeping large flexible spaces for upcoming unknown items.\n\
    - In late stages (high progress): prioritize tightly closing existing bins to avoid opening new empty bins near the end.\n\
-   - Lookahead awareness (k=2): `next_item_size` reveals the size of the immediately following item. If `bin_residual == next_item_size` or can form a perfect pair, heavily favor placing `item_size` so `next_item_size` can close the bin!\n\
+   - Lookahead awareness (k=2): `next_item_size` reveals the size of the immediately following item. If `bin_residual == next_item_size`, SUBTRACT a large bonus (`score -= 60.0`) because placing `item_size` here enables `next_item_size` to perfectly close this bin with zero residual!\n\
    - Global state: You can use `open_bins_count`, `mean_residual`, or compare `bin_residual` to `item_size`.\n\
 Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!("Synthesize heuristic seed #{} with seed parameter {}.", index, seed)
@@ -446,9 +450,9 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
             (
                 "You are an evolutionary code optimizer for Online 1D Bin Packing heuristics in Rust.\n\
 Apply an algorithmic mutation to improve compaction and reduce total bins used.\n\
+SIGN CONVENTION: The candidate bin with the MINIMUM score is selected. To FAVOR a bin, SUBTRACT (score -= 50.0). To PENALIZE, ADD (score += 50.0). Do NOT multiply by 0 or add positive bonuses.\n\
 Combine multiple input variables: `bin_residual`, `item_size`, `step_index`/`total_items` (time horizon), `mean_residual`, and lookahead `next_item_size`.\n\
-Introduce non-linear conditionals, lookahead pairing bonuses (`if bin_residual == next_item_size`), time-decaying penalties, or horizon-aware placement logic.\n\
-The candidate bin with the MINIMUM score is selected.\n\
+Introduce non-linear conditionals, lookahead pairing bonuses (`if bin_residual == next_item_size { score -= 60.0; }`), time-decaying penalties, or horizon-aware placement logic.\n\
 Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!(
                     "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.",
