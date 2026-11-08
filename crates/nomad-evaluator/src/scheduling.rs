@@ -208,10 +208,15 @@ impl SchedulingOracle {
         let mut tight_nodes_count = 0usize;
 
         for (step_index, job) in instance.jobs.iter().enumerate() {
-            let outcome = match sandbox.execute_scheduling(
+            let next_job = instance.jobs.get(step_index + 1);
+            let next_job_cpu = next_job.map(|j| j.cpu_req).unwrap_or(0);
+            let next_job_ram = next_job.map(|j| j.ram_req).unwrap_or(0);
+            let outcome = match sandbox.execute_scheduling_with_lookahead(
                 &capsule.logic_code,
                 job.cpu_req,
                 job.ram_req,
+                next_job_cpu,
+                next_job_ram,
                 &node_levels,
                 cap,
                 fuel_limit_per_call,

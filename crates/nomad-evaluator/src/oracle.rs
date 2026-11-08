@@ -281,9 +281,11 @@ impl OracleEvaluator {
         let mut new_bins_opened = 0usize;
 
         for (step_idx, &item) in instance.items.iter().enumerate() {
-            let res = sandbox.execute_with_context(
+            let next_item = instance.items.get(step_idx + 1).copied().unwrap_or(0);
+            let res = sandbox.execute_with_lookahead(
                 logic_code,
                 item,
+                next_item,
                 &bin_levels,
                 instance.capacity,
                 fuel_limit_per_call,

@@ -135,6 +135,10 @@ enum Commands {
         #[arg(short = 'n', long, default_value_t = 3)]
         generations: usize,
 
+        /// Number of successive civilizational epochs (2 or 3).
+        #[arg(short = 'e', long, default_value_t = 2)]
+        epochs: usize,
+
         #[arg(long, value_enum, default_value_t = OperatorArg::Mock)]
         operator: OperatorArg,
 
@@ -812,6 +816,7 @@ fn main() -> Result<()> {
             seed,
             pop_size,
             generations,
+            epochs,
             operator,
             ollama_url,
             model,
@@ -847,12 +852,13 @@ fn main() -> Result<()> {
                 ),
             };
 
-            let rebirth_report = nomad_orchestrator::execute_rebirth_protocol_with_sched(
+            let rebirth_report = nomad_orchestrator::execute_rebirth_protocol_extended(
                 config,
                 &oracle,
                 Some(&sched_oracle),
                 &sandbox,
                 op_instance.as_ref(),
+                epochs,
             )?;
 
             println!("\n============================================================");
@@ -882,6 +888,14 @@ fn main() -> Result<()> {
                 rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.total_excess_bins,
                 rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.mean_efficiency * 100.0
             );
+            if let Some(ref ep3) = rebirth_report.epoch3_heritage {
+                println!(
+                    " Époque 3 (Héritière 2): Best Bins: {} (excess: +{}), Eff: {:.2}%",
+                    ep3.best_in_distribution_score.total_bins,
+                    ep3.best_in_distribution_score.total_excess_bins,
+                    ep3.best_in_distribution_score.mean_efficiency * 100.0
+                );
+            }
             println!("------------------------------------------------------------");
             println!(
                 " Cumulative Improvement Factor (CIF) : {:.3}x",

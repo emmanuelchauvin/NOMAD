@@ -147,6 +147,9 @@ impl Default for PolicyKind {
 pub struct ScoreBinInputs {
     /// Taille de l'objet à insérer (ex: entre 10 et 80).
     pub item_size: u32,
+    /// Taille du prochain objet dans le flux (Lookahead borné k=2, ou 0 si dernier objet).
+    #[serde(default)]
+    pub next_item_size: u32,
     /// Espace résiduel disponible dans le bac candidat (capacité - niveau actuel).
     pub bin_residual: u32,
     /// Capacité maximale d'un bac (généralement C = 100).
@@ -171,6 +174,12 @@ pub struct SchedulingInputs {
     pub job_cpu: u32,
     /// RAM requise par la tâche courante (GB).
     pub job_ram: u32,
+    /// CPU requis par la prochaine tâche dans le flux (Lookahead k=2, ou 0).
+    #[serde(default)]
+    pub next_job_cpu: u32,
+    /// RAM requise par la prochaine tâche dans le flux (Lookahead k=2, ou 0).
+    #[serde(default)]
+    pub next_job_ram: u32,
     /// CPU résiduel disponible sur le nœud candidat.
     pub node_residual_cpu: u32,
     /// RAM résiduelle disponible sur le nœud candidat.

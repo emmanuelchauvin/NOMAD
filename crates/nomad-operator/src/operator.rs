@@ -8,7 +8,7 @@ use nomad_core::{
     PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus,
 };
 use nomad_genome::{
-    compute_structural_fingerprint, deterministic_ast_crossover, parse_score_bin,
+    compute_structural_fingerprint, deterministic_ast_crossover, multi_locus_ast_crossover, parse_score_bin,
 };
 use crate::meta::ReproducibilityAudit;
 
@@ -250,7 +250,15 @@ impl SkillOperator for DeterministicMockOperator {
         if (parent_a.logic_code.contains("score_") || parent_a.logic_code.contains("fn score"))
             && (parent_b.logic_code.contains("score_") || parent_b.logic_code.contains("fn score"))
         {
-            if let Ok((child, manifest)) = deterministic_ast_crossover(parent_a, parent_b, seed, generation) {
+            let ast_res = if seed % 2 == 0 {
+                multi_locus_ast_crossover(parent_a, parent_b, seed, generation)
+                    .or_else(|_| deterministic_ast_crossover(parent_a, parent_b, seed, generation))
+            } else {
+                deterministic_ast_crossover(parent_a, parent_b, seed, generation)
+                    .or_else(|_| multi_locus_ast_crossover(parent_a, parent_b, seed, generation))
+            };
+
+            if let Ok((child, manifest)) = ast_res {
                 let audit = ReproducibilityAudit {
                     model_name: self.model_name.clone(),
                     model_sha256: self.model_sha256.clone(),

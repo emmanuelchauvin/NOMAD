@@ -23,6 +23,8 @@ pub enum EvalError {
 pub struct ScorePolicyContext {
     /// Taille de l'objet courant en cours de placement.
     pub item_size: u32,
+    /// Taille du prochain objet dans le flux (Lookahead borné k=2, ou 0 si dernier objet).
+    pub next_item_size: u32,
     /// Espace résiduel actuel du bac candidat.
     pub bin_residual: u32,
     /// Capacité maximale théorique du bac (ex: 100).
@@ -141,6 +143,7 @@ impl<'a> AstInterpreter<'a> {
     pub fn eval(&self, ctx: &ScorePolicyContext) -> Result<AstEvalOutcome, EvalError> {
         let mut vars = HashMap::new();
         vars.insert("item_size".to_string(), ctx.item_size as f64);
+        vars.insert("next_item_size".to_string(), ctx.next_item_size as f64);
         vars.insert("bin_residual".to_string(), ctx.bin_residual as f64);
         vars.insert("bin_capacity".to_string(), ctx.bin_capacity as f64);
         vars.insert("step_index".to_string(), ctx.step_index as f64);
@@ -158,6 +161,8 @@ impl<'a> AstInterpreter<'a> {
         let mut vars = HashMap::new();
         vars.insert("job_cpu".to_string(), ctx.job_cpu as f64);
         vars.insert("job_ram".to_string(), ctx.job_ram as f64);
+        vars.insert("next_job_cpu".to_string(), ctx.next_job_cpu as f64);
+        vars.insert("next_job_ram".to_string(), ctx.next_job_ram as f64);
         vars.insert("node_residual_cpu".to_string(), ctx.node_residual_cpu as f64);
         vars.insert("node_residual_ram".to_string(), ctx.node_residual_ram as f64);
         vars.insert("node_capacity_cpu".to_string(), ctx.node_capacity_cpu as f64);
@@ -362,6 +367,7 @@ mod tests {
 
         let ctx_small = ScorePolicyContext {
             item_size: 20,
+            next_item_size: 30,
             bin_residual: 5,
             bin_capacity: 100,
             step_index: 0,
@@ -377,6 +383,7 @@ mod tests {
 
         let ctx_large = ScorePolicyContext {
             item_size: 20,
+            next_item_size: 0,
             bin_residual: 25,
             bin_capacity: 100,
             step_index: 0,

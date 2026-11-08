@@ -47,6 +47,29 @@ pub trait HeuristicSandbox: Send + Sync {
         fuel_limit: u64,
         step_index: usize,
         total_items: usize,
+    ) -> Result<ExecutionOutcome, SandboxError> {
+        self.execute_with_lookahead(
+            logic_code,
+            item_weight,
+            0,
+            bin_levels,
+            bin_capacity,
+            fuel_limit,
+            step_index,
+            total_items,
+        )
+    }
+
+    fn execute_with_lookahead(
+        &self,
+        logic_code: &str,
+        item_weight: u32,
+        next_item_weight: u32,
+        bin_levels: &[u32],
+        bin_capacity: u32,
+        fuel_limit: u64,
+        step_index: usize,
+        total_items: usize,
     ) -> Result<ExecutionOutcome, SandboxError>;
 
     fn execute_scheduling(
@@ -54,6 +77,33 @@ pub trait HeuristicSandbox: Send + Sync {
         logic_code: &str,
         job_cpu: u32,
         job_ram: u32,
+        node_levels: &[(u32, u32)],
+        node_capacity: (u32, u32),
+        fuel_limit: u64,
+        step_index: usize,
+        total_jobs: usize,
+    ) -> Result<SchedulingExecutionOutcome, SandboxError> {
+        self.execute_scheduling_with_lookahead(
+            logic_code,
+            job_cpu,
+            job_ram,
+            0,
+            0,
+            node_levels,
+            node_capacity,
+            fuel_limit,
+            step_index,
+            total_jobs,
+        )
+    }
+
+    fn execute_scheduling_with_lookahead(
+        &self,
+        logic_code: &str,
+        job_cpu: u32,
+        job_ram: u32,
+        next_job_cpu: u32,
+        next_job_ram: u32,
         node_levels: &[(u32, u32)],
         node_capacity: (u32, u32),
         fuel_limit: u64,
@@ -73,10 +123,11 @@ impl DeterministicSandbox {
 }
 
 impl HeuristicSandbox for DeterministicSandbox {
-    fn execute_with_context(
+    fn execute_with_lookahead(
         &self,
         logic_code: &str,
         item_weight: u32,
+        next_item_weight: u32,
         bin_levels: &[u32],
         bin_capacity: u32,
         fuel_limit: u64,
@@ -151,6 +202,7 @@ impl HeuristicSandbox for DeterministicSandbox {
                     let residual = bin_capacity - (level + item_weight);
                     let ctx = ScorePolicyContext {
                         item_size: item_weight,
+                        next_item_size: next_item_weight,
                         bin_residual: residual,
                         bin_capacity,
                         step_index,
@@ -374,11 +426,13 @@ impl HeuristicSandbox for DeterministicSandbox {
         })
     }
 
-    fn execute_scheduling(
+    fn execute_scheduling_with_lookahead(
         &self,
         logic_code: &str,
         job_cpu: u32,
         job_ram: u32,
+        next_job_cpu: u32,
+        next_job_ram: u32,
         node_levels: &[(u32, u32)],
         node_capacity: (u32, u32),
         fuel_limit: u64,
@@ -513,6 +567,8 @@ impl HeuristicSandbox for DeterministicSandbox {
                     let ctx = SchedulingInputs {
                         job_cpu,
                         job_ram,
+                        next_job_cpu,
+                        next_job_ram,
                         node_residual_cpu: res_cpu,
                         node_residual_ram: res_ram,
                         node_capacity_cpu: node_capacity.0,

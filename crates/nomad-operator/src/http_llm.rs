@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use nomad_core::{PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus};
-use nomad_genome::{compute_structural_fingerprint, deterministic_ast_crossover, parse_heuristic_fn, parse_score_bin};
+use nomad_genome::{compute_structural_fingerprint, deterministic_ast_crossover, multi_locus_ast_crossover, parse_heuristic_fn, parse_score_bin};
 use crate::meta::ReproducibilityAudit;
 use crate::operator::{OperatorError, SkillOperator};
 
@@ -337,7 +337,7 @@ impl SkillOperator for HttpLlamaOperator {
 Nodes have CPU capacity C_cpu=32 and RAM capacity C_ram=128. Jobs arrive sequentially with (cpu, ram) demands. Your goal is to minimize total nodes used and prevent multi-dimensional resource stranding.\n\
 Implement the heuristic as a valid Rust function with the following exact signature:\n\
 ```rust\n\
-pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n\
+pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n\
     let mut score = node_residual_cpu as f64 + node_residual_ram as f64;\n\
     score\n\
 }\n\
@@ -348,6 +348,7 @@ CRITICAL REQUIREMENTS FOR SOTA PERFORMANCE:\n\
    - Normalize residuals: `node_residual_cpu as f64 / node_capacity_cpu as f64` and `node_residual_ram as f64 / node_capacity_ram as f64`.\n\
    - Penalize resource imbalance: `(cpu_norm - ram_norm).abs()` to avoid stranded resource capacity.\n\
    - Dynamic horizon awareness: Combine `step_index` and `total_jobs`.\n\
+   - Lookahead awareness (k=2): `next_job_cpu` and `next_job_ram` provide lookahead of the immediately upcoming job. If residual capacity can perfectly fit the next job, reserve or prioritize pairing complementary jobs!\n\
 Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!("Synthesize cloud scheduling heuristic seed #{} with seed parameter {}.", index, seed)
             )
@@ -357,7 +358,7 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block wit
 Bins have capacity C=100. Items arrive sequentially (sizes between 10 and 80). Your goal is to minimize total bins used.\n\
 Implement the heuristic as a valid Rust function with the following exact signature:\n\
 ```rust\n\
-pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n\
+pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n\
     let mut score = bin_residual as f64;\n\
     score\n\
 }\n\
@@ -368,6 +369,7 @@ CRITICAL REQUIREMENTS FOR SOTA PERFORMANCE:\n\
    - Dynamic horizon awareness: Combine `bin_residual` with progress `step_index as f64 / total_items as f64`.\n\
    - In early stages (low progress): prioritize keeping large flexible spaces for upcoming unknown items.\n\
    - In late stages (high progress): prioritize tightly closing existing bins to avoid opening new empty bins near the end.\n\
+   - Lookahead awareness (k=2): `next_item_size` reveals the size of the immediately following item. If `bin_residual == next_item_size` or can form a perfect pair, heavily favor placing `item_size` so `next_item_size` can close the bin!\n\
    - Global state: You can use `open_bins_count`, `mean_residual`, or compare `bin_residual` to `item_size`.\n\
 Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!("Synthesize heuristic seed #{} with seed parameter {}.", index, seed)
@@ -431,8 +433,8 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block wit
             (
                 "You are an evolutionary code optimizer for Multi-Resource Cloud Job Scheduling heuristics in Rust.\n\
 Apply an algorithmic mutation to improve compaction, reduce total nodes used, and balance CPU and RAM usage.\n\
-Combine multiple input variables: residuals, capacities, normalized imbalances `(cpu_norm - ram_norm).abs()`, and time horizon `step_index / total_jobs`.\n\
-Introduce non-linear conditionals, imbalance penalties, or horizon-aware placement logic.\n\
+Combine multiple input variables: residuals, capacities, normalized imbalances `(cpu_norm - ram_norm).abs()`, time horizon `step_index / total_jobs`, and lookahead `next_job_cpu`/`next_job_ram`.\n\
+Introduce non-linear conditionals, lookahead packing bonuses, imbalance penalties, or horizon-aware placement logic.\n\
 The candidate node with the MINIMUM score is selected.\n\
 Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!(
@@ -444,8 +446,8 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
             (
                 "You are an evolutionary code optimizer for Online 1D Bin Packing heuristics in Rust.\n\
 Apply an algorithmic mutation to improve compaction and reduce total bins used.\n\
-Combine multiple input variables: `bin_residual`, `item_size`, `step_index`/`total_items` (time horizon), or `mean_residual`.\n\
-Introduce non-linear conditionals, time-decaying penalties, or horizon-aware placement logic.\n\
+Combine multiple input variables: `bin_residual`, `item_size`, `step_index`/`total_items` (time horizon), `mean_residual`, and lookahead `next_item_size`.\n\
+Introduce non-linear conditionals, lookahead pairing bonuses (`if bin_residual == next_item_size`), time-decaying penalties, or horizon-aware placement logic.\n\
 The candidate bin with the MINIMUM score is selected.\n\
 Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!(
@@ -518,8 +520,16 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
 
         let is_sched = parent_a.logic_code.contains("score_node") || self.domain == ProblemDomain::MultiResourceScheduling;
 
-        // First attempt deterministic AST crossover
-        if let Ok((mut child, manifest)) = deterministic_ast_crossover(parent_a, parent_b, seed, generation) {
+        // Attempt deterministic multi-loci or single-locus AST crossover first
+        let ast_res = if seed % 2 == 0 {
+            multi_locus_ast_crossover(parent_a, parent_b, seed, generation)
+                .or_else(|_| deterministic_ast_crossover(parent_a, parent_b, seed, generation))
+        } else {
+            deterministic_ast_crossover(parent_a, parent_b, seed, generation)
+                .or_else(|_| multi_locus_ast_crossover(parent_a, parent_b, seed, generation))
+        };
+
+        if let Ok((mut child, manifest)) = ast_res {
             child.name = name;
             child.semantic_interface = desc;
             child.metadata = metadata;

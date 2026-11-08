@@ -43,6 +43,9 @@ pub struct RebirthExperimentReport {
     pub epoch2_heritage: ExperimentRunReport,
     /// Rapport de l'Époque 2 pour la Population B (Tabula Rasa, partant de zéro).
     pub epoch2_tabula_rasa: ExperimentRunReport,
+    /// Rapport de l'Époque 3 optionnelle (Héritière 2, accumulation multi-époques).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epoch3_heritage: Option<ExperimentRunReport>,
     /// Métriques scientifiques de transmission (CIF, R_herit, R_innov).
     pub cumulative_metrics: CumulativeTransmissionMetrics,
 }
@@ -76,13 +79,25 @@ pub fn execute_rebirth_protocol(
 
 /// Exécute le protocole "Mort et Renaissance" avec support optionnel d'un oracle de scheduling multi-ressources.
 pub fn execute_rebirth_protocol_with_sched(
-    mut base_config: ExperimentConfig,
+    base_config: ExperimentConfig,
     oracle: &OracleEvaluator,
     sched_oracle: Option<&SchedulingOracle>,
     sandbox: &dyn HeuristicSandbox,
     operator: &dyn SkillOperator,
 ) -> Result<RebirthExperimentReport, OrchestratorError> {
-    info!("=== Starting NOMAD V2 Mort et Renaissance Protocol ===");
+    execute_rebirth_protocol_extended(base_config, oracle, sched_oracle, sandbox, operator, 2)
+}
+
+/// Exécute le protocole "Mort et Renaissance" avec support multi-époques (2 ou 3 époques d'accumulation).
+pub fn execute_rebirth_protocol_extended(
+    mut base_config: ExperimentConfig,
+    oracle: &OracleEvaluator,
+    sched_oracle: Option<&SchedulingOracle>,
+    sandbox: &dyn HeuristicSandbox,
+    operator: &dyn SkillOperator,
+    total_epochs: usize,
+) -> Result<RebirthExperimentReport, OrchestratorError> {
+    info!("=== Starting NOMAD V2 Mort et Renaissance Protocol (Total Epochs: {}) ===", total_epochs.max(2));
 
     // 1. Époque 1 — Genèse
     info!("Phase 1: Epoch 1 (Genesis) running for {} generations...", base_config.max_generations);
@@ -122,7 +137,7 @@ pub fn execute_rebirth_protocol_with_sched(
     };
 
     info!(
-        "Extinction event: destroyed working memories. Collective heritage preserved: {} validated capsules, {} niches, {} distinct motifs.",
+        "Extinction event 1: destroyed working memories. Collective heritage preserved: {} validated capsules, {} niches, {} distinct motifs.",
         heritage.validated_capsules.len(),
         heritage.distinct_niches_count,
         heritage.distinct_motifs_count
@@ -163,17 +178,67 @@ pub fn execute_rebirth_protocol_with_sched(
     }
     let epoch2_tabula_rasa_report = engine_tabula.execute_run()?;
 
-    // 4. Compute Cumulative Metrics (Section 7.2)
+    // 4. Époque 3 optionnelle (Extinction 2 & Héritière 2)
+    let (epoch3_heritage_report, final_heritage_engine, final_tabula_report) = if total_epochs >= 3 {
+        info!("Phase 4: Extinction Event 2: accumulating Epoch 1 & 2 heritage...");
+        let mut validated_ep2: Vec<SkillCapsule> = engine_heritage
+            .archive
+            .grid
+            .values()
+            .map(|e| e.capsule.clone())
+            .collect();
+        if !validated_ep2.iter().any(|c| c.id == epoch2_heritage_report.best_capsule.id) {
+            validated_ep2.push(epoch2_heritage_report.best_capsule.clone());
+        }
+
+        info!("Phase 5: Epoch 3 Population A (Heritage 2) evolving with multi-epoch heritage...");
+        let mut config_heritage3 = base_config.clone();
+        config_heritage3.rng_seed = base_config.rng_seed + 202;
+        let mut engine_heritage3 = EvolutionEngine::new(config_heritage3, oracle, sandbox, operator);
+        if let Some(sched) = sched_oracle {
+            engine_heritage3 = engine_heritage3.with_scheduling_oracle(sched);
+        }
+        for cap in &validated_ep2 {
+            let score = if base_config.domain == ProblemDomain::MultiResourceScheduling {
+                if let Some(sched) = sched_oracle {
+                    sched.evaluate_dataset(&sched.in_distribution, cap, sandbox, base_config.fuel_limit_per_call)
+                } else {
+                    oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
+                }
+            } else {
+                oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
+            };
+            engine_heritage3.archive.insert(cap.clone(), score);
+            engine_heritage3.phylogeny.insert_capsule(cap);
+        }
+        let ep3_report = engine_heritage3.execute_run()?;
+
+        info!("Phase 6: Epoch 3 Population B (Tabula Rasa 2) starting from scratch...");
+        let mut config_tabula3 = base_config.clone();
+        config_tabula3.rng_seed = base_config.rng_seed + 202;
+        let mut engine_tabula3 = EvolutionEngine::new(config_tabula3, oracle, sandbox, operator);
+        if let Some(sched) = sched_oracle {
+            engine_tabula3 = engine_tabula3.with_scheduling_oracle(sched);
+        }
+        let tabula3_report = engine_tabula3.execute_run()?;
+
+        (Some(ep3_report), engine_heritage3, tabula3_report)
+    } else {
+        (None, engine_heritage, epoch2_tabula_rasa_report.clone())
+    };
+
+    // 5. Compute Cumulative Metrics (Section 7.2)
     let total_evals = (epoch1_report.budget_consumed.executions_consumed
-        + epoch2_heritage_report.budget_consumed.executions_consumed)
+        + epoch2_heritage_report.budget_consumed.executions_consumed
+        + epoch3_heritage_report.as_ref().map(|r| r.budget_consumed.executions_consumed).unwrap_or(0))
         .max(1);
 
     let validated_innovations = heritage.distinct_niches_count + heritage.distinct_motifs_count;
     let innovation_rate = (validated_innovations as f64 / total_evals as f64) * 1000.0;
 
-    // Heritability: how many motifs or descendants from heritage are actively present/inherited in Population A
+    // Heritability: how many motifs or descendants from heritage are actively present/inherited in Final Heritage
     let mut heritage_motifs_active = 0usize;
-    for entry in engine_heritage.archive.grid.values() {
+    for entry in final_heritage_engine.archive.grid.values() {
         let is_heritage_motif = entry
             .structural_fingerprint
             .as_ref()
@@ -187,14 +252,14 @@ pub fn execute_rebirth_protocol_with_sched(
             heritage_motifs_active += 1;
         }
     }
-    let occupied = engine_heritage.archive.occupied_niches_count().max(1);
+    let occupied = final_heritage_engine.archive.occupied_niches_count().max(1);
     let functional_heritability_rate = (heritage_motifs_active as f64 / occupied as f64).min(1.0);
 
     // CIF: performance comparison between Tabula Rasa and genuinely evolved Heritage candidates
-    let tabula_excess = epoch2_tabula_rasa_report.best_in_distribution_score.total_excess_bins.max(1) as f64;
+    let tabula_excess = final_tabula_report.best_in_distribution_score.total_excess_bins.max(1) as f64;
 
     // Find the best evolved candidate in Heritage (g >= 1 or having an inherited parent) to prevent free-rider bias
-    let best_evolved_heritage = engine_heritage
+    let best_evolved_heritage = final_heritage_engine
         .archive
         .grid
         .values()
@@ -203,7 +268,10 @@ pub fn execute_rebirth_protocol_with_sched(
 
     let heritage_excess = match best_evolved_heritage {
         Some(entry) => entry.fitness.total_excess_bins.max(1) as f64,
-        None => epoch2_heritage_report.best_in_distribution_score.total_excess_bins.max(1) as f64,
+        None => epoch3_heritage_report
+            .as_ref()
+            .map(|r| r.best_in_distribution_score.total_excess_bins.max(1) as f64)
+            .unwrap_or(epoch2_heritage_report.best_in_distribution_score.total_excess_bins.max(1) as f64),
     };
     let cumulative_improvement_factor = (tabula_excess / heritage_excess).clamp(0.1, 10.0);
 
@@ -226,6 +294,7 @@ pub fn execute_rebirth_protocol_with_sched(
         heritage,
         epoch2_heritage: epoch2_heritage_report,
         epoch2_tabula_rasa: epoch2_tabula_rasa_report,
+        epoch3_heritage: epoch3_heritage_report,
         cumulative_metrics,
     })
 }

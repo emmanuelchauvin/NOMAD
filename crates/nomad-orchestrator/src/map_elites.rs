@@ -79,14 +79,23 @@ impl MapElitesArchive {
     /// Projette le vecteur de comportement continu d'une heuristique dans les indices
     /// discrets (x, y) de la grille de niches.
     pub fn coord_for_behavior(&self, b: &BehaviorDescriptor) -> (usize, usize) {
-        // Axe X : Dead space ratio normalisé sur l'intervalle effectif [0.0, 0.60]
-        let norm_x = (b.dead_space_ratio / 0.60).clamp(0.0, 0.999);
+        // Axe X : Dead space ratio normalisé.
+        // En scheduling: dead_space_ratio est le tight_ratio (généralement 0.05 à 0.35)
+        // En bin packing: dead_space_ratio est l'espace mort (généralement 0.00 à 0.40)
+        let max_x = if b.dead_space_ratio <= 0.35 { 0.35 } else { 0.60 };
+        let norm_x = (b.dead_space_ratio / max_x).clamp(0.0, 0.999);
         let x = (norm_x * self.dim_x as f64).floor() as usize;
 
-        // Axe Y : Residual variance normalisée sur son domaine physique effectif [0.0, 200.0]
+        // Axe Y : Residual variance / Imbalance normalisée
         // Permet de séparer les politiques à remplissage homogène de celles à résidus dispersés
-        let norm_y = if b.residual_variance > 0.0 {
-            (b.residual_variance / 200.0).clamp(0.0, 0.999)
+        // Si residual_variance <= 40.0 (caractéristique du multi-resource scheduling où imbalance est entre 5 et 30) :
+        // on normalise sur [0..30.0] pour une résolution fine et dense !
+        // Si residual_variance > 40.0 (bin packing C=100 où variance est entre 50 et 180) :
+        // on normalise sur [40..200.0] pour exploiter toute la grille.
+        let norm_y = if b.residual_variance > 40.0 {
+            ((b.residual_variance - 40.0) / 160.0).clamp(0.0, 0.999)
+        } else if b.residual_variance > 0.0 {
+            (b.residual_variance / 30.0).clamp(0.0, 0.999)
         } else {
             ((b.new_bin_ratio - 0.45) / 0.15).clamp(0.0, 0.999)
         };

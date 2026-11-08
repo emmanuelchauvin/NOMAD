@@ -10,7 +10,7 @@ use nomad_core::{
 };
 
 use crate::ast::{
-    compute_structural_fingerprint, normalize_source, parse_score_bin, AstError,
+    compute_structural_fingerprint, normalize_source, parse_heuristic_fn, AstError,
 };
 use crate::unit::{collect_dependencies, extract_logical_units, LogicalUnit};
 
@@ -44,8 +44,8 @@ pub fn deterministic_ast_crossover(
     seed: u64,
     generation: usize,
 ) -> Result<(SkillCapsule, GraftManifest), CrossoverError> {
-    let host_fn = parse_score_bin(&host.logic_code)?;
-    let donor_fn = parse_score_bin(&donor.logic_code)?;
+    let host_fn = parse_heuristic_fn(&host.logic_code)?;
+    let donor_fn = parse_heuristic_fn(&donor.logic_code)?;
 
     let _host_fingerprint = compute_structural_fingerprint(&host_fn);
     let donor_fingerprint = compute_structural_fingerprint(&donor_fn);
@@ -172,6 +172,150 @@ pub fn deterministic_ast_crossover(
     Ok((child_capsule, manifest))
 }
 
+/// ============================================================================
+/// multi_locus_ast_crossover : Croisement Génétique Multi-Sites (Multi-Loci)
+/// ============================================================================
+/// Permet l'échange synergique de jusqu'à deux unités logiques distinctes du donneur
+/// (ex: conditionnement initial / modulation d'horizon ET raffinement terminal du score)
+/// dans l'hôte à deux loci structurels distincts, maximisant la recombinaison sans bloat.
+pub fn multi_locus_ast_crossover(
+    host: &SkillCapsule,
+    donor: &SkillCapsule,
+    seed: u64,
+    generation: usize,
+) -> Result<(SkillCapsule, GraftManifest), CrossoverError> {
+    let host_fn = parse_heuristic_fn(&host.logic_code)?;
+    let donor_fn = parse_heuristic_fn(&donor.logic_code)?;
+
+    let donor_fingerprint = compute_structural_fingerprint(&donor_fn);
+    let donor_units = extract_logical_units(&donor_fn);
+    if donor_units.is_empty() {
+        return Err(CrossoverError::NoExtractableUnits(donor.id.0.clone()));
+    }
+
+    if donor_units.len() < 2 {
+        return deterministic_ast_crossover(host, donor, seed, generation);
+    }
+
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    let mut indices: Vec<usize> = (0..donor_units.len()).collect();
+    indices.shuffle(&mut rng);
+    let unit1 = &donor_units[indices[0]];
+    let unit2 = &donor_units[indices[1]];
+
+    let mut hybrid_fn = host_fn.clone();
+    let stmts = &mut hybrid_fn.block.stmts;
+    if stmts.is_empty() {
+        return Err(CrossoverError::EmptyHostBody(host.id.0.clone()));
+    }
+
+    // Locus 1: début du corps (index 0 ou 1)
+    let locus1 = if stmts.len() > 2 { 1 } else { 0 };
+    let mut stmt1 = unit1.stmt.clone();
+    if let syn::Stmt::Local(local) = &unit1.stmt {
+        if let syn::Pat::Ident(pat_ident) = &local.pat {
+            let var_name = pat_ident.ident.to_string();
+            if let Some(init) = &local.init {
+                let init_expr = &init.expr;
+                if var_name == "score" {
+                    stmt1 = syn::parse_quote! {
+                        score = score * 0.80 + ((#init_expr) as f64) * 0.20;
+                    };
+                }
+            }
+        }
+    }
+    stmts.insert(locus1, stmt1.clone());
+
+    // Locus 2: fin du corps (juste avant return)
+    let locus2 = stmts.len().saturating_sub(1);
+    let mut stmt2 = unit2.stmt.clone();
+    if let syn::Stmt::Local(local) = &unit2.stmt {
+        if let syn::Pat::Ident(pat_ident) = &local.pat {
+            let var_name = pat_ident.ident.to_string();
+            if let Some(init) = &local.init {
+                let init_expr = &init.expr;
+                if var_name == "score" {
+                    stmt2 = syn::parse_quote! {
+                        score = score * 0.70 + ((#init_expr) as f64) * 0.30;
+                    };
+                } else {
+                    stmt2 = syn::parse_quote! {
+                        score = score * 0.95 + ((#init_expr) as f64) * 0.05;
+                    };
+                }
+            }
+        }
+    }
+    stmts.insert(locus2, stmt2.clone());
+
+    // Hachage combiné des fragments greffés
+    let repr1 = quote::quote!(#stmt1).to_string();
+    let repr2 = quote::quote!(#stmt2).to_string();
+    let mut fragment_hasher = Sha256::new();
+    fragment_hasher.update(repr1.as_bytes());
+    fragment_hasher.update(repr2.as_bytes());
+    let fragment_hash = hex::encode(fragment_hasher.finalize());
+
+    let mut dep_hasher = Sha256::new();
+    let mut combined_deps = collect_dependencies(&stmt1);
+    combined_deps.extend(collect_dependencies(&stmt2));
+    for d in &combined_deps {
+        dep_hasher.update(d.as_bytes());
+    }
+    let dependency_hash = hex::encode(dep_hasher.finalize());
+
+    let mut graft_hasher = Sha256::new();
+    graft_hasher.update(host.id.0.as_bytes());
+    graft_hasher.update(donor.id.0.as_bytes());
+    graft_hasher.update(fragment_hash.as_bytes());
+    graft_hasher.update(seed.to_le_bytes());
+    let graft_id = format!("multi-graft-{}", &hex::encode(graft_hasher.finalize())[..12]);
+
+    let manifest = GraftManifest {
+        graft_id: graft_id.clone(),
+        donor_capsule: donor.id.clone(),
+        host_capsule: host.id.clone(),
+        donor_ast_hash: donor_fingerprint.ast_hash,
+        grafted_fragment_hash: fragment_hash,
+        host_locus: format!("multi_loci_{}_{}", locus1, locus2),
+        dependency_hash,
+        repair_version: None,
+        repair_diff_hash: None,
+    };
+
+    let hybrid_code = normalize_source(&hybrid_fn);
+    let child_fingerprint = compute_structural_fingerprint(&hybrid_fn);
+    let child_name = format!("MultiCross-G{}-{}", generation, &graft_id[..10]);
+    let semantic_interface = format!(
+        "Multi-loci AST hybrid combining host {} with donor {} via 2 loci",
+        host.id, donor.id
+    );
+
+    let mut metadata = HashMap::new();
+    metadata.insert("crossover_type".to_string(), "multi_locus_ast".to_string());
+    metadata.insert("host_id".to_string(), host.id.0.clone());
+    metadata.insert("donor_id".to_string(), donor.id.0.clone());
+    metadata.insert("graft_id".to_string(), graft_id);
+
+    let child_capsule = SkillCapsule::new_v2(
+        child_name,
+        semantic_interface,
+        hybrid_code,
+        vec![host.id.clone(), donor.id.clone()],
+        generation,
+        metadata,
+        "ScorePolicyV1",
+        PolicyKind::ScorePolicy,
+        Some(child_fingerprint),
+        combined_deps,
+        ValidationStatus::PassedLevel1Structural,
+        Some(manifest.clone()),
+    );
+
+    Ok((child_capsule, manifest))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,5 +394,37 @@ mod tests {
         assert_eq!(manifest.host_capsule, host.id);
         assert!(child.logic_code.contains("bin_residual < 10") || child.logic_code.contains("score"));
         assert!(child.ast_fingerprint.is_some());
+    }
+
+    #[test]
+    fn test_multi_locus_ast_crossover_success() {
+        let host_code = r#"
+        pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {
+            let mut score = bin_residual as f64;
+            score
+        }
+        "#;
+
+        let donor_code = r#"
+        pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {
+            let mut score = bin_residual as f64;
+            let dynamic_weight = (total_items - step_index) as f64 / total_items as f64;
+            if bin_residual < 10 {
+                score = score + 90.0 * dynamic_weight;
+            }
+            score
+        }
+        "#;
+
+        let host = SkillCapsule::new("Host", "desc", host_code, vec![], 1, HashMap::new());
+        let donor = SkillCapsule::new("Donor", "desc", donor_code, vec![], 1, HashMap::new());
+
+        let (child, manifest) = multi_locus_ast_crossover(&host, &donor, 99, 2)
+            .expect("Multi-locus crossover should succeed");
+
+        assert_eq!(child.parent_ids.len(), 2);
+        assert!(child.is_crossover());
+        assert!(manifest.host_locus.starts_with("multi_loci_"));
+        assert!(child.metadata.get("crossover_type").unwrap() == "multi_locus_ast");
     }
 }
