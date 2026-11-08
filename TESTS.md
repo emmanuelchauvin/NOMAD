@@ -147,8 +147,8 @@ Toutes les expériences rapportées sont déterministes et peuvent être reprodu
 
 | Fichier Généré | Contenu et Rôle Scientifique |
 | :--- | :--- |
-| **`run_report_qwen_v2.json`** | Trace complète de la simulation 12 générations avec Qwen 2.5 Coder 7B (83 nœuds, 75 transitions, AST V2, OLS $tLDR$). |
-| **`rebirth_qwen_v2.json`** | Rapport officiel du protocole Mort et Renaissance V2 ($R_{\text{herit}} = 66.7\%$, hybrides AST réels). |
+| **`run_report_qwen_v2.json`** | Trace complète de la simulation 12 générations avec Qwen 2.5 Coder 7B (85 nœuds, 123 transitions, 77 crossovers, SOTA 1264 bacs). |
+| **`rebirth_qwen_v2.json`** | Rapport officiel du protocole Mort et Renaissance V2 ($R_{\text{herit}} = 71.4\%$, 7 niches Héritière vs 1 Tabula Rasa, hybrides certifiés). |
 | **`run_report_v2.json`** | Rapport déterministe mock pour audit instantané offline sans GPU. |
 | **`rebirth_mock_v2.json`** | Protocole Mort et Renaissance en mode déterministe ($R_{\text{herit}} = 100.0\%$). |
 | **`arbre.html`** | Visualisation interactive de l'arbre phylogénétique complet (83 nœuds, 75 transitions, auto-fit). |
