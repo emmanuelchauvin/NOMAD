@@ -65,8 +65,8 @@ NOMAD/
 ### Rôles et Responsabilités des Crates
 
 * **`nomad-core` :** Découplage strict. Contient les structures de données immuables (`SkillCapsule`), les types canoniques de politiques (`PolicyKind`, `ProblemDomain`), les manifestes de traçabilité (`GraftManifest`), les descripteurs de comportement (`BehaviorDescriptor`), les vecteurs de momentum (`SemanticVelocity`), et les métriques d'accumulation (`CumulativeTransmissionMetrics`, `BenchmarkScore`).
-* **`nomad-genome` :** Manipulation formelle des Arbres de Syntaxe Abstraite via `syn` et `quote`. Extraction chirurgicale d'unités logiques (`LogicalUnit`), croisement déterministe (`deterministic_ast_crossover`), calcul d'empreinte topologique (`StructuralFingerprint`), élimination du *variable shadowing*, et passe de vivacité arrière (*backward liveness pass*).
-* **`nomad-sandbox` :** Moteur d'interprétation et d'exécution sécurisé sous contrainte stricte de ressources. Mesure exacte du *fuel* logique (instructions consommées), protection anti-boucle infinie, et interdiction de tout accès au système hôte.
+* **`nomad-genome` :** Manipulation formelle des Arbres de Syntaxe Abstraite via `syn` et `quote`. Extraction chirurgicale d'unités logiques (`LogicalUnit`), croisement déterministe (`deterministic_ast_crossover`), calcul d'empreinte topologique (`StructuralFingerprint`), recombinaison convexe par shadowing Rust strict (`let score = ...`), et passe de vivacité arrière (*backward liveness pass*).
+* **`nomad-sandbox` :** Moteur d'interprétation et d'exécution AST in-process (`syn`) sous contrainte stricte de ressources. Évite la latence et l'insécurité de la compilation disque `rustc` dynamique. Mesure exacte du *fuel* logique (instructions consommées), protection anti-boucle infinie, et interdiction de tout accès au système hôte.
 * **`nomad-evaluator` :** Oracle souverain indépendant. Contient les jeux de données d'évaluation sanctuarisés (In-Distribution, OOD-1 Échelle, OOD-2 Asymétrique), le calculateur exact de Lyapunov ($tLDR$), et le pipeline complet de validation Anti-Dead-Code à 3 niveaux avec génération de la capsule témoin d'ablation $C_{\text{null}}$.
 * **`nomad-operator` :** Couche cognitive d'inférence. Connecteurs HTTP pour modèles locaux (Ollama, llama.cpp, vLLM) et opérateur déterministe Mock traçant les hashes SHA-256 des poids, les graines, les températures et les invites complètes dans des audits de reproductibilité (`ReproducibilityAudit`).
 * **`nomad-orchestrator` :** Moteur d'orchestration de population. Grille 2D Quality-Diversity MAP-Elites (`MapElitesArchive`) avec compétition locale intra-niche et sélection par curiosité UCB, routage complémentaire `AgentPSO` avec mémoire de lignée, et exécution en double-aveugle du protocole "Mort et Renaissance".
@@ -278,8 +278,8 @@ sequenceDiagram
 
 ### Métriques d'Accumulation Scientifiques
 1. **Cumulative Improvement Factor ($CIF$) :**
-   $$CIF = \frac{\text{Excès Bacs Tabula Rasa}}{\text{Excès Bacs Lignée Héritière}}$$
-   *(Un $CIF > 1.0$ atteste d'un avantage de performance net conféré par le patrimoine).*
+   $$CIF = \begin{cases} CIF_{\text{bacs}} = \frac{\text{Excès Bacs Tabula Rasa}}{\text{Excès Bacs Lignée Héritière}} & \text{si } \text{Excès}_{\text{Tabula}} \neq \text{Excès}_{\text{Héritière}} \\ CIF_{\text{QD}} = \frac{\text{QD-Score Lignée Héritière}}{\text{QD-Score Tabula Rasa}} & \text{si égalité stricte en bacs (départage Quality-Diversity)} \end{cases}$$
+   *(Un $CIF_{\text{bacs}} > 1.0$ atteste d'un avantage de performance net conféré par le patrimoine ; en cas d'égalité sur l'objectif principal, un $CIF_{\text{QD}} > 1.0$ atteste d'une couverture et d'une diversité supérieures de l'archive).*
 
 2. **Taux d'Hérédité Fonctionnelle ($R_{\text{herit}}$) :**
    $$R_{\text{herit}} = \frac{\text{Niches occupées à l'Époque 2 descendant du patrimoine}}{\text{Nombre total de niches occupées à l'Époque 2}}$$
@@ -417,7 +417,7 @@ cargo run --release --bin nomad -- compare --domain scheduling --runs 5
 # 14. Critère Final de Réussite de NOMAD V2
 
 NOMAD V2 est réputé formellement validé si et seulement si :
-1. **Intégrité Logicielle :** La suite de tests automatisés du workspace Rust réussit à 100 % (`cargo test --workspace`, 21 tests sur 21 réussis).
+1. **Intégrité Logicielle :** La suite de tests automatisés du workspace Rust réussit à 100 % (`cargo test --workspace`, 27 tests sur 27 réussis).
 2. **Rupture Expérimentale :** L'algorithme brise le plafond historique glouton stationnaire en atteignant un score strictement inférieur à 1 265 bacs sur le benchmark In-Distribution.
 3. **Causalité Anti-Dead-Code :** Les capsules hybrides issues de crossover prouvent que leur fragment greffé modifie de manière causale leurs décisions par rapport à la capsule d'ablation $C_{\text{null}}$.
 4. **Transmission Culturelle :** Le protocole "Mort et Renaissance" atteste d'un taux d'hérédité fonctionnelle $R_{\text{herit}} > 50\,\%$ et d'une expansion de niches significative par rapport à la population Tabula Rasa.

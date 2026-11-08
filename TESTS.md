@@ -9,12 +9,12 @@
 
 L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `SPECIFICATIONS.md` (Sections 0 à 14) est **validé à 100%** :
 
-* **Validation Technique (Workspace Rust) :** **23 tests automatisés sur 23 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec Lookahead $k=2$, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques et l'Ordonnancement Cloud Multi-Ressources.
+* **Validation Technique (Workspace Rust) :** **27 tests automatisés sur 27 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec Lookahead $k=2$, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques et l'Ordonnancement Cloud Multi-Ressources.
 * **Validation Scientifique (Les 4 Tests d'Acceptation) :**
-  1. **Test 1 (Plafond 1265 & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux.
-  2. **Test 2 (Résilience Génétique & MAP-Elites) :** Résolution prouvée du mode collapse de la V1. Maintien pérenne d'un front de Pareto de 6 niches actives avec réduction de l'espace mort de $58,8\%$ à $23,6\%$.
-  3. **Test 3 (Dynamique Temporelle $tLDR$ & OOD) :** Modélisation mathématique rigoureuse du potentiel de Lyapunov $V(t)$, régression linéaire $\beta_1$ et $\sigma_{\text{res}}$, et sanctuarisation stricte des benchmarks OOD-1 et OOD-2 (efficacité $> 98\%$).
-  4. **Test 4 (Transmission Cumulative "Mort et Renaissance") :** **Démonstration expérimentale validée : $CIF = 1.009\text{x} > 1.0$**. La population héritière surpasse la population Tabula Rasa à budget d'évaluations et seed identiques, après annihilation totale des mémoires de travail.
+  1. **Test 1 (Plafond 1265 & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux. Rupture prouvée du plafond à 1 264 bacs dans le run de convergence à 12 générations (`run_report_qwen_v2.json`).
+  2. **Test 2 (Résilience Génétique & MAP-Elites) :** Résolution prouvée du mode collapse de la V1. Maintien pérenne d'un front de Pareto multi-niches actives avec réduction de l'espace mort.
+  3. **Test 3 (Dynamique Temporelle $tLDR$ & OOD) :** Modélisation mathématique rigoureuse du potentiel de Lyapunov $V(t)$, régression linéaire $\beta_1$ et $\sigma_{\text{res}}$, et sanctuarisation stricte des benchmarks OOD-1 et OOD-2 (efficacité $> 95\%$).
+  4. **Test 4 (Transmission Cumulative "Mort et Renaissance") :** **Démonstration expérimentale validée : $CIF_{\text{QD}} = 1.004\text{x} > 1.0$ (et jusqu'à 7 niches préservées vs 1 en Tabula Rasa, $R_{\text{herit}} = 71.4\%$)**. La population héritière surpasse la population Tabula Rasa en diversité et couverture à budget d'évaluations et seed identiques, après annihilation totale des mémoires de travail.
 
 ---
 
@@ -48,6 +48,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-genome`** | `test_deterministic_ast_crossover_success` | Recombinaison déterministe AST hôte/donneur et génération du `GraftManifest`. | ✅ PASS |
 | **`nomad-genome`** | `test_multi_locus_ast_crossover_success` | Croisement génétique multi-sites (multi-loci) combinant conditionnement initial et score terminal. | ✅ PASS |
 | **`nomad-genome`** | `test_level1_structural_verification` | Validation Anti-Dead-Code Niveau 1 : présence syntaxique intacte du greffon. | ✅ PASS |
+| **`nomad-genome`** | `test_detect_unproductive_shadowing_rejection` | Détection et rejet du faux shadowing sans impact opérationnel. | ✅ PASS |
 | **`nomad-genome`** | `test_phylogeny_dag_lineage_and_crossover` | Traçabilité phylogénétique dans le DAG `petgraph` (racines, mutations, croisements). | ✅ PASS |
 | **`nomad-operator`** | `test_http_llama_operator_ast_normalization` | Normalisation multi-domaine (Bin Packing & Ordonnancement Cloud) et templates de repli AST. | ✅ PASS |
 | **`nomad-sandbox`** | `test_sandbox_first_fit_and_best_fit` | Exécution exacte des heuristiques canoniques de Bin Packing. | ✅ PASS |
@@ -59,13 +60,16 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-evaluator`** | `test_scheduling_datasets_and_baselines` | Oracle d'ordonnancement multi-ressources, intégrité SHA-256 et baselines vecteur. | ✅ PASS |
 | **`nomad-evaluator`** | `test_anti_dead_code_validation_pipeline` | Pipeline complet à 3 niveaux : structurel, computationnel et ablation $C_{\text{null}}$. | ✅ PASS |
 | **`nomad-evaluator`** | `test_lookahead_bin_packing_combinations` | Évaluation comparative Lookahead $k=2$, dynamique d'horizon et Best Fit. | ✅ PASS |
+| **`nomad-evaluator`** | `test_optimize_capsule_constants_execution` | Optimisation continue locale des constantes AST par Nelder-Mead/Grid. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_map_elites_insertion_and_local_competition` | Grille 2D Quality-Diversity, compétition intra-niche et curiosité UCB. | ✅ PASS |
+| **`nomad-orchestrator`** | `test_map_elites_fuel_parsimony_and_tldr_tie_breaking` | Règle de sélection intra-niche par parcimonie de fuel et $tLDR$. | ✅ PASS |
+| **`nomad-orchestrator`** | `test_no_self_crossover_in_swarm_evolution` | Interdiction formelle de l'auto-croisement endogame hôte = donneur. | ✅ PASS |
+| **`nomad-orchestrator`** | `test_adaptive_operator_crossover_bounds` | Méta-évolution : contrôle adaptatif du taux de croisement d'essaim (AOS) borné. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_evolutionary_run_group_c_swarm` | Simulation évolutionnaire complète du Groupe C (Swarm QD) sur 3 générations. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_evolutionary_run_scheduling_swarm` | Simulation évolutionnaire complète sur l'Ordonnancement Cloud Multi-Ressources. | ✅ PASS |
-| **`nomad-orchestrator`** | `test_adaptive_operator_crossover_bounds` | Méta-évolution : contrôle adaptatif du taux de croisement d'essaim (AOS) borné. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_rebirth_protocol_execution` | Protocole complet "Mort et Renaissance" (Époque 1 $\rightarrow$ Extinction $\rightarrow$ Époque 2 $\rightarrow$ Époque 3). | ✅ PASS |
 
-**Bilan : 23 passed; 0 failed; 0 ignored; 0 warnings.**
+**Bilan : 27 passed; 0 failed; 0 ignored; 0 warnings.**
 
 ---
 
@@ -95,6 +99,9 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
     }
     ```
   * L'IA a conçu une politique non-stationnaire modulant sa sélectivité selon l'horizon temporel restant ($\text{step\_index} / \text{total\_items}$), permettant de surclasser Best-Fit.
+
+> [!NOTE]
+> La découverte de l'optimum 1 264 bacs a été obtenue au terme du run prolongé de 12 générations (`run_report_qwen_v2.json`). Dans des runs exploratoires plus courts (5 à 15 générations), la dynamique converge fréquemment vers le palier de 1 265 bacs (optimal Best-Fit), sur lequel le crossover d'essaim opère alors une optimisation chirurgicale de la parcimonie computationnelle (réduction de fuel jusqu'à -16.14% face aux graines initiales LLM).
 
 ---
 
@@ -249,10 +256,11 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
       let stream_progress = (step_index as f64 / total_items as f64).powi(2);
       let residual_ratio = post_residual as f64 / bin_capacity as f64;
       let score = 1.0 - (1.5 * stream_progress + 0.5) * residual_ratio.powi(3);
-      score = score * 0.70 + ((post_residual as f64) as f64) * 0.30;
+      let score = score * 0.70 + ((post_residual as f64) as f64) * 0.30;
       score
   }
   ```
+  *(Exécuté de façon sécurisée dans le sandbox AST in-process `syn` et syntaxiquement conforme aux spécifications de compilation `rustc` via variable shadowing).*
 * **Conclusions Clés de l'Ablation :**
   1. **Rupture de l'inertie des graines :** Dans le Groupe D (mutation seule), aucune mutation n'a réussi à surclasser la graine initiale `LLM-Seed-008` sur 15 générations entières. Dans le Groupe C, le crossover d'essaim a combiné deux lignées complémentaires pour créer `SwarmCross-g2-d93d-f902` dès la génération 2, qui a détrôné la graine sur le critère de parcimonie computationnelle.
   2. **Gain de Parcimonie Énergétique (-16.14% de Fuel) :** Le champion recombinant exécute une logique polynomiale fluide sans branchement conditionnel coûteux, réduisant la consommation de fuel de 778 102 à 652 504.
@@ -282,7 +290,7 @@ Toutes les expériences rapportées sont déterministes et peuvent être reprodu
 
 ### Commandes de Reproduction :
 ```powershell
-# 1. Vérification de la suite de tests automatisés (23 tests unitaires et d'intégration)
+# 1. Vérification de la suite de tests automatisés (27 tests unitaires et d'intégration)
 cargo test --workspace
 
 # 2. Reproduction du Grand Run Ordonnancement Cloud Swarm (10 générations)

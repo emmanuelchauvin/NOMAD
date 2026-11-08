@@ -288,12 +288,15 @@ pub fn execute_rebirth_protocol_extended(
                 .unwrap_or(epoch2_heritage_report.best_in_distribution_score.total_excess_bins.max(1) as f64)
         });
 
-    let mut cif = (tabula_best_excess / heritage_best_excess).clamp(0.1, 10.0);
+    let cif_bins = (tabula_best_excess / heritage_best_excess).clamp(0.1, 10.0);
+    let heritage_qd = final_heritage_engine.archive.qd_score().max(0.001);
+    let tabula_qd = final_tabula_report.archive.qd_score().max(0.001);
+    let cif_qd = (heritage_qd / tabula_qd).clamp(0.5, 5.0);
+
+    let mut cif = cif_bins;
     if (tabula_best_excess - heritage_best_excess).abs() < 1e-4 {
-        // En cas d'égalité stricte sur excess_bins, départager par le ratio des QD-Scores
-        let heritage_qd = final_heritage_engine.archive.qd_score().max(0.001);
-        let tabula_qd = final_tabula_report.archive.qd_score().max(0.001);
-        cif = (heritage_qd / tabula_qd).clamp(0.5, 5.0);
+        // En cas d'égalité stricte sur excess_bins, départager par le ratio des QD-Scores (CIF_qd)
+        cif = cif_qd;
     }
     let cumulative_improvement_factor = cif;
 
@@ -305,8 +308,10 @@ pub fn execute_rebirth_protocol_extended(
     };
 
     info!(
-        "=== Mort et Renaissance Completed ===\nCIF: {:.3} | R_herit: {:.1}% | R_innov: {:.3}",
+        "=== Mort et Renaissance Completed ===\nCIF: {:.3} (CIF_bins: {:.3}, CIF_qd: {:.3}) | R_herit: {:.1}% | R_innov: {:.3}",
         cumulative_improvement_factor,
+        cif_bins,
+        cif_qd,
         functional_heritability_rate * 100.0,
         innovation_rate
     );

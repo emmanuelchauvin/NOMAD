@@ -89,9 +89,9 @@ pub fn deterministic_ast_crossover(
             if let Some(init) = &local.init {
                 let init_expr = &init.expr;
                 if var_name == "score" {
-                    // Compound Assignment : on combine 70% de l'hôte et 30% du donneur au lieu d'écraser
+                    // Recombinaison convexe par Shadowing Rust strict (compatible rustc)
                     stmt_to_insert = syn::parse_quote! {
-                        score = score * 0.70 + ((#init_expr) as f64) * 0.30;
+                        let score = score * 0.70 + ((#init_expr) as f64) * 0.30;
                     };
                 } else {
                     // Vérifier si la variable est lue dans la suite du code hôte
@@ -102,7 +102,7 @@ pub fn deterministic_ast_crossover(
                     if already_defined || !downstream_deps.contains(&var_name) {
                         // Modulation causale directe du score avec le fragment donneur
                         stmt_to_insert = syn::parse_quote! {
-                            score = score * 0.95 + ((#init_expr) as f64) * 0.05;
+                            let score = score * 0.95 + ((#init_expr) as f64) * 0.05;
                         };
                     }
                 }
@@ -303,18 +303,18 @@ pub fn multi_locus_ast_crossover(
                             }
                         }
                     } else {
-                        // Combinaison convexe déterministe standard
+                        // Combinaison convexe déterministe standard par Shadowing
                         stmt2 = syn::parse_quote! {
-                            score = score * 0.70 + ((#init_expr) as f64) * 0.30;
+                            let score = score * 0.70 + ((#init_expr) as f64) * 0.30;
                         };
                     }
                 } else if already_defined {
                     stmt2 = syn::parse_quote! {
-                        score = score * 0.95 + ((#init_expr) as f64) * 0.05;
+                        let score = score * 0.95 + ((#init_expr) as f64) * 0.05;
                     };
                 } else {
                     stmt2 = syn::parse_quote! {
-                        score = score * 0.95 + ((#init_expr) as f64) * 0.05;
+                        let score = score * 0.95 + ((#init_expr) as f64) * 0.05;
                     };
                 }
             }

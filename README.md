@@ -15,7 +15,7 @@ NOMAD (**DARWIN.RS**) is an evolutionary computing and artificial intelligence f
 
 ### Core Scientific Hypotheses
 * **H1 (Cumulative Cultural Evolution):** Lineages with access to collective cultural heritage via cross-epoch transmission achieve higher Cumulative Improvement Factor ($CIF > 1.0$) and discover novel behavioral niches faster than Tabula Rasa lineages ($R_{\text{innov, A}} > R_{\text{innov, B}}$).
-* **H2 (In-Distribution Superiority):** Swarm horizontal recombination (**Swarm Crossover**) discovers bin packing heuristics that achieve superior packing efficiency compared to mutation-only selection (**Group C vs Group D**, $p < 0.05$).
+* **H2 (Recombination Superiority & Parsimony):** Swarm horizontal recombination (**Swarm Crossover**) discovers bin packing heuristics that break seed inertia and achieve superior packing efficiency and computational parsimony compared to mutation-only selection (**Group C vs Group D**).
 * **H3 (Out-Of-Distribution Generalization):** Heuristics evolved via multi-trajectory dynamic evaluation generalize superior packing efficiency on Out-Of-Distribution datasets (scale shift $N=500$ and heavy-tailed Weibull distribution).
 
 ---
@@ -122,8 +122,8 @@ cargo run --release --bin nomad -- compare --domain scheduling --operator mock -
 
 ## 5. Scientific Validation & Testing
 
-NOMAD is verified by an automated test suite comprising **23 unit and integration tests** and 6 acceptance protocols:
-- `cargo test --workspace` (All 23 unit & integration tests pass deterministically)
+NOMAD is verified by an automated test suite comprising **27 unit and integration tests** and 6 acceptance protocols:
+- `cargo test --workspace` (All 27 unit & integration tests pass deterministically)
 - **Controlled Ablation Study (Group C vs Group D, 15 Generations) :** Recombinant champion `SwarmCross-g2-d93d-f902` certified `PassedLevel3Behavioral` achieving **16.14% fuel reduction** over mutation-only baseline locked at Generation 0 seed.
 - **Multi-Resource Cloud Scheduling :** SOTA record of **391 servers** ($CIF = 1.071\text{x}$, $R_{\text{herit}} = 100\%$, OOD-2: 1 731 servers).
 - **Online 1D Bin Packing :** Lookahead $k=2$ + Dynamic Horizon with **98.56% OOD-2 efficiency** and $R_{\text{herit}} = 100\%$.

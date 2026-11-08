@@ -194,7 +194,7 @@ impl<'a> EvolutionEngine<'a> {
                 qd_score,
                 archive_coverage,
                 occupied_niches,
-                crossover_rate: self.adaptive_crossover_rate,
+                crossover_rate: if self.config.group == nomad_core::ExperimentalGroup::GroupD { 0.0 } else { self.adaptive_crossover_rate },
             };
             generation_records.push(record);
 
