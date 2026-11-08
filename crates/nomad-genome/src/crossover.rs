@@ -12,7 +12,7 @@ use nomad_core::{
 use crate::ast::{
     compute_structural_fingerprint, normalize_source, parse_score_bin, AstError,
 };
-use crate::unit::{extract_logical_units, LogicalUnit};
+use crate::unit::{collect_dependencies, extract_logical_units, LogicalUnit};
 
 #[derive(Debug, Error)]
 pub enum CrossoverError {
@@ -71,11 +71,48 @@ pub fn deterministic_ast_crossover(
         0
     };
 
-    stmts.insert(locus_idx, chosen_unit.stmt.clone());
+    let mut stmt_to_insert = chosen_unit.stmt.clone();
+
+    // Règle d'accumulation et protection anti-shadowing / anti-dead-store:
+    if let syn::Stmt::Local(local) = &chosen_unit.stmt {
+        if let syn::Pat::Ident(pat_ident) = &local.pat {
+            let var_name = pat_ident.ident.to_string();
+            if let Some(init) = &local.init {
+                let init_expr = &init.expr;
+                if var_name == "score" {
+                    // Compound Assignment : on combine 70% de l'hôte et 30% du donneur au lieu d'écraser
+                    stmt_to_insert = syn::parse_quote! {
+                        score = score * 0.70 + ((#init_expr) as f64) * 0.30;
+                    };
+                } else {
+                    // Vérifier si la variable est lue dans la suite du code hôte
+                    let downstream_deps: Vec<String> = stmts[locus_idx..]
+                        .iter()
+                        .flat_map(|s| collect_dependencies(s))
+                        .collect();
+                    if !downstream_deps.contains(&var_name) {
+                        // Modulation causale directe du score avec le fragment donneur
+                        stmt_to_insert = syn::parse_quote! {
+                            score = score * 0.95 + ((#init_expr) as f64) * 0.05;
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    stmts.insert(locus_idx, stmt_to_insert.clone());
+
+    // Compute exact fragment hash of the statement actually inserted
+    let inserted_repr = quote::quote!(#stmt_to_insert).to_string();
+    let mut fragment_hasher = Sha256::new();
+    fragment_hasher.update(inserted_repr.as_bytes());
+    let fragment_hash = hex::encode(fragment_hasher.finalize());
 
     // Generate GraftManifest
+    let inserted_deps = collect_dependencies(&stmt_to_insert);
     let mut dep_hasher = Sha256::new();
-    for d in &chosen_unit.dependencies {
+    for d in &inserted_deps {
         dep_hasher.update(d.as_bytes());
     }
     let dependency_hash = hex::encode(dep_hasher.finalize());
@@ -83,7 +120,7 @@ pub fn deterministic_ast_crossover(
     let mut graft_hasher = Sha256::new();
     graft_hasher.update(host.id.0.as_bytes());
     graft_hasher.update(donor.id.0.as_bytes());
-    graft_hasher.update(chosen_unit.hash.as_bytes());
+    graft_hasher.update(fragment_hash.as_bytes());
     graft_hasher.update(seed.to_le_bytes());
     let graft_id = format!("graft-{}", &hex::encode(graft_hasher.finalize())[..12]);
 
@@ -94,7 +131,7 @@ pub fn deterministic_ast_crossover(
         donor_capsule: donor.id.clone(),
         host_capsule: host.id.clone(),
         donor_ast_hash: donor_fingerprint.ast_hash,
-        grafted_fragment_hash: chosen_unit.hash.clone(),
+        grafted_fragment_hash: fragment_hash,
         host_locus: locus_desc,
         dependency_hash,
         repair_version: None,

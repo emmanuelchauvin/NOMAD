@@ -53,7 +53,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 * **Rupture Empirique V2 (Run Ollama `qwen2.5-coder:7b`, 12 générations) :**
   * **Plafond brisé :** **1 264 bacs** (excès : **+106**, efficacité : **91.86%**, fuel : 1 526 174).
   * **Heuristique Championne :** `SwarmCross-g8-0f25-039a-mut-g8` (`03294d5accc2b1d9`, Génération 8).
-  * **Explosion du Crossover AST :** **77 croisements (`SwarmCross`) sur 85 nœuds** du DAG phylogénétique (123 transitions).
+  * **Explosion du Crossover AST :** **46 croisements d'essaim (`SwarmCross`) sur 77 enfants générés (59.7%)** dans le DAG phylogénétique (85 nœuds au total dont 8 graines Gen 0, 123 transitions/arêtes).
   * **Code Émergent Dynamique Multi-Variables :**
     ```rust
     pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {
@@ -84,12 +84,12 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
     Niche      DeadSpace    ResVar       BinsUsed     Capsule ID         Nom de l'Heuristique
     ---------------------------------------------------------------------------------------------------------
     ( 9, 7)     0.591        159.85       1264         03294d5accc2b1d9   SwarmCross-g8-0f25-039a-mut-g8 (Champion)
-    ( 7, 8)     0.463        172.10       1298         234f...            SwarmCross-g10-234f-0329
-    ( 8, 7)     0.512        155.30       1306         e0bf...            SwarmCross-g10-e0bf-0329
-    ( 6, 5)     0.380        118.40       1328         fa50...            SwarmCross-g9-fa50-0329-mut-g10-mut-g11
-    ( 5, 5)     0.320        112.60       1334         fa50...            SwarmCross-g9-fa50-0329-mut-g10
+    ( 7, 8)     0.428        176.42       1298         185ff4c9009b0337   SwarmCross-g10-234f-0329
+    ( 8, 7)     0.499        147.02       1306         9a294f91173b53f1   SwarmCross-g10-e0bf-0329
+    ( 6, 5)     0.387        114.62       1328         367dbaa710609265   SwarmCross-g9-fa50-0329-mut-g10-mut-g10-mut-g11
+    ( 5, 5)     0.357        115.12       1334         5dcffcdda2cdd82c   SwarmCross-g9-fa50-0329-mut-g10
     ```
-  * **Interprétation scientifique :** L'essaim a exploré des stratégies réduisant l'espace mort jusqu'à $32.0\%$, projetées sur l'axe de variance résiduelle sans écrasement.
+  * **Interprétation scientifique :** L'essaim a exploré des stratégies réduisant l'espace mort de $59.1\%$ jusqu'à $35.7\%$, projetées sur l'axe de variance résiduelle sans écrasement.
   * **Graphe phylogénétique :** 85 organismes et 123 transitions génétiques visualisables dans `arbre.html`.
 
 ---
@@ -99,8 +99,8 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 * **Formulation Mathématique :**
   $$tLDR = -\beta_1 - 0.5 \cdot \sigma_{\text{res}}$$
 * **Mesure Expérimentale sur le Champion V2 :**
-  * $\beta_1 = 1.7506$, $\sigma_{\text{res}} = 1.4883$.
-  * **$tLDR = \mathbf{-2.4948}$** (gain net de régularité et de vitesse de compaction par rapport aux -2.3543 de Best-Fit).
+  * $\beta_1 = 1.7446$, $\sigma_{\text{res}} = 1.5003$.
+  * **$tLDR = \mathbf{-2.4948}$** (calculé exactement selon $-1.7446 - 0.5 \times 1.5003$, gain net de régularité par rapport aux -2.3543 de Best-Fit).
 * **Résultats Hors-Distribution (OOD) :**
   * **OOD-1 (Mise à l'échelle N=500 objets) :** 11 774 bacs (excès +485), **Efficacité : 95.90%**.
   * **OOD-2 (Changement de distribution / Loi de puissance) :** 2 353 bacs (excès +34), **Efficacité : 98.56%**.
@@ -134,8 +134,8 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 * **Preuve Établie de la Transmission Cumulative :**
   * **Hérédité Fonctionnelle Élevée ($R_{\text{herit}} = \mathbf{71.4\%}$) :** 5 des 7 niches conquises à l'Époque 2 descendent directement du patrimoine transmis de l'Époque 1.
   * **Explosion de Diversité (7 Niches vs 1 Seule pour Tabula Rasa) :**
-    * **Lignée Héritière :** Occupe **7 niches distinctes** (`(8,7)`, `(6,5)`, `(7,7)`, `(9,7)`, `(6,6)`, `(5,5)`, `(4,5)`), avec un QD-Score de 6.42.
-    * **Lignée Tabula Rasa :** Reste cantonnée à **1 seule niche** (`(9,7)`), avec un QD-Score de 0.92 (**facteur de diversité 7x** grâce au patrimoine).
+    * **Lignée Héritière :** Occupe **7 niches distinctes** (`(8,7)`, `(6,5)`, `(7,7)`, `(9,7)`, `(6,6)`, `(5,5)`, `(4,5)`), avec un QD-Score de **6.17** (somme exacte des efficacités : 6.1668).
+    * **Lignée Tabula Rasa :** Reste cantonnée à **1 seule niche** (`(9,7)`), avec un QD-Score de **0.918** (**facteur de diversité 7x** grâce au patrimoine).
   * **Validation Anti-Dead-Code Niveau 3 Certifiée :**
     Avec l'exclusion stricte du fuel, les hybrides `SwarmCross-g4-8875-039a` (niche `6,6`) et `SwarmCross-g5-1ee6-039a` (niche `5,5`) sont formellement certifiés **`PassedLevel3Behavioral`** avec causalité démontrée sur les décisions face à leur capsule d'ablation $C_{\text{null}}$.
 

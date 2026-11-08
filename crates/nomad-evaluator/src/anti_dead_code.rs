@@ -31,28 +31,59 @@ pub fn create_ablation_capsule(capsule: &SkillCapsule) -> Option<SkillCapsule> {
 
     // Construction de C_null en filtrant l'instruction associée au fragment greffé
     let mut null_fn = item_fn.clone();
+    let stmts = &mut null_fn.block.stmts;
     let mut removed = false;
-    null_fn.block.stmts.retain(|stmt| {
-        let code_repr = quote::quote!(#stmt).to_string();
-        let mut hasher = Sha256::new();
-        hasher.update(code_repr.as_bytes());
-        let hash = hex::encode(hasher.finalize());
-        if hash == manifest.grafted_fragment_hash {
-            removed = true;
-            false
-        } else {
-            true
-        }
-    });
 
-    if !removed {
-        if let Some(idx_str) = manifest.host_locus.strip_prefix("body_stmt_index_") {
-            if let Ok(idx) = idx_str.parse::<usize>() {
-                if idx < null_fn.block.stmts.len() {
-                    null_fn.block.stmts.remove(idx);
+    // 1. Surgical removal: try exact removal at host_locus index if it matches the grafted hash
+    if let Some(idx_str) = manifest.host_locus.strip_prefix("body_stmt_index_") {
+        if let Ok(idx) = idx_str.parse::<usize>() {
+            if idx < stmts.len() {
+                let target_stmt = &stmts[idx];
+                let code_repr = quote::quote!(#target_stmt).to_string();
+                let mut hasher = Sha256::new();
+                hasher.update(code_repr.as_bytes());
+                let hash = hex::encode(hasher.finalize());
+                if hash == manifest.grafted_fragment_hash {
+                    stmts.remove(idx);
+                    removed = true;
                 }
             }
         }
+    }
+
+    // 2. If locus didn't match the hash, remove ONLY the single matching statement (never use retain on all)
+    if !removed {
+        let mut target_idx = None;
+        for (i, stmt) in stmts.iter().enumerate() {
+            let code_repr = quote::quote!(#stmt).to_string();
+            let mut hasher = Sha256::new();
+            hasher.update(code_repr.as_bytes());
+            let hash = hex::encode(hasher.finalize());
+            if hash == manifest.grafted_fragment_hash {
+                target_idx = Some(i);
+                break;
+            }
+        }
+        if let Some(i) = target_idx {
+            stmts.remove(i);
+            removed = true;
+        }
+    }
+
+    // 3. Fallback: if hash didn't match, remove at host_locus index
+    if !removed {
+        if let Some(idx_str) = manifest.host_locus.strip_prefix("body_stmt_index_") {
+            if let Ok(idx) = idx_str.parse::<usize>() {
+                if idx < stmts.len() {
+                    stmts.remove(idx);
+                    removed = true;
+                }
+            }
+        }
+    }
+
+    if !removed {
+        return None;
     }
 
     let null_code = quote::quote!(#null_fn).to_string();
