@@ -269,20 +269,23 @@ impl SkillOperator for HttpLlamaOperator {
         index: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let system_prompt = "You are an expert algorithmic scientist specializing in online 1D bin packing heuristics.\n\
+        let system_prompt = "You are an expert algorithmic scientist specializing in online 1D bin packing heuristics in Rust.\n\
 Bins have capacity C=100. Items arrive sequentially (sizes between 10 and 80). Your goal is to minimize total bins used.\n\
 Implement the heuristic as a valid Rust function with the following exact signature:\n\
 ```rust\n\
 pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n\
     let mut score = bin_residual as f64;\n\
-    // Lower score is better! The candidate bin with the MINIMUM score is selected.\n\
-    // Key insights:\n\
-    // 1. Dead space: If bin_residual < 10, no future item can ever fit! Penalize heavily (+90.0 or more).\n\
-    // 2. Exact fit: If bin_residual == 0, bin is perfectly closed. Reward (-50.0).\n\
     score\n\
 }\n\
 ```\n\
-Return ONLY the executable Rust function inside a ```rust ... ``` code block.";
+CRITICAL REQUIREMENTS FOR SOTA PERFORMANCE:\n\
+1. The candidate bin with the MINIMUM score is selected for placing item_size.\n\
+2. To outperform standard Best-Fit, an advanced heuristic MUST be dynamic and multi-variable:\n\
+   - Dynamic horizon awareness: Combine `bin_residual` with progress `step_index as f64 / total_items as f64`.\n\
+   - In early stages (low progress): prioritize keeping large flexible spaces for upcoming unknown items.\n\
+   - In late stages (high progress): prioritize tightly closing existing bins to avoid opening new empty bins near the end.\n\
+   - Global state: You can use `open_bins_count`, `mean_residual`, or compare `bin_residual` to `item_size`.\n\
+Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.";
 
         let user_prompt = format!("Synthesize heuristic seed #{} with seed parameter {}.", index, seed);
 
@@ -335,8 +338,11 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block.";
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let system_prompt = "You are an evolutionary code optimizer for Online 1D Bin Packing heuristics in Rust.\n\
-Apply a targeted algorithmic mutation to the score_bin function (e.g. adjust weights, refine conditional branch penalties when residual < 10, or tune exact fit bonuses) to reduce total bins used.\n\
-Return ONLY the mutated Rust function inside a ```rust ... ``` code block.";
+Apply an algorithmic mutation to improve compaction and reduce total bins used.\n\
+Combine multiple input variables: `bin_residual`, `item_size`, `step_index`/`total_items` (time horizon), or `mean_residual`.\n\
+Introduce non-linear conditionals, time-decaying penalties, or horizon-aware placement logic.\n\
+The candidate bin with the MINIMUM score is selected.\n\
+Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.";
 
         let user_prompt = format!(
             "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.",

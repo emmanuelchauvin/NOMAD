@@ -134,20 +134,26 @@ pub fn validate_anti_dead_code_3levels(
             fuel_limit,
         );
 
-        // Check if decision/performance/fuel/behavior metrics diverge
+        // Check if decision, performance, trajectory or behavioral metrics diverge.
+        // Fuel consumption is strictly excluded from Level 3: an extra dead statement
+        // consumes fuel without altering the decision policy (intron/redundant arithmetic).
         let differs = score_original.total_bins != score_null.total_bins
-            || score_original.total_fuel != score_null.total_fuel
             || (score_original.mean_efficiency - score_null.mean_efficiency).abs() > 1e-4
-            || (score_original.behavior.dead_space_ratio - score_null.behavior.dead_space_ratio).abs() > 1e-4;
+            || (score_original.behavior.dead_space_ratio - score_null.behavior.dead_space_ratio).abs() > 1e-4
+            || (score_original.behavior.residual_variance - score_null.behavior.residual_variance).abs() > 1e-4
+            || (score_original.behavior.new_bin_ratio - score_null.behavior.new_bin_ratio).abs() > 1e-4
+            || (score_original.tldr_score - score_null.tldr_score).abs() > 1e-4;
 
         if differs {
             let status = ValidationStatus::PassedLevel3Behavioral;
             capsule.validation = status.clone();
             return Ok(status);
         } else {
-            let status = ValidationStatus::Failed("Level 3 Behavioral Failure: neutral graft with no causal impact".to_string());
+            // Neutral or redundant graft: executed with measured fuel (Level 2),
+            // but produced zero causal behavioral divergence (Level 3 not proven).
+            let status = ValidationStatus::PassedLevel2Computational;
             capsule.validation = status.clone();
-            return Err(AntiDeadCodeEvalError::Level3ZeroBehavioralDifference);
+            return Ok(status);
         }
     }
 
