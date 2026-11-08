@@ -3,6 +3,7 @@
 > **Decentralized Cognitive Swarm, Horizontal Evolutionary Recombination & Cumulative Culture for LLM-Synthesized Heuristics**
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
+[![CI](https://github.com/emmanuelchauvin/NOMAD/actions/workflows/ci.yml/badge.svg)](https://github.com/emmanuelchauvin/NOMAD/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/scientific_study-pre--registered_V2-green.svg)](SPECIFICATIONS.md)
 
