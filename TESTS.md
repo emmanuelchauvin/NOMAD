@@ -146,32 +146,61 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 
 ---
 
+### TEST 5 : Généralisation Multi-Domaines (Ordonnancement Cloud Multi-Ressources CPU/RAM)
+
+* **Problématique :** Prouver que NOMAD n'est pas surajusté au seul Bin Packing 1D, mais que ses opérateurs génétiques AST, son filtrage Anti-Dead-Code $C_{\text{null}}$ et son protocole Rebirth s'appliquent à l'allocation vectorielle sous contraintes (nœuds de 32 cœurs / 128 Go).
+* **Résultats Expérimentaux Réels (`run_sched_qwen.json`, 8 générations Qwen 2.5 Coder 7B) :**
+  * **Heuristique Championne :** `SwarmCross-g5-2f11-20c6-mut-g5` issue d'un crossover horizontal d'essaim (`SwarmCross`).
+  * **Code Émergent Vectoriel 2D Découvert :**
+    ```rust
+    pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {
+        let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;
+        let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;
+        let mut score = cpu_norm * cpu_norm + ram_norm * ram_norm;
+        score
+    }
+    ```
+  * **Surperformance Hors-Distribution OOD-2 (Profils asymétriques) :**
+    * `BEST_FIT_CPU` : 1 747 nœuds (+234)
+    * `FIRST_FIT_NODE` : 1 745 nœuds (+232)
+    * **NOMAD V2 Swarm :** **1 731 nœuds (+218, efficacité : 87.48%)**, soit **16 serveurs économisés**.
+* **Transmission Cumulative Rebirth (`rebirth_sched_qwen.json`) :**
+  * **Hérédité Fonctionnelle ($R_{\text{herit}}$) :** **100.0%**. 100% des motifs élites de l'époque 2 sont hérités du patrimoine transmis de l'époque 1 après extinction intégrale des mémoires d'agents.
+
+---
+
 ## 4. Reproductibilité et Fichiers de Preuve Scientifique
 
 Toutes les expériences rapportées sont déterministes et peuvent être reproduites à l'identique :
 
 | Fichier Généré | Contenu et Rôle Scientifique |
 | :--- | :--- |
-| **`run_report_qwen_v2.json`** | Trace complète de la simulation 12 générations avec Qwen 2.5 Coder 7B (85 nœuds, 123 transitions, 77 crossovers, SOTA 1264 bacs). |
-| **`rebirth_qwen_v2.json`** | Rapport officiel du protocole Mort et Renaissance V2 ($R_{\text{herit}} = 71.4\%$, 7 niches Héritière vs 1 Tabula Rasa, hybrides certifiés). |
+| **`run_report_qwen_v2.json`** | Trace complète Bin Packing 12 générations avec Qwen 2.5 Coder 7B (85 nœuds, 123 transitions, 77 crossovers, SOTA 1264 bacs). |
+| **`rebirth_qwen_v2.json`** | Rapport officiel Rebirth V2 Bin Packing ($R_{\text{herit}} = 71.4\%$, 7 niches Héritière vs 1 Tabula Rasa, hybrides certifiés). |
+| **`run_sched_qwen.json`** | Trace officielle Ordonnancement Cloud Qwen 2.5 Coder 7B (57 nœuds, 77 transitions, champion 1731 nœuds sur OOD-2). |
+| **`rebirth_sched_qwen.json`** | Rapport officiel Rebirth Ordonnancement Cloud ($R_{\text{herit}} = 100.0\%$, transmission collective validée). |
 | **`run_report_v2.json`** | Rapport déterministe mock pour audit instantané offline sans GPU. |
 | **`rebirth_mock_v2.json`** | Protocole Mort et Renaissance en mode déterministe ($R_{\text{herit}} = 100.0\%$). |
-| **`arbre.html`** | Visualisation interactive de l'arbre phylogénétique complet (83 nœuds, 75 transitions, auto-fit). |
+| **`arbre.html`** | Visualisation interactive de l'arbre phylogénétique Bin Packing (83 nœuds, 75 transitions). |
+| **`arbre_sched.html`** | Visualisation interactive de l'arbre phylogénétique Ordonnancement Cloud. |
 
 ### Commandes de Reproduction :
 ```powershell
-# 1. Vérification de la suite de tests automatisés (16 tests)
+# 1. Vérification de la suite de tests automatisés (19 tests)
 cargo test --workspace
 
-# 2. Reproduction de la simulation AST V2 avec Ollama (12 générations)
-cargo run --release --bin nomad -- run --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 12 --group C --output run_report_qwen_v2.json
+# 2. Reproduction de la simulation Bin Packing AST avec Ollama (12 générations)
+cargo run --release --bin nomad -- run --domain bin-packing --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 12 --group C --output run_report_qwen_v2.json
 
-# 3. Visualisation de l'arbre génétique
-cargo run --bin nomad -- graph --report run_report_qwen_v2.json --format html --output arbre.html
-Start-Process arbre.html
+# 3. Reproduction de la simulation Ordonnancement Cloud avec Ollama (8 générations)
+cargo run --release --bin nomad -- run --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 8 --group C --output run_sched_qwen.json
 
-# 4. Reproduction du protocole Mort et Renaissance (6 générations)
-cargo run --release --bin nomad -- rebirth --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 6 --output rebirth_qwen_v2.json
+# 4. Visualisation des arbres génétiques
+cargo run --bin nomad -- graph --report run_sched_qwen.json --format html --output arbre_sched.html
+Start-Process arbre_sched.html
+
+# 5. Reproduction du protocole Mort et Renaissance Scheduling (6 générations)
+cargo run --release --bin nomad -- rebirth --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 6 -n 6 --output rebirth_sched_qwen.json
 ```
 ```
 
