@@ -1,6 +1,13 @@
 import json
+import sys
+from pathlib import Path
 
-with open("comparison_ollama.json", encoding="utf-8") as f:
+target_file = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("comparison.json")
+if not target_file.exists():
+    print(f"Usage: python detailed_summary.py <path_to_comparison.json>\nFichier introuvable: {target_file}")
+    sys.exit(1)
+
+with open(target_file, encoding="utf-8") as f:
     data = json.load(f)
 
 print("=" * 90)
