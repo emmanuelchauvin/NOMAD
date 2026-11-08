@@ -154,7 +154,8 @@ pub fn execute_rebirth_protocol(
         let has_heritage_parent = entry.capsule.parent_ids.iter().any(|pid| {
             heritage.validated_capsules.iter().any(|hc| &hc.id == pid)
         });
-        if is_heritage_motif || has_heritage_parent {
+        let is_heritage_itself = heritage.validated_capsules.iter().any(|hc| hc.id == entry.capsule.id);
+        if is_heritage_motif || has_heritage_parent || is_heritage_itself {
             heritage_motifs_active += 1;
         }
     }

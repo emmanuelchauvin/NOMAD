@@ -75,7 +75,7 @@ enum Commands {
     /// Export or visualize the phylogenetic DAG from a run report file.
     Graph {
         /// Path to the JSON run report file produced by `nomad run --output <file>`.
-        #[arg(short, long, default_value = "run_report.json")]
+        #[arg(short, long, visible_alias = "report", default_value = "run_report.json")]
         input: PathBuf,
 
         /// Format for visualization: mermaid, dot, or html.

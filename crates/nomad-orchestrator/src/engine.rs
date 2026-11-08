@@ -1,4 +1,4 @@
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -219,7 +219,23 @@ impl<'a> EvolutionEngine<'a> {
     ) -> Result<Vec<EvaluatedIndividual>, OrchestratorError> {
         let mut population = Vec::with_capacity(self.config.population_size);
 
-        for i in 0..self.config.population_size {
+        // 1. Incorporate collective heritage capsules already seeded in the archive (Rebirth Protocol)
+        let existing_heritage: Vec<(SkillCapsule, BenchmarkScore)> = self
+            .archive
+            .grid
+            .values()
+            .map(|entry| (entry.capsule.clone(), entry.fitness.clone()))
+            .collect();
+
+        for (cap, score) in existing_heritage.into_iter().take(self.config.population_size / 2) {
+            self.phylogeny.insert_capsule(&cap);
+            self.lineages.register_seed(cap.id.clone());
+            population.push(EvaluatedIndividual::new(cap, score));
+        }
+
+        // 2. Fill the remaining slots with freshly generated seeds
+        let remaining_slots = self.config.population_size.saturating_sub(population.len());
+        for i in 0..remaining_slots {
             let seed = rand::Rng::gen(rng);
             let (capsule, _audit) = self
                 .operator
@@ -345,7 +361,7 @@ impl<'a> EvolutionEngine<'a> {
 
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
                     let seed = rand::Rng::gen(rng);
-                    let should_crossover = rand::Rng::gen_bool(rng, 0.60) && self.archive.occupied_niches_count() >= 2;
+                    let should_crossover = rand::Rng::gen_bool(rng, 0.60) && (self.archive.occupied_niches_count() >= 2 || current_pop.len() >= 2);
 
                     let (child_capsule, _) = if should_crossover {
                         // 1. Quality-Diversity Parent A Selection via UCB curiosity
@@ -358,8 +374,18 @@ impl<'a> EvolutionEngine<'a> {
                             .unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
 
                         // 2. AgentPSO Directed Partner Selection for complementary traits
-                        let parent_b = self.archive.select_complementary_partner(&parent_a, &parent_a_score, rng)
-                            .unwrap_or_else(|| current_pop[0].capsule.clone());
+                        let parent_b = if self.archive.occupied_niches_count() >= 2 {
+                            self.archive.select_complementary_partner(&parent_a, &parent_a_score, rng)
+                                .unwrap_or_else(|| current_pop[rng.gen_range(0..current_pop.len())].capsule.clone())
+                        } else {
+                            // Archive has 1 niche: draw partner from current population
+                            let candidate = &current_pop[rng.gen_range(0..current_pop.len())].capsule;
+                            if candidate.id != parent_a.id {
+                                candidate.clone()
+                            } else {
+                                current_pop[(rng.gen_range(0..current_pop.len()) + 1) % current_pop.len()].capsule.clone()
+                            }
+                        };
 
                         self.operator
                             .crossover(&parent_a, &parent_b, next_gen_idx, seed)

@@ -83,9 +83,13 @@ impl MapElitesArchive {
         let norm_x = (b.dead_space_ratio / 0.60).clamp(0.0, 0.999);
         let x = (norm_x * self.dim_x as f64).floor() as usize;
 
-        // Axe Y : New bin ratio normalisé sur son domaine physique effectif [0.45, 0.60]
-        // (Pour N=50, C=100 et items U(10, 80), new_bin_ratio oscille naturellement entre 0.46 et 0.58)
-        let norm_y = ((b.new_bin_ratio - 0.45) / 0.15).clamp(0.0, 0.999);
+        // Axe Y : Residual variance normalisée sur son domaine physique effectif [0.0, 200.0]
+        // Permet de séparer les politiques à remplissage homogène de celles à résidus dispersés
+        let norm_y = if b.residual_variance > 0.0 {
+            (b.residual_variance / 200.0).clamp(0.0, 0.999)
+        } else {
+            ((b.new_bin_ratio - 0.45) / 0.15).clamp(0.0, 0.999)
+        };
         let y = (norm_y * self.dim_y as f64).floor() as usize;
 
         (x.min(self.dim_x - 1), y.min(self.dim_y - 1))
@@ -115,8 +119,25 @@ impl MapElitesArchive {
 
         match self.grid.get_mut(&k) {
             Some(existing) => {
-                // Compétition locale intra-niche
-                if fitness < existing.fitness {
+                // Compétition locale intra-niche :
+                // 1. Moins de bacs est toujours strictement meilleur
+                // 2. À égalité de bacs : un organisme évolué (génération supérieure) surpasse un seed naïf
+                // 3. À génération égale : départage par la sobriété en fuel
+                let is_strictly_better = if fitness.total_bins < existing.fitness.total_bins {
+                    true
+                } else if fitness.total_bins == existing.fitness.total_bins {
+                    if existing.capsule.generation > capsule.generation {
+                        false // Un seed naïf ne peut pas éjecter un organisme évolué
+                    } else if capsule.generation > existing.capsule.generation {
+                        true  // Un organisme évolué remplace un ancêtre à score égal
+                    } else {
+                        fitness.total_fuel < existing.fitness.total_fuel
+                    }
+                } else {
+                    false
+                };
+
+                if is_strictly_better {
                     existing.capsule = capsule;
                     existing.behavior = fitness.behavior.clone();
                     existing.fitness = fitness;
