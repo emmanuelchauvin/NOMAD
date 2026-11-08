@@ -357,8 +357,9 @@ CRITICAL REQUIREMENTS FOR SOTA PERFORMANCE:\n\
    - Penalize resource imbalance: `(cpu_norm - ram_norm).abs()` to avoid stranded resource capacity.\n\
    - Dynamic horizon awareness: Combine `step_index` and `total_jobs`.\n\
    - Lookahead awareness (k=2): `next_job_cpu` and `next_job_ram` provide lookahead of the immediately upcoming job. If residual capacity can perfectly fit the next job, reserve or prioritize pairing complementary jobs!\n\
+3. Use ONLY variables declared in the function signature. Do NOT declare pseudo-random seeds or inject ungrounded constant scales.\n\
 Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
-                format!("Synthesize cloud scheduling heuristic seed #{} with seed parameter {}.", index, seed)
+                format!("Synthesize candidate cloud scheduling heuristic #{}.", index)
             )
         } else {
             let archetype_desc = match index {
@@ -393,8 +394,9 @@ CRITICAL OPTIMIZATION OBJECTIVE:\n\
 - SUBTRACT from score to favor / reward desirable placements.\n\
 - ADD to score to penalize undesirable placements (e.g. creating unusable dead space).\n\
 - Invent your own functional relationships, non-linear couplings, and calibrated numerical constants.\n\
+- Use ONLY variables declared in the function signature. Do NOT declare pseudo-random seeds or inject ungrounded constant scales.\n\
 Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
-                format!("Synthesize heuristic seed #{} (seed parameter {}). {}", index, seed, archetype_desc)
+                format!("Synthesize candidate heuristic #{}. {}", index, archetype_desc)
             )
         };
 
@@ -458,6 +460,7 @@ Apply an algorithmic mutation to improve compaction, reduce total nodes used, an
 Combine multiple input variables: residuals, capacities, normalized imbalances `(cpu_norm - ram_norm).abs()`, time horizon `step_index / total_jobs`, and lookahead `next_job_cpu`/`next_job_ram`.\n\
 Introduce non-linear conditionals, lookahead packing bonuses, imbalance penalties, or horizon-aware placement logic.\n\
 The candidate node with the MINIMUM score is selected.\n\
+Use ONLY signature variables. Do NOT declare pseudo-random seeds or mock constants.\n\
 Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!(
                     "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.",
@@ -471,7 +474,7 @@ Apply an algorithmic mutation to improve compaction and reduce total bins used.\
 CRITICAL: THE ORACLE MINIMIZES THE SCORE. LOWER SCORE = HIGHER PRIORITY TO SELECT THIS BIN. SUBTRACT TO REWARD, ADD TO PENALIZE.\n\
 Combine available inputs: `item_size`, `bin_residual`, `post_residual`, `bin_capacity`, `step_index`, `total_items`, `open_bins_count`, `mean_residual`, `next_item_size`, and `fitting_bins_count`.\n\
 Search for effective variable couplings, non-linear conditionals, fine-tuned thresholds, or lookahead trade-offs.\n\
-Invent your own logic and calibrated constants. Do NOT copy preset templates.\n\
+Invent your own logic and calibrated constants. Do NOT declare pseudo-random seeds or mock constants. Do NOT copy preset templates.\n\
 Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!(
                     "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.",

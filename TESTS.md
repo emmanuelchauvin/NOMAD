@@ -18,6 +18,21 @@ L'ensemble des exigences techniques et des protocoles scientifiques prescrits pa
 
 ---
 
+### Matrice de Traçabilité des Données Expérimentales (Run Manifest)
+
+Pour garantir une intégrité scientifique sans équivoque face aux comités de lecture, chaque résultat cité dans ce rapport correspond à un fichier d'exécution JSON immuable horodaté à la racine du dépôt :
+
+| Fichier JSON Source | Version | Domaine & Groupe | Paramètres (Gens, Pop, Epochs) | Meilleur Score / Métrique Clé | Rôle & Statut Expérimental |
+| :--- | :---: | :--- | :--- | :--- | :--- |
+| **`run_report_qwen_v2.json`** | V2.0 | Bin Packing 1D (Groupe C) | $N=12$ gens, $\text{Pop}=8$ | **1 264 bacs** (`SwarmCross-g8-0f25-039a-mut-g8`) | **Run Long Convergence :** Rupture du palier Best-Fit (1265 $\to$ 1264) par crossover AST. |
+| **`rebirth_qwen_v2.json`** | V2.0 | Bin Packing 1D (Rebirth) | 2 époques, $N=6$ gens, $\text{Pop}=8$ | **$CIF = 1.000\text{x}$**, $R_{\text{herit}} = 71.4\%$ (7 niches) | **Run Rebirth V2 :** Preuve de diversité héritée (7 niches vs 1 niche Tabula Rasa). |
+| **`run_sched_qwen.json`** | V2.0 | Cloud Scheduling (Groupe C) | $N=8$ gens, $\text{Pop}=8$ | **1 731 serveurs** (OOD-2, +16 économisés vs baselines) | **Multi-Domaines :** Validation de l'allocation vectorielle 2D CPU/RAM. |
+| **`grand_rebirth_sched.json`**| V2.0 | Cloud Scheduling (Rebirth 3E) | 3 époques, $N=4$ gens, $\text{Pop}=6$ | **391 serveurs** à l'Époque 3 (gain net vs 392 Époque 1) | **Rebirth Multi-Époques :** Amélioration cumulative inter-extinctions. |
+| **`grand_run_bp_v2_6.json`** | V2.6 | Bin Packing 1D (Groupe C) | $N=5$ gens, $\text{Pop}=8$ | **1 265 bacs**, QD-Score = 4.414 (5 niches actives) | **Run Débogage V2.6 :** Validation de l'ascent de constantes & MAP-Elites. |
+| **`grand_rebirth_bp_v2_6.json`**| V2.6 | Bin Packing 1D (Rebirth) | 2 époques, $N=5$ gens, $\text{Pop}=8$ | **$CIF = 1.004\text{x}$**, $R_{\text{herit}} = 50.0\%$, $R_{\text{innov}} = 1.538$ | **Run V2.6 Rebirth :** Test de non-régression du pré-ensemencement culturel. |
+
+---
+
 ## 2. Résultats de la Suite de Tests Automatisés (`cargo test --workspace`)
 
 Tous les tests unitaires et d'intégration s'exécutent de façon déterministe et reproductible :
@@ -54,11 +69,11 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 
 ## 3. Validation Approfondie des 4 Protocoles Scientifiques d'Acceptation
 
-### TEST 1 : Rupture du Plafond 1265 et Opérateur AST (Section 8.2)
+### TEST 1 : Rupture du Palier Best-Fit (1 265 bacs) et Opérateur AST (Section 8.2)
 
-* **Problématique :** Dans les heuristiques classiques (et dans la V1), l'algorithme plafonnait systématiquement à 1265 bacs (optimum de `BEST_FIT` glouton stationnaire).
-* **Rupture Empirique V2 (Run Ollama `qwen2.5-coder:7b`, 12 générations) :**
-  * **Plafond brisé :** **1 264 bacs** (excès : **+106**, efficacité : **91.86%**, fuel : 1 526 174).
+* **Problématique :** Dans les heuristiques classiques (et dans la V1), l'algorithme plafonnait systématiquement à 1 265 bacs (optimum empirique de la référence gloutonne `BEST_FIT` en ligne). La borne de volume théorique $L_1$ est de 1 158 bacs. L'enjeu est de découvrir des politiques non-stationnaires à horizon dynamique capables de battre la baseline Best-Fit (descendre sous 1 265 bacs).
+* **Rupture Empirique V2 (Run de référence `run_report_qwen_v2.json`, 12 générations) :**
+  * **Palier franchi :** **1 264 bacs** (excès : **+106**, efficacité : **91.86%**, fuel : 1 526 174).
   * **Heuristique Championne :** `SwarmCross-g8-0f25-039a-mut-g8` (`03294d5accc2b1d9`, Génération 8).
   * **Explosion du Crossover AST :** **46 croisements d'essaim (`SwarmCross`) sur 77 enfants générés (59.7%)** dans le DAG phylogénétique (85 nœuds au total dont 8 graines Gen 0, 123 transitions/arêtes).
   * **Code Émergent Dynamique Multi-Variables :**
