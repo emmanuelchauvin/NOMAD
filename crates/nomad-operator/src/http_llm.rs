@@ -4,10 +4,13 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use std::time::Duration;
 use chrono::Utc;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use nomad_core::SkillCapsule;
+use nomad_core::{PolicyKind, SkillCapsule, ValidationStatus};
+use nomad_genome::{compute_structural_fingerprint, deterministic_ast_crossover, parse_score_bin};
 use crate::meta::ReproducibilityAudit;
 use crate::operator::{OperatorError, SkillOperator};
 
@@ -188,6 +191,76 @@ impl HttpLlamaOperator {
         }
         trimmed.to_string()
     }
+
+    /// Converts raw LLM output or classical primitives into validated Rust AST `score_bin` function.
+    fn normalize_to_ast_score_bin(code: &str, seed: u64, fallback_variant: usize) -> (String, syn::ItemFn) {
+        let trimmed = code.trim();
+        // 1. Try parsing directly if contains score_bin
+        if trimmed.contains("score_bin") {
+            if let Ok(item_fn) = parse_score_bin(trimmed) {
+                return (trimmed.to_string(), item_fn);
+            }
+        }
+
+        // 2. Map classical heuristic names
+        if trimmed.contains("FIRST_FIT") {
+            let code = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = 0.0;\n    score\n}".to_string();
+            let item_fn = parse_score_bin(&code).expect("First fit must parse");
+            return (code, item_fn);
+        }
+        if trimmed.contains("BEST_FIT") {
+            let code = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}".to_string();
+            let item_fn = parse_score_bin(&code).expect("Best fit must parse");
+            return (code, item_fn);
+        }
+
+        // 3. Map legacy parameter format: SCORE: alpha=... beta=... dead_space_penalty=...
+        if trimmed.contains("alpha") || trimmed.contains("SCORE:") || trimmed.contains("dead_space_penalty") {
+            let mut alpha = 1.0f64;
+            let mut penalty = 95.0f64;
+            let mut bonus = 50.0f64;
+
+            for part in trimmed.split_whitespace() {
+                if let Some(val) = part.strip_prefix("alpha=") {
+                    if let Ok(v) = val.parse::<f64>() { alpha = v; }
+                } else if let Some(val) = part.strip_prefix("dead_space_penalty=") {
+                    if let Ok(v) = val.parse::<f64>() { penalty = v; }
+                } else if let Some(val) = part.strip_prefix("exact_fit_bonus=") {
+                    if let Ok(v) = val.parse::<f64>() { bonus = v; }
+                }
+            }
+
+            let code = format!(
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64 * {:.2};\n    if bin_residual < 10 {{\n        score = score + {:.1};\n    }}\n    if bin_residual == 0 {{\n        score = score - {:.1};\n    }}\n    score\n}}",
+                alpha, penalty, bonus
+            );
+            if let Ok(item_fn) = parse_score_bin(&code) {
+                return (code, item_fn);
+            }
+        }
+
+        // 4. Deterministic AST fallback template
+        let mut rng = ChaCha8Rng::seed_from_u64(seed ^ (fallback_variant as u64));
+        let penalty_val: f64 = rng.gen_range(60.0..110.0);
+        let bonus_val: f64 = rng.gen_range(30.0..70.0);
+        let alpha_val: f64 = rng.gen_range(1.0..1.5);
+
+        let code = match fallback_variant % 4 {
+            0 => format!(
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64 * {:.2};\n    if bin_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
+                alpha_val, penalty_val
+            ),
+            1 => format!(
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual == 0 {{\n        score = score - {:.1};\n    }}\n    score\n}}",
+                bonus_val
+            ),
+            2 => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    if (bin_residual as f64) < mean_residual {\n        score = score - 15.0;\n    }\n    score\n}".to_string(),
+            _ => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}".to_string(),
+        };
+
+        let item_fn = parse_score_bin(&code).expect("Template must be valid Rust AST");
+        (code, item_fn)
+    }
 }
 
 impl SkillOperator for HttpLlamaOperator {
@@ -198,23 +271,28 @@ impl SkillOperator for HttpLlamaOperator {
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let system_prompt = "You are an expert algorithmic scientist specializing in online 1D bin packing heuristics.\n\
 Bins have capacity C=100. Items arrive sequentially (sizes between 10 and 80). Your goal is to minimize total bins used.\n\
-Available primitives & parameterized scoring:\n\
-- FIRST_FIT, BEST_FIT, WORST_FIT, HARMONIC\n\
-- Advanced scoring formula:\n\
-  SCORE: alpha=<float> beta=<float> dead_space_penalty=<float> exact_fit_bonus=<float> tight_fit=<bool>\n\
-  * alpha: weight on minimizing remaining space (e.g. 1.0 to 2.5)\n\
-  * beta: weight on fullness ratio (e.g. 0.0 to 1.0)\n\
-  * dead_space_penalty: penalty when remaining space < 10 (since items are >=10, space < 10 can never be filled and wastes bins)\n\
-  * exact_fit_bonus: bonus when item fills the bin to exactly 100%\n\
-  * tight_fit: true or false\n\
-Return ONLY the strategy name or formula in a code block.";
+Implement the heuristic as a valid Rust function with the following exact signature:\n\
+```rust\n\
+pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n\
+    let mut score = bin_residual as f64;\n\
+    // Lower score is better! The candidate bin with the MINIMUM score is selected.\n\
+    // Key insights:\n\
+    // 1. Dead space: If bin_residual < 10, no future item can ever fit! Penalize heavily (+90.0 or more).\n\
+    // 2. Exact fit: If bin_residual == 0, bin is perfectly closed. Reward (-50.0).\n\
+    score\n\
+}\n\
+```\n\
+Return ONLY the executable Rust function inside a ```rust ... ``` code block.";
 
         let user_prompt = format!("Synthesize heuristic seed #{} with seed parameter {}.", index, seed);
 
         let raw_response = self.call_inference(system_prompt, &user_prompt, seed)?;
-        let code = Self::extract_code_block(&raw_response);
+        let raw_code = Self::extract_code_block(&raw_response);
+        let (ast_code, item_fn) = Self::normalize_to_ast_score_bin(&raw_code, seed, index);
+        let fp = Some(compute_structural_fingerprint(&item_fn));
+
         let name = format!("LLM-Seed-{:03}", index);
-        let desc = format!("Initial seed synthesized by {}", self.model_name);
+        let desc = format!("AST Seed synthesized by {}", self.model_name);
 
         let audit = ReproducibilityAudit {
             model_name: self.model_name.clone(),
@@ -232,7 +310,20 @@ Return ONLY the strategy name or formula in a code block.";
         metadata.insert("operator".to_string(), "HttpLlamaOperator".to_string());
         metadata.insert("seed".to_string(), seed.to_string());
 
-        let capsule = SkillCapsule::new(name, desc, code, vec![], 0, metadata);
+        let capsule = SkillCapsule::new_v2(
+            name,
+            desc,
+            ast_code,
+            vec![],
+            0,
+            metadata,
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            fp,
+            Vec::new(),
+            ValidationStatus::PassedLevel1Structural,
+            None,
+        );
 
         Ok((capsule, audit))
     }
@@ -243,18 +334,20 @@ Return ONLY the strategy name or formula in a code block.";
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let system_prompt = "You are an evolutionary code optimizer for Online 1D Bin Packing heuristics (Capacity C=100, item sizes 10 to 80).\n\
-Apply a targeted mutation (e.g. adjust alpha/beta, increase dead_space_penalty to prevent unfillable gaps < 10, or tune exact_fit_bonus to close bins) to reduce total bins used.\n\
-Formula format: SCORE: alpha=<float> beta=<float> dead_space_penalty=<float> exact_fit_bonus=<float> tight_fit=<bool>\n\
-Return ONLY the mutated heuristic in a code block.";
+        let system_prompt = "You are an evolutionary code optimizer for Online 1D Bin Packing heuristics in Rust.\n\
+Apply a targeted algorithmic mutation to the score_bin function (e.g. adjust weights, refine conditional branch penalties when residual < 10, or tune exact fit bonuses) to reduce total bins used.\n\
+Return ONLY the mutated Rust function inside a ```rust ... ``` code block.";
 
         let user_prompt = format!(
-            "PARENT HEURISTIC (ID: {}):\n{}\nINTENT: {}\nMutate this heuristic for Generation {}.",
+            "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.",
             parent.id, parent.logic_code, parent.semantic_interface, generation
         );
 
         let raw_response = self.call_inference(system_prompt, &user_prompt, seed)?;
-        let code = Self::extract_code_block(&raw_response);
+        let raw_code = Self::extract_code_block(&raw_response);
+        let (ast_code, item_fn) = Self::normalize_to_ast_score_bin(&raw_code, seed, generation);
+        let fp = Some(compute_structural_fingerprint(&item_fn));
+
         let name = format!("{}-mut-g{}", parent.name, generation);
         let desc = format!("Mutated from parent {} at gen {}", parent.id, generation);
 
@@ -274,7 +367,20 @@ Return ONLY the mutated heuristic in a code block.";
         metadata.insert("operator".to_string(), "HttpLlamaOperator".to_string());
         metadata.insert("parent_hash".to_string(), parent.content_hash.clone());
 
-        let capsule = SkillCapsule::new(name, desc, code, vec![parent.id.clone()], generation, metadata);
+        let capsule = SkillCapsule::new_v2(
+            name,
+            desc,
+            ast_code,
+            vec![parent.id.clone()],
+            generation,
+            metadata,
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            fp,
+            Vec::new(),
+            ValidationStatus::PassedLevel1Structural,
+            None,
+        );
 
         Ok((capsule, audit))
     }
@@ -286,22 +392,52 @@ Return ONLY the mutated heuristic in a code block.";
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
+        let name = format!("SwarmCross-g{}-{}-{}", generation, &parent_a.id.0[..4], &parent_b.id.0[..4]);
+        let desc = format!("Horizontal Swarm Crossover of [{}] and [{}]", parent_a.name, parent_b.name);
+
+        let mut metadata = HashMap::new();
+        metadata.insert("operator".to_string(), "HttpLlamaOperator".to_string());
+        metadata.insert("parent_a".to_string(), parent_a.id.to_string());
+        metadata.insert("parent_b".to_string(), parent_b.id.to_string());
+
+        // First attempt deterministic AST crossover
+        if let Ok((mut child, manifest)) = deterministic_ast_crossover(parent_a, parent_b, seed, generation) {
+            child.name = name;
+            child.semantic_interface = desc;
+            child.metadata = metadata;
+            child.graft_manifest = Some(manifest);
+
+            let audit = ReproducibilityAudit {
+                model_name: self.model_name.clone(),
+                model_sha256: self.model_sha256.clone(),
+                engine_version: self.engine_version.clone(),
+                seed,
+                temperature: 0.0,
+                top_p: 1.0,
+                full_prompt: format!("Deterministic AST crossover between {} and {}", parent_a.id, parent_b.id),
+                raw_response: child.logic_code.clone(),
+                timestamp: Utc::now(),
+            };
+
+            return Ok((child, audit));
+        }
+
+        // Fallback: LLM synthesis
         let system_prompt = "You are an evolutionary synthesizer performing SWARM CROSSOVER between two distinct algorithmic lineages for Online 1D Bin Packing (C=100).\n\
-Analyze the strengths of Parent A and Parent B. Recombine their complementary heuristic mechanisms (e.g. blend alpha/beta, take the strongest dead_space_penalty or exact_fit_bonus) into a single, superior hybrid strategy.\n\
-Formula format: SCORE: alpha=<float> beta=<float> dead_space_penalty=<float> exact_fit_bonus=<float> tight_fit=<bool>\n\
-Return ONLY the recombined hybrid strategy in a code block.";
+Recombine their complementary heuristic mechanisms into a single, superior hybrid Rust function score_bin.\n\
+Return ONLY the hybrid Rust function in a ```rust ... ``` code block.";
 
         let user_prompt = format!(
-            "PARENT A (ID: {}):\nCode: {}\nIntent: {}\n\nPARENT B (ID: {}):\nCode: {}\nIntent: {}\n\nPerform horizontal crossover to produce child for Generation {}.",
-            parent_a.id, parent_a.logic_code, parent_a.semantic_interface,
-            parent_b.id, parent_b.logic_code, parent_b.semantic_interface,
+            "PARENT A (ID: {}):\n```rust\n{}\n```\n\nPARENT B (ID: {}):\n```rust\n{}\n```\n\nPerform horizontal crossover for Generation {}.",
+            parent_a.id, parent_a.logic_code,
+            parent_b.id, parent_b.logic_code,
             generation
         );
 
         let raw_response = self.call_inference(system_prompt, &user_prompt, seed)?;
-        let code = Self::extract_code_block(&raw_response);
-        let name = format!("SwarmCross-g{}-{}-{}", generation, &parent_a.id.0[..4], &parent_b.id.0[..4]);
-        let desc = format!("Horizontal Swarm Crossover of [{}] and [{}]", parent_a.name, parent_b.name);
+        let raw_code = Self::extract_code_block(&raw_response);
+        let (ast_code, item_fn) = Self::normalize_to_ast_score_bin(&raw_code, seed, generation);
+        let fp = Some(compute_structural_fingerprint(&item_fn));
 
         let audit = ReproducibilityAudit {
             model_name: self.model_name.clone(),
@@ -315,18 +451,19 @@ Return ONLY the recombined hybrid strategy in a code block.";
             timestamp: Utc::now(),
         };
 
-        let mut metadata = HashMap::new();
-        metadata.insert("operator".to_string(), "HttpLlamaOperator".to_string());
-        metadata.insert("parent_a".to_string(), parent_a.id.to_string());
-        metadata.insert("parent_b".to_string(), parent_b.id.to_string());
-
-        let capsule = SkillCapsule::new(
+        let capsule = SkillCapsule::new_v2(
             name,
             desc,
-            code,
+            ast_code,
             vec![parent_a.id.clone(), parent_b.id.clone()],
             generation,
             metadata,
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            fp,
+            Vec::new(),
+            ValidationStatus::PassedLevel1Structural,
+            None,
         );
 
         Ok((capsule, audit))

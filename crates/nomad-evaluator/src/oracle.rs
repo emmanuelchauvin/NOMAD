@@ -189,9 +189,10 @@ impl OracleEvaluator {
 
         let mut sum_beta1 = 0.0f64;
         let mut sum_sigma_res = 0.0f64;
+        let mut sample_prefix_waste = Vec::new();
 
         for inst in &dataset.instances {
-            let (eval, behavior) = self.evaluate_single_instance(
+            let (eval, behavior, traj_metrics) = self.evaluate_single_instance(
                 inst,
                 &capsule.logic_code,
                 sandbox,
@@ -206,9 +207,12 @@ impl OracleEvaluator {
             total_theoretical += eval.theoretical_min_bins;
             total_fuel += eval.fuel_consumed;
             sum_efficiency += eval.efficiency_ratio();
-            sum_tldr += eval.tldr_score;
-            sum_beta1 += eval.tldr_score; // tracks trend
-            sum_sigma_res += 0.01;
+            sum_tldr += traj_metrics.tldr;
+            sum_beta1 += traj_metrics.beta1_slope;
+            sum_sigma_res += traj_metrics.sigma_res;
+            if sample_prefix_waste.is_empty() && !traj_metrics.prefix_waste.is_empty() {
+                sample_prefix_waste = traj_metrics.prefix_waste;
+            }
 
             sum_residual_var += behavior.residual_variance;
             sum_new_bin_ratio += behavior.new_bin_ratio;
@@ -237,11 +241,15 @@ impl OracleEvaluator {
             dead_space_ratio: sum_dead_space_ratio / n,
         };
 
+        let mean_tldr = if solved_instances > 0 { sum_tldr / n } else { 0.0 };
+        let mean_beta1 = if solved_instances > 0 { sum_beta1 / n } else { 0.0 };
+        let mean_sigma_res = if solved_instances > 0 { sum_sigma_res / n } else { 0.0 };
+
         let trajectory_metrics = TrajectoryMetrics {
-            beta1_slope: sum_beta1 / n,
-            sigma_res: sum_sigma_res / n,
-            tldr: sum_tldr / n,
-            prefix_waste: Vec::new(),
+            beta1_slope: mean_beta1,
+            sigma_res: mean_sigma_res,
+            tldr: mean_tldr,
+            prefix_waste: sample_prefix_waste,
         };
 
         BenchmarkScore {
@@ -254,7 +262,7 @@ impl OracleEvaluator {
             solved_instances,
             total_instances: dataset.instances.len(),
             behavior: mean_behavior,
-            tldr_score: sum_tldr / n,
+            tldr_score: mean_tldr,
             trajectory_metrics: Some(trajectory_metrics),
         }
     }
@@ -266,7 +274,7 @@ impl OracleEvaluator {
         logic_code: &str,
         sandbox: &dyn HeuristicSandbox,
         fuel_limit_per_call: u64,
-    ) -> (InstanceEvaluation, BehaviorDescriptor) {
+    ) -> (InstanceEvaluation, BehaviorDescriptor, TrajectoryMetrics) {
         let mut bin_levels: Vec<u32> = Vec::new();
         let mut total_fuel = 0u64;
         let mut trajectory = Vec::with_capacity(instance.items.len());
@@ -298,13 +306,14 @@ impl OracleEvaluator {
                                         fuel_consumed: total_fuel,
                                         error_message: Some(format!(
                                             "Invalid bin index {} for {} open bins",
-                                            idx,
+                                             idx,
                                             bin_levels.len()
                                         )),
                                         tldr_score: 0.0,
                                         trajectory: Vec::new(),
                                     },
                                     BehaviorDescriptor::default(),
+                                    TrajectoryMetrics::default(),
                                 );
                             }
                             if bin_levels[idx] + item > instance.capacity {
@@ -323,6 +332,7 @@ impl OracleEvaluator {
                                         trajectory: Vec::new(),
                                     },
                                     BehaviorDescriptor::default(),
+                                    TrajectoryMetrics::default(),
                                 );
                             }
                             bin_levels[idx] += item;
@@ -344,6 +354,7 @@ impl OracleEvaluator {
                                         trajectory: Vec::new(),
                                     },
                                     BehaviorDescriptor::default(),
+                                    TrajectoryMetrics::default(),
                                 );
                             }
                             bin_levels.push(item);
@@ -366,13 +377,14 @@ impl OracleEvaluator {
                             trajectory: Vec::new(),
                         },
                         BehaviorDescriptor::default(),
+                        TrajectoryMetrics::default(),
                     );
                 }
             }
         }
 
         let num_items = instance.items.len().max(1);
-        let (tldr_score, _traj_metrics) =
+        let (tldr_score, traj_metrics) =
             compute_trajectory_tldr(&instance.items, &trajectory, instance.capacity);
 
         // Calculate end-state behavioral descriptors
@@ -422,6 +434,7 @@ impl OracleEvaluator {
                 trajectory,
             },
             behavior,
+            traj_metrics,
         )
     }
 

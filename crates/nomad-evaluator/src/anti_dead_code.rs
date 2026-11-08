@@ -3,6 +3,7 @@ use nomad_core::{
 };
 use nomad_genome::{parse_score_bin, verify_level1_structural_survival};
 use nomad_sandbox::HeuristicSandbox;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::dataset::Dataset;
@@ -30,10 +31,29 @@ pub fn create_ablation_capsule(capsule: &SkillCapsule) -> Option<SkillCapsule> {
 
     // Construction de C_null en filtrant l'instruction associée au fragment greffé
     let mut null_fn = item_fn.clone();
+    let mut removed = false;
     null_fn.block.stmts.retain(|stmt| {
-        let code = quote::quote!(#stmt).to_string();
-        !code.contains(&manifest.grafted_fragment_hash[..8])
+        let code_repr = quote::quote!(#stmt).to_string();
+        let mut hasher = Sha256::new();
+        hasher.update(code_repr.as_bytes());
+        let hash = hex::encode(hasher.finalize());
+        if hash == manifest.grafted_fragment_hash {
+            removed = true;
+            false
+        } else {
+            true
+        }
     });
+
+    if !removed {
+        if let Some(idx_str) = manifest.host_locus.strip_prefix("body_stmt_index_") {
+            if let Ok(idx) = idx_str.parse::<usize>() {
+                if idx < null_fn.block.stmts.len() {
+                    null_fn.block.stmts.remove(idx);
+                }
+            }
+        }
+    }
 
     let null_code = quote::quote!(#null_fn).to_string();
     let null_name = format!("{}_null_ablation", capsule.name);
@@ -74,10 +94,19 @@ pub fn validate_anti_dead_code_3levels(
     fuel_limit: u64,
 ) -> Result<ValidationStatus, AntiDeadCodeEvalError> {
     // 1. Level 1: Structural verification
-    if let Err(e) = verify_level1_structural_survival(capsule) {
-        let status = ValidationStatus::Failed(format!("Level 1 Structural Failure: {}", e));
-        capsule.validation = status.clone();
-        return Err(AntiDeadCodeEvalError::Level1Failed(e.to_string()));
+    if capsule.graft_manifest.is_some() {
+        if let Err(e) = verify_level1_structural_survival(capsule) {
+            let status = ValidationStatus::Failed(format!("Level 1 Structural Failure: {}", e));
+            capsule.validation = status.clone();
+            return Err(AntiDeadCodeEvalError::Level1Failed(e.to_string()));
+        }
+    } else {
+        // Seeds & mutations: verify AST syntax and non-emptiness
+        if let Err(e) = parse_score_bin(&capsule.logic_code) {
+            let status = ValidationStatus::Failed(format!("Level 1 Structural Parse Failure: {}", e));
+            capsule.validation = status.clone();
+            return Err(AntiDeadCodeEvalError::Level1Failed(e.to_string()));
+        }
     }
     capsule.validation = ValidationStatus::PassedLevel1Structural;
 
@@ -115,6 +144,10 @@ pub fn validate_anti_dead_code_3levels(
             let status = ValidationStatus::PassedLevel3Behavioral;
             capsule.validation = status.clone();
             return Ok(status);
+        } else {
+            let status = ValidationStatus::Failed("Level 3 Behavioral Failure: neutral graft with no causal impact".to_string());
+            capsule.validation = status.clone();
+            return Err(AntiDeadCodeEvalError::Level3ZeroBehavioralDifference);
         }
     }
 

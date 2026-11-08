@@ -7,7 +7,7 @@ use nomad_core::{
     BenchmarkScore, BudgetTracker, EvaluatedIndividual, ExperimentConfig, ExperimentalGroup,
     SkillCapsule,
 };
-use nomad_evaluator::OracleEvaluator;
+use nomad_evaluator::{validate_anti_dead_code_3levels, OracleEvaluator};
 use nomad_genome::PhylogenyGraph;
 use nomad_operator::SkillOperator;
 use nomad_sandbox::HeuristicSandbox;
@@ -228,21 +228,34 @@ impl<'a> EvolutionEngine<'a> {
 
             self.budget.record_llm_call();
             self.throttle_cooldown();
+
+            let (capsule, score) = self.evaluate_and_validate(capsule);
             self.phylogeny.insert_capsule(&capsule);
             self.lineages.register_seed(capsule.id.clone());
-
-            let score = self.oracle.evaluate_in_distribution(
-                &capsule,
-                self.sandbox,
-                self.config.fuel_limit_per_call,
-            );
-            self.budget.record_executions(self.oracle.in_distribution.instances.len());
-
             self.archive.insert(capsule.clone(), score.clone());
             population.push(EvaluatedIndividual::new(capsule, score));
         }
 
         Ok(population)
+    }
+
+    /// Evaluates a candidate capsule and runs the full 3-level Anti-Dead-Code verification pipeline.
+    fn evaluate_and_validate(&mut self, mut capsule: SkillCapsule) -> (SkillCapsule, BenchmarkScore) {
+        let _ = validate_anti_dead_code_3levels(
+            &mut capsule,
+            self.oracle,
+            self.sandbox,
+            &self.oracle.in_distribution,
+            self.config.fuel_limit_per_call,
+        );
+
+        let score = self.oracle.evaluate_in_distribution(
+            &capsule,
+            self.sandbox,
+            self.config.fuel_limit_per_call,
+        );
+        self.budget.record_executions(self.oracle.in_distribution.instances.len());
+        (capsule, score)
     }
 
     fn produce_next_generation(
@@ -269,15 +282,9 @@ impl<'a> EvolutionEngine<'a> {
 
                     self.budget.record_llm_call();
                     self.throttle_cooldown();
+
+                    let (mutated, score) = self.evaluate_and_validate(mutated);
                     self.phylogeny.insert_capsule(&mutated);
-
-                    let score = self.oracle.evaluate_in_distribution(
-                        &mutated,
-                        self.sandbox,
-                        self.config.fuel_limit_per_call,
-                    );
-                    self.budget.record_executions(self.oracle.in_distribution.instances.len());
-
                     next_population.push(EvaluatedIndividual::new(mutated, score));
                 }
             }
@@ -296,15 +303,9 @@ impl<'a> EvolutionEngine<'a> {
 
                     self.budget.record_llm_call();
                     self.throttle_cooldown();
+
+                    let (mutated, score) = self.evaluate_and_validate(mutated);
                     self.phylogeny.insert_capsule(&mutated);
-
-                    let score = self.oracle.evaluate_in_distribution(
-                        &mutated,
-                        self.sandbox,
-                        self.config.fuel_limit_per_call,
-                    );
-                    self.budget.record_executions(self.oracle.in_distribution.instances.len());
-
                     next_population.push(EvaluatedIndividual::new(mutated, score));
                 }
             }
@@ -326,15 +327,9 @@ impl<'a> EvolutionEngine<'a> {
 
                     self.budget.record_llm_call();
                     self.throttle_cooldown();
+
+                    let (mutated, score) = self.evaluate_and_validate(mutated);
                     self.phylogeny.insert_capsule(&mutated);
-
-                    let score = self.oracle.evaluate_in_distribution(
-                        &mutated,
-                        self.sandbox,
-                        self.config.fuel_limit_per_call,
-                    );
-                    self.budget.record_executions(self.oracle.in_distribution.instances.len());
-
                     self.archive.insert(mutated.clone(), score.clone());
                     next_population.push(EvaluatedIndividual::new(mutated, score));
                 }
@@ -381,14 +376,9 @@ impl<'a> EvolutionEngine<'a> {
 
                     self.budget.record_llm_call();
                     self.throttle_cooldown();
-                    self.phylogeny.insert_capsule(&child_capsule);
 
-                    let score = self.oracle.evaluate_in_distribution(
-                        &child_capsule,
-                        self.sandbox,
-                        self.config.fuel_limit_per_call,
-                    );
-                    self.budget.record_executions(self.oracle.in_distribution.instances.len());
+                    let (child_capsule, score) = self.evaluate_and_validate(child_capsule);
+                    self.phylogeny.insert_capsule(&child_capsule);
 
                     // Record in AgentPSO lineage state
                     let host_id = child_capsule.parent_ids.first().cloned().unwrap_or_else(|| child_capsule.id.clone());

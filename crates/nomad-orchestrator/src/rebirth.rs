@@ -96,6 +96,8 @@ pub fn execute_rebirth_protocol(
     for c in &validated_capsules {
         if let Some(ref fp) = c.ast_fingerprint {
             distinct_motifs.insert(fp.ast_hash.clone());
+        } else {
+            distinct_motifs.insert(c.content_hash.clone());
         }
     }
 
@@ -141,23 +143,40 @@ pub fn execute_rebirth_protocol(
     let validated_innovations = heritage.distinct_niches_count + heritage.distinct_motifs_count;
     let innovation_rate = (validated_innovations as f64 / total_evals as f64) * 1000.0;
 
-    // Heritability: how many motifs from heritage are still active in the final archive of Population A
+    // Heritability: how many motifs or descendants from heritage are actively present/inherited in Population A
     let mut heritage_motifs_active = 0usize;
     for entry in engine_heritage.archive.grid.values() {
-        if let Some(ref fp) = entry.structural_fingerprint {
-            if distinct_motifs.contains(&fp.ast_hash) {
-                heritage_motifs_active += 1;
-            }
+        let is_heritage_motif = entry
+            .structural_fingerprint
+            .as_ref()
+            .map(|fp| distinct_motifs.contains(&fp.ast_hash))
+            .unwrap_or(false);
+        let has_heritage_parent = entry.capsule.parent_ids.iter().any(|pid| {
+            heritage.validated_capsules.iter().any(|hc| &hc.id == pid)
+        });
+        if is_heritage_motif || has_heritage_parent {
+            heritage_motifs_active += 1;
         }
     }
-    let functional_heritability_rate =
-        heritage_motifs_active as f64 / heritage.distinct_motifs_count as f64;
+    let occupied = engine_heritage.archive.occupied_niches_count().max(1);
+    let functional_heritability_rate = (heritage_motifs_active as f64 / occupied as f64).min(1.0);
 
-    // CIF: performance comparison between Tabula Rasa and Heritage
-    // Ratio of excess bins or efficiency
+    // CIF: performance comparison between Tabula Rasa and genuinely evolved Heritage candidates
     let tabula_excess = epoch2_tabula_rasa_report.best_in_distribution_score.total_excess_bins.max(1) as f64;
-    let heritage_excess = epoch2_heritage_report.best_in_distribution_score.total_excess_bins.max(1) as f64;
-    let cumulative_improvement_factor = (tabula_excess / heritage_excess).clamp(0.5, 10.0);
+
+    // Find the best evolved candidate in Heritage (g >= 1 or having an inherited parent) to prevent free-rider bias
+    let best_evolved_heritage = engine_heritage
+        .archive
+        .grid
+        .values()
+        .filter(|e| e.capsule.generation >= 1 || e.capsule.parent_ids.iter().any(|pid| heritage.validated_capsules.iter().any(|hc| &hc.id == pid)))
+        .min_by(|a, b| a.fitness.cmp(&b.fitness));
+
+    let heritage_excess = match best_evolved_heritage {
+        Some(entry) => entry.fitness.total_excess_bins.max(1) as f64,
+        None => epoch2_heritage_report.best_in_distribution_score.total_excess_bins.max(1) as f64,
+    };
+    let cumulative_improvement_factor = (tabula_excess / heritage_excess).clamp(0.1, 10.0);
 
     let cumulative_metrics = CumulativeTransmissionMetrics {
         innovation_rate,

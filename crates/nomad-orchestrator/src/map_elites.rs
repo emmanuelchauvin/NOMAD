@@ -79,12 +79,13 @@ impl MapElitesArchive {
     /// Projette le vecteur de comportement continu d'une heuristique dans les indices
     /// discrets (x, y) de la grille de niches.
     pub fn coord_for_behavior(&self, b: &BehaviorDescriptor) -> (usize, usize) {
-        // Axe X : Dead space ratio normalisé sur l'intervalle [0.0, 0.40]
-        let norm_x = (b.dead_space_ratio / 0.40).clamp(0.0, 0.999);
+        // Axe X : Dead space ratio normalisé sur l'intervalle effectif [0.0, 0.60]
+        let norm_x = (b.dead_space_ratio / 0.60).clamp(0.0, 0.999);
         let x = (norm_x * self.dim_x as f64).floor() as usize;
 
-        // Axe Y : New bin ratio normalisé sur l'intervalle [0.10, 0.60]
-        let norm_y = ((b.new_bin_ratio - 0.10) / 0.50).clamp(0.0, 0.999);
+        // Axe Y : New bin ratio normalisé sur son domaine physique effectif [0.45, 0.60]
+        // (Pour N=50, C=100 et items U(10, 80), new_bin_ratio oscille naturellement entre 0.46 et 0.58)
+        let norm_y = ((b.new_bin_ratio - 0.45) / 0.15).clamp(0.0, 0.999);
         let y = (norm_y * self.dim_y as f64).floor() as usize;
 
         (x.min(self.dim_x - 1), y.min(self.dim_y - 1))
