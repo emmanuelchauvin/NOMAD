@@ -383,6 +383,7 @@ mod tests {
 
         let ctx_large = ScorePolicyContext {
             item_size: 20,
+            next_item_size: 0,
             bin_residual: 25,
             bin_capacity: 100,
             step_index: 0,
