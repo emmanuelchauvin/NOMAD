@@ -257,19 +257,24 @@ fn main() -> Result<()> {
             println!(" Active Occupied Niches: {} ({:.1}% Coverage)", report.archive.occupied_niches_count(), report.archive.coverage() * 100.0);
             println!(" QD-Score : {:.3}", report.archive.qd_score());
             println!("------------------------------------------------------------");
-            println!("{:<10} {:<12} {:<12} {:<12} {:<18} {}", "Niche", "DeadSpace", "NewBinRatio", "BinsUsed", "Capsule ID", "Name");
+            println!("{:<10} {:<14} {:<14} {:<12} {:<18} {}", "Niche", "DeadSpace/Imb", "NewBin/ResVar", "UnitsUsed", "Capsule ID", "Name");
             println!("------------------------------------------------------------");
 
             let mut entries: Vec<_> = report.archive.grid.values().collect();
             entries.sort_by_key(|e| e.niche_coord);
 
             for e in entries {
+                let y_val = if e.behavior.residual_variance > 0.0 {
+                    e.behavior.residual_variance
+                } else {
+                    e.behavior.new_bin_ratio
+                };
                 println!(
-                    "({:>2},{:>2})     {:<12.3} {:<12.3} {:<12} {:<18} {}",
+                    "({:>2},{:>2})     {:<14.3} {:<14.3} {:<12} {:<18} {}",
                     e.niche_coord.0,
                     e.niche_coord.1,
                     e.behavior.dead_space_ratio,
-                    e.behavior.new_bin_ratio,
+                    y_val,
                     e.fitness.total_bins,
                     e.capsule.id.0,
                     e.capsule.name
