@@ -1,0 +1,57 @@
+name: NOMAD Continuous Integration
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Build & Test Workspace (Rust 2021)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Cargo Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Workspace Compilation Check
+        run: cargo check --workspace
+
+      - name: Run Full Test Suite (20 Tests)
+        run: cargo test --workspace --verbose
+
+      - name: Verify CLI Dataset Integrity (Bin Packing & Cloud Scheduling)
+        run: |
+          cargo run --release --bin nomad -- dataset --domain bin-packing
+          cargo run --release --bin nomad -- dataset --domain scheduling
+
+      - name: Verify Classical Baselines
+        run: |
+          cargo run --release --bin nomad -- baseline --domain bin-packing
+          cargo run --release --bin nomad -- baseline --domain scheduling
+
+      - name: Verify Evolutionary Simulation (Mock Operator)
+        run: |
+          cargo run --release --bin nomad -- run --domain scheduling --operator mock --pop-size 4 -n 2 --group c
+          cargo run --release --bin nomad -- rebirth --domain bin-packing --operator mock --pop-size 4 -n 2
