@@ -195,7 +195,7 @@ impl PhylogenyGraph {
 
         for idx in self.graph.node_indices() {
             let node = &self.graph[idx];
-            let clean_id = node.id.0.replace('-', "_");
+            let clean_id = format!("node_{}", node.id.0.replace('-', "_"));
             let style_suffix = if node.is_crossover {
                 ":::crossover"
             } else if node.generation == 0 {
@@ -203,16 +203,17 @@ impl PhylogenyGraph {
             } else {
                 ":::mutation"
             };
+            let safe_name = node.name.replace('"', "").replace('<', "").replace('>', "");
             mermaid.push_str(&format!(
-                "    {}[\"{}\n(Gen {})\"{}]\n",
-                clean_id, node.name, node.generation, style_suffix
+                "    {}[\"{}<br/>(Gen {})\"]{}\n",
+                clean_id, safe_name, node.generation, style_suffix
             ));
         }
 
         for edge_idx in self.graph.edge_indices() {
             if let Some((source_idx, target_idx)) = self.graph.edge_endpoints(edge_idx) {
-                let source = &self.graph[source_idx].id.0.replace('-', "_");
-                let target = &self.graph[target_idx].id.0.replace('-', "_");
+                let source = format!("node_{}", self.graph[source_idx].id.0.replace('-', "_"));
+                let target = format!("node_{}", self.graph[target_idx].id.0.replace('-', "_"));
                 let edge_weight = &self.graph[edge_idx];
 
                 let label = match edge_weight {
@@ -229,9 +230,9 @@ impl PhylogenyGraph {
             }
         }
 
-        mermaid.push_str("    classDef root fill:#3b82f6,stroke:#1d4ed8,color:#fff\n");
-        mermaid.push_str("    classDef mutation fill:#10b981,stroke:#047857,color:#fff\n");
-        mermaid.push_str("    classDef crossover fill:#8b5cf6,stroke:#6d28d9,color:#fff\n");
+        mermaid.push_str("    classDef root fill:#1e40af,stroke:#3b82f6,stroke-width:2px,color:#fff\n");
+        mermaid.push_str("    classDef mutation fill:#065f46,stroke:#10b981,stroke-width:2px,color:#fff\n");
+        mermaid.push_str("    classDef crossover fill:#5b21b6,stroke:#8b5cf6,stroke-width:2px,color:#fff\n");
 
         mermaid
     }

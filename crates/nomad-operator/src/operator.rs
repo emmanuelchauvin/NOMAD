@@ -4,7 +4,12 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
 
-use nomad_core::SkillCapsule;
+use nomad_core::{
+    PolicyKind, SkillCapsule, ValidationStatus,
+};
+use nomad_genome::{
+    compute_structural_fingerprint, deterministic_ast_crossover, parse_score_bin,
+};
 use crate::meta::ReproducibilityAudit;
 
 #[derive(Debug, Error)]
@@ -55,7 +60,7 @@ impl Default for DeterministicMockOperator {
         Self {
             model_name: "Mock-NOMAD-Darwin-7B".to_string(),
             model_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
-            engine_version: "nomad-mock-v1.0".to_string(),
+            engine_version: "nomad-mock-v2.0".to_string(),
         }
     }
 }
@@ -67,12 +72,22 @@ impl SkillOperator for DeterministicMockOperator {
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let variants = [
-            ("BEST_FIT", "Standard best fit minimizing remaining capacity"),
-            ("FIRST_FIT", "Classical greedy first fit"),
-            ("HARMONIC", "Harmonic partitioning heuristic separating large and small items"),
-            ("WORST_FIT", "Spreading heuristic placing in emptiest bin"),
-            ("SCORE: alpha=1.0 beta=0.0 tight_fit=true", "Linear remaining capacity penalty"),
-            ("SCORE: alpha=1.2 beta=0.3 tight_fit=true", "Tight fit with waste margin"),
+            (
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}",
+                "Best Fit linear remaining capacity baseline",
+            ),
+            (
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual < 10 {\n        score = score + 95.0;\n    }\n    score\n}",
+                "Best Fit with dead space penalty (< 10)",
+            ),
+            (
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == 0 {\n        score = score - 50.0;\n    }\n    score\n}",
+                "Best Fit with exact closure bonus",
+            ),
+            (
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64 * 1.25;\n    score\n}",
+                "Scaled tightness scoring",
+            ),
         ];
 
         let mut rng = ChaCha8Rng::seed_from_u64(seed ^ (index as u64));
@@ -97,13 +112,22 @@ impl SkillOperator for DeterministicMockOperator {
         metadata.insert("operator".to_string(), "DeterministicMockOperator".to_string());
         metadata.insert("initial_seed".to_string(), seed.to_string());
 
-        let capsule = SkillCapsule::new(
+        let parsed_fn = parse_score_bin(code).ok();
+        let fp = parsed_fn.as_ref().map(compute_structural_fingerprint);
+
+        let capsule = SkillCapsule::new_v2(
             name,
             desc,
             code,
             vec![],
             0,
             metadata,
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            fp,
+            Vec::new(),
+            ValidationStatus::PassedLevel1Structural,
+            None,
         );
 
         Ok((capsule, audit))
@@ -116,23 +140,25 @@ impl SkillOperator for DeterministicMockOperator {
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
-        let delta_alpha: f64 = rng.gen_range(-0.25..0.25);
-        let delta_beta: f64 = rng.gen_range(-0.15..0.15);
+        let penalty_val: f64 = rng.gen_range(50.0..120.0);
 
-        let new_code = if parent.logic_code.contains("SCORE") {
-            format!(
-                "SCORE: alpha={:.3} beta={:.3} tight_fit=true",
-                (1.0 + delta_alpha).clamp(0.1, 5.0),
-                (0.2 + delta_beta).clamp(0.0, 2.0)
-            )
-        } else if parent.logic_code.contains("FIRST_FIT") {
-            "SCORE: alpha=0.8 beta=0.4 tight_fit=true".to_string()
+        let new_code = if parent.logic_code.contains("score_bin") {
+            if parent.logic_code.contains("bin_residual < 10") {
+                parent.logic_code.replace("95.0", &format!("{:.1}", penalty_val))
+            } else {
+                // Introduce dead space conditional branch
+                format!(
+                    "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
+                    penalty_val
+                )
+            }
         } else {
-            "SCORE: alpha=1.15 beta=0.15 tight_fit=true".to_string()
+            // Legacy fallback
+            format!("SCORE: alpha={:.3} beta=0.2 dead_space_penalty={:.1} tight_fit=true", 1.0 + rng.gen_range(-0.1..0.1), penalty_val)
         };
 
         let name = format!("{}-mut-g{}", parent.name, generation);
-        let desc = format!("Mutated from parent {} with adjusted parameters", parent.id);
+        let desc = format!("Mutated from parent {} with targeted parameter or condition tuning", parent.id);
 
         let prompt = format!(
             "SYSTEM: Mutate heuristic code to improve packing efficiency.\nPARENT CODE: {}\nPARENT ID: {}",
@@ -155,13 +181,22 @@ impl SkillOperator for DeterministicMockOperator {
         metadata.insert("mutation_seed".to_string(), seed.to_string());
         metadata.insert("parent_hash".to_string(), parent.content_hash.clone());
 
-        let capsule = SkillCapsule::new(
+        let parsed_fn = parse_score_bin(&new_code).ok();
+        let fp = parsed_fn.as_ref().map(compute_structural_fingerprint);
+
+        let capsule = SkillCapsule::new_v2(
             name,
             desc,
             new_code,
             vec![parent.id.clone()],
             generation,
             metadata,
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            fp,
+            Vec::new(),
+            ValidationStatus::PassedLevel1Structural,
+            None,
         );
 
         Ok((capsule, audit))
@@ -174,19 +209,32 @@ impl SkillOperator for DeterministicMockOperator {
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let mut rng = ChaCha8Rng::seed_from_u64(seed);
-        let blend_ratio: f64 = rng.gen_range(0.3..0.7);
+        // Attempt deterministic AST crossover first if both parents have parseable score_bin
+        if parent_a.logic_code.contains("score_bin") && parent_b.logic_code.contains("score_bin") {
+            if let Ok((child, manifest)) = deterministic_ast_crossover(parent_a, parent_b, seed, generation) {
+                let audit = ReproducibilityAudit {
+                    model_name: self.model_name.clone(),
+                    model_sha256: self.model_sha256.clone(),
+                    engine_version: self.engine_version.clone(),
+                    seed,
+                    temperature: 0.0,
+                    top_p: 1.0,
+                    full_prompt: format!("Deterministic AST crossover: host={}, donor={}", parent_a.id, parent_b.id),
+                    raw_response: child.logic_code.clone(),
+                    timestamp: Utc::now(),
+                };
+                let mut child_with_manifest = child;
+                child_with_manifest.graft_manifest = Some(manifest);
+                return Ok((child_with_manifest, audit));
+            }
+        }
 
-        // Swarm Crossover: recombines semantic intentions and algorithmic heuristics
+        // Fallback for hybrid or legacy
         let recombined_code = format!(
-            "// Recombination of {} and {}\nSCORE: alpha={:.3} beta={:.3} tight_fit=true",
-            parent_a.id,
-            parent_b.id,
-            1.0 + 0.3 * blend_ratio,
-            0.15 + 0.2 * (1.0 - blend_ratio)
+            "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual < 10 {{\n        score = score + 95.0;\n    }}\n    score\n}}"
         );
 
-        let name = format!("SwarmCross-g{}-{}-{}", generation, &parent_a.id.0[..4], &parent_b.id.0[..4]);
+        let name = format!("SwarmCross-g{}-{}-{}", generation, &parent_a.id.0[..4.min(parent_a.id.0.len())], &parent_b.id.0[..4.min(parent_b.id.0.len())]);
         let desc = format!(
             "Horizontal Swarm Crossover combining [{}] and [{}]",
             parent_a.semantic_interface, parent_b.semantic_interface
@@ -214,13 +262,22 @@ impl SkillOperator for DeterministicMockOperator {
         metadata.insert("parent_a".to_string(), parent_a.id.to_string());
         metadata.insert("parent_b".to_string(), parent_b.id.to_string());
 
-        let capsule = SkillCapsule::new(
+        let parsed_fn = parse_score_bin(&recombined_code).ok();
+        let fp = parsed_fn.as_ref().map(compute_structural_fingerprint);
+
+        let capsule = SkillCapsule::new_v2(
             name,
             desc,
             recombined_code,
             vec![parent_a.id.clone(), parent_b.id.clone()],
             generation,
             metadata,
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            fp,
+            Vec::new(),
+            ValidationStatus::PassedLevel1Structural,
+            None,
         );
 
         Ok((capsule, audit))

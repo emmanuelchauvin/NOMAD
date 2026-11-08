@@ -2,9 +2,11 @@
 
 pub mod dataset;
 pub mod oracle;
+pub mod anti_dead_code;
 
 pub use dataset::*;
 pub use oracle::*;
+pub use anti_dead_code::*;
 
 #[cfg(test)]
 mod tests {

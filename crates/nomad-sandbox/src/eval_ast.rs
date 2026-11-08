@@ -1,0 +1,372 @@
+use std::collections::HashMap;
+use syn::{BinOp, Expr, ExprBinary, ExprCast, ExprIf, ExprLit, ExprParen, ExprPath, ExprUnary, ItemFn, Lit, Local, Pat, PatIdent, Stmt, UnOp};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum EvalError {
+    #[error("Parse error: {0}")]
+    ParseError(String),
+    #[error("Undefined variable: {0}")]
+    UndefinedVariable(String),
+    #[error("Fuel limit exceeded during AST interpretation")]
+    FuelExceeded,
+    #[error("Unsupported AST expression: {0}")]
+    UnsupportedExpr(String),
+}
+
+/// ============================================================================
+/// ScorePolicyContext : Contexte d'Évaluation d'un Placement de Bac
+/// ============================================================================
+/// Données d'état instantanées fournies à l'AST `score_bin` pour scorer un bac spécifique.
+#[derive(Debug, Clone, Copy)]
+pub struct ScorePolicyContext {
+    /// Taille de l'objet courant en cours de placement.
+    pub item_size: u32,
+    /// Espace résiduel actuel du bac candidat.
+    pub bin_residual: u32,
+    /// Capacité maximale théorique du bac (ex: 100).
+    pub bin_capacity: u32,
+    /// Indice séquentiel de l'objet dans la séquence.
+    pub step_index: usize,
+    /// Nombre total d'objets dans l'instance.
+    pub total_items: usize,
+    /// Nombre de bacs ouverts à cet instant.
+    pub open_bins_count: usize,
+    /// Moyenne d'espace résiduel des bacs ouverts.
+    pub mean_residual: f64,
+}
+
+/// ============================================================================
+/// AstEvalOutcome : Résultat d'Exécution et Profil d'Interprétation
+/// ============================================================================
+/// Bilan d'une exécution de `score_bin` renvoyant le score, le fuel consommé
+/// et les statistiques d'activation des branches.
+#[derive(Debug, Clone)]
+pub struct AstEvalOutcome {
+    /// Score numérique attribué au bac (le bac ayant le score minimal ou maximal est choisi).
+    pub score: f64,
+    /// Unités de fuel logique consommées lors de l'évaluation (protection anti-boucle infinie).
+    pub fuel_consumed: u64,
+    /// Nombre de branches conditionnelles (`if`) empruntées.
+    pub branches_taken: usize,
+    /// Nombre de modifications apportées à la variable de score.
+    pub score_mutations: usize,
+}
+
+/// ============================================================================
+/// AstInterpreter : Interpréteur Déterministe d'AST Rust avec Comptage de Fuel
+/// ============================================================================
+/// Exécute de façon sécurisée et isolée une fonction `score_bin` représentée
+/// sous forme d'AST `syn::ItemFn` sans risque de blocage ou d'accès hôte non autorisé.
+pub struct AstInterpreter<'a> {
+    item_fn: &'a ItemFn,
+    fuel_limit: u64,
+}
+
+impl<'a> AstInterpreter<'a> {
+    /// Initialise l'interpréteur avec la fonction AST et un plafond strict de fuel.
+    pub fn new(item_fn: &'a ItemFn, fuel_limit: u64) -> Self {
+        Self {
+            item_fn,
+            fuel_limit,
+        }
+    }
+
+    /// ========================================================================
+    /// eval : Algorithme d'Interprétation Séquentielle de `score_bin`
+    /// ========================================================================
+    /// 1. Initialise la table des symboles locaux avec les 7 arguments canoniques.
+    /// 2. Parcourt séquentiellement chaque statement du bloc de code :
+    ///    - Déclaration de variables locales (`let mut score = ...`).
+    ///    - Évaluation des conditions de branchement (`if ... { ... }`).
+    ///    - Affectations et opérations arithmétiques (+, -, *, /).
+    /// 3. Décrémente le budget de fuel à chaque instruction visitée.
+    /// 4. Renvoie le score final calculé et les métriques d'exécution.
+    pub fn eval(&self, ctx: &ScorePolicyContext) -> Result<AstEvalOutcome, EvalError> {
+        let mut vars = HashMap::new();
+        vars.insert("item_size".to_string(), ctx.item_size as f64);
+        vars.insert("bin_residual".to_string(), ctx.bin_residual as f64);
+        vars.insert("bin_capacity".to_string(), ctx.bin_capacity as f64);
+        vars.insert("step_index".to_string(), ctx.step_index as f64);
+        vars.insert("total_items".to_string(), ctx.total_items as f64);
+        vars.insert("open_bins_count".to_string(), ctx.open_bins_count as f64);
+        vars.insert("mean_residual".to_string(), ctx.mean_residual);
+
+        let mut fuel_consumed = 0u64;
+        let mut branches_taken = 0usize;
+        let mut score_mutations = 0usize;
+
+        let mut return_val = None;
+
+        for stmt in &self.item_fn.block.stmts {
+            fuel_consumed += 5;
+            if fuel_consumed > self.fuel_limit {
+                return Err(EvalError::FuelExceeded);
+            }
+
+            match stmt {
+                Stmt::Local(Local {
+                    pat,
+                    init: Some(local_init),
+                    ..
+                }) => {
+                    let ident = match pat {
+                        Pat::Ident(PatIdent { ident, .. }) => ident.to_string(),
+                        _ => "local_var".to_string(),
+                    };
+                    let val = self.eval_expr(
+                        &local_init.expr,
+                        &mut vars,
+                        &mut fuel_consumed,
+                        &mut branches_taken,
+                        &mut score_mutations,
+                    )?;
+                    vars.insert(ident, val);
+                }
+                Stmt::Expr(expr, semi) => {
+                    let val = self.eval_expr(
+                        expr,
+                        &mut vars,
+                        &mut fuel_consumed,
+                        &mut branches_taken,
+                        &mut score_mutations,
+                    )?;
+                    if semi.is_none() {
+                        return_val = Some(val);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let final_score = return_val
+            .or_else(|| vars.get("score").copied())
+            .unwrap_or(ctx.bin_residual as f64);
+
+        Ok(AstEvalOutcome {
+            score: final_score,
+            fuel_consumed,
+            branches_taken,
+            score_mutations,
+        })
+    }
+
+    fn eval_expr(
+        &self,
+        expr: &Expr,
+        vars: &mut HashMap<String, f64>,
+        fuel: &mut u64,
+        branches: &mut usize,
+        mutations: &mut usize,
+    ) -> Result<f64, EvalError> {
+        *fuel += 2;
+        if *fuel > self.fuel_limit {
+            return Err(EvalError::FuelExceeded);
+        }
+
+        match expr {
+            Expr::Lit(ExprLit { lit, .. }) => match lit {
+                Lit::Float(f) => f
+                    .base10_parse::<f64>()
+                    .map_err(|e| EvalError::ParseError(e.to_string())),
+                Lit::Int(i) => i
+                    .base10_parse::<f64>()
+                    .map_err(|e| EvalError::ParseError(e.to_string())),
+                Lit::Bool(b) => Ok(if b.value { 1.0 } else { 0.0 }),
+                _ => Ok(0.0),
+            },
+            Expr::Path(ExprPath { path, .. }) => {
+                if let Some(ident) = path.get_ident() {
+                    let name = ident.to_string();
+                    if let Some(&v) = vars.get(&name) {
+                        Ok(v)
+                    } else if name == "true" {
+                        Ok(1.0)
+                    } else if name == "false" {
+                        Ok(0.0)
+                    } else {
+                        // Default undefined helper variables to 0.0
+                        Ok(0.0)
+                    }
+                } else {
+                    Ok(0.0)
+                }
+            }
+            Expr::Cast(ExprCast { expr, .. }) => {
+                self.eval_expr(expr, vars, fuel, branches, mutations)
+            }
+            Expr::Paren(ExprParen { expr, .. }) => {
+                self.eval_expr(expr, vars, fuel, branches, mutations)
+            }
+            Expr::Unary(ExprUnary { op, expr, .. }) => {
+                let val = self.eval_expr(expr, vars, fuel, branches, mutations)?;
+                match op {
+                    UnOp::Neg(_) => Ok(-val),
+                    UnOp::Not(_) => Ok(if val == 0.0 { 1.0 } else { 0.0 }),
+                    _ => Ok(val),
+                }
+            }
+            Expr::Binary(ExprBinary {
+                left, op, right, ..
+            }) => {
+                let l = self.eval_expr(left, vars, fuel, branches, mutations)?;
+                let r = self.eval_expr(right, vars, fuel, branches, mutations)?;
+                match op {
+                    BinOp::Add(_) => Ok(l + r),
+                    BinOp::Sub(_) => Ok(l - r),
+                    BinOp::Mul(_) => Ok(l * r),
+                    BinOp::Div(_) => {
+                        if r != 0.0 {
+                            Ok(l / r)
+                        } else {
+                            Ok(0.0)
+                        }
+                    }
+                    BinOp::Rem(_) => {
+                        if r != 0.0 {
+                            Ok(l % r)
+                        } else {
+                            Ok(0.0)
+                        }
+                    }
+                    BinOp::Lt(_) => Ok(if l < r { 1.0 } else { 0.0 }),
+                    BinOp::Le(_) => Ok(if l <= r { 1.0 } else { 0.0 }),
+                    BinOp::Gt(_) => Ok(if l > r { 1.0 } else { 0.0 }),
+                    BinOp::Ge(_) => Ok(if l >= r { 1.0 } else { 0.0 }),
+                    BinOp::Eq(_) => Ok(if (l - r).abs() < 1e-6 { 1.0 } else { 0.0 }),
+                    BinOp::Ne(_) => Ok(if (l - r).abs() >= 1e-6 { 1.0 } else { 0.0 }),
+                    BinOp::And(_) => Ok(if l != 0.0 && r != 0.0 { 1.0 } else { 0.0 }),
+                    BinOp::Or(_) => Ok(if l != 0.0 || r != 0.0 { 1.0 } else { 0.0 }),
+                    // syn 2.0 compound assignments are handled in Expr::Binary when enabled or Expr::Assign
+                    _ => Ok(0.0),
+                }
+            }
+            Expr::If(ExprIf {
+                cond,
+                then_branch,
+                else_branch,
+                ..
+            }) => {
+                let condition_met =
+                    self.eval_expr(cond, vars, fuel, branches, mutations)? != 0.0;
+                if condition_met {
+                    *branches += 1;
+                    let mut last_val = 0.0;
+                    for stmt in &then_branch.stmts {
+                        match stmt {
+                            Stmt::Local(Local {
+                                pat,
+                                init: Some(init),
+                                ..
+                            }) => {
+                                let ident = match pat {
+                                    Pat::Ident(PatIdent { ident, .. }) => ident.to_string(),
+                                    _ => "local".to_string(),
+                                };
+                                let v = self.eval_expr(
+                                    &init.expr,
+                                    vars,
+                                    fuel,
+                                    branches,
+                                    mutations,
+                                )?;
+                                vars.insert(ident, v);
+                            }
+                            Stmt::Expr(e, _) => {
+                                last_val = self.eval_expr(e, vars, fuel, branches, mutations)?;
+                            }
+                            _ => {}
+                        }
+                    }
+                    Ok(last_val)
+                } else if let Some((_, else_expr)) = else_branch {
+                    self.eval_expr(else_expr, vars, fuel, branches, mutations)
+                } else {
+                    Ok(0.0)
+                }
+            }
+            Expr::Assign(assign) => {
+                let r = self.eval_expr(&assign.right, vars, fuel, branches, mutations)?;
+                if let Expr::Path(ExprPath { path, .. }) = &*assign.left {
+                    if let Some(ident) = path.get_ident() {
+                        let name = ident.to_string();
+                        if name == "score" {
+                            *mutations += 1;
+                        }
+                        vars.insert(name, r);
+                    }
+                }
+                Ok(r)
+            }
+            Expr::Block(block) => {
+                let mut last = 0.0;
+                for stmt in &block.block.stmts {
+                    if let Stmt::Expr(e, _) = stmt {
+                        last = self.eval_expr(e, vars, fuel, branches, mutations)?;
+                    }
+                }
+                Ok(last)
+            }
+            _ => Ok(0.0),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ast_interpreter_basic() {
+        let code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let mut score = bin_residual as f64;
+            if bin_residual < 10 {
+                score = score + 100.0;
+            }
+            score
+        }
+        "#;
+
+        let item_fn: ItemFn = syn::parse_str(code).unwrap();
+        let interpreter = AstInterpreter::new(&item_fn, 50_000);
+
+        let ctx_small = ScorePolicyContext {
+            item_size: 20,
+            bin_residual: 5,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 50,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+        };
+
+        let outcome = interpreter.eval(&ctx_small).unwrap();
+        assert_eq!(outcome.score, 105.0); // 5.0 + 100.0
+        assert_eq!(outcome.branches_taken, 1);
+        assert_eq!(outcome.score_mutations, 1);
+
+        let ctx_large = ScorePolicyContext {
+            item_size: 20,
+            bin_residual: 25,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 50,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+        };
+
+        let outcome_large = interpreter.eval(&ctx_large).unwrap();
+        assert_eq!(outcome_large.score, 25.0);
+        assert_eq!(outcome_large.branches_taken, 0);
+    }
+}
+

@@ -65,10 +65,17 @@ enum Commands {
     /// Display system positioning, hypotheses H1/H2, and Ollama connection status.
     Info,
 
+    /// Inspect Quality-Diversity MAP-Elites niches from a run report.
+    Archive {
+        /// Path to the JSON run report file (defaults to run_report.json).
+        #[arg(short, long, default_value = "run_report.json")]
+        input: PathBuf,
+    },
+
     /// Export or visualize the phylogenetic DAG from a run report file.
     Graph {
         /// Path to the JSON run report file produced by `nomad run --output <file>`.
-        #[arg(short, long)]
+        #[arg(short, long, default_value = "run_report.json")]
         input: PathBuf,
 
         /// Format for visualization: mermaid, dot, or html.
@@ -90,6 +97,30 @@ enum Commands {
     Baseline {
         #[arg(short, long, default_value_t = 42)]
         seed: u64,
+    },
+
+    /// Run the "Mort et Renaissance" protocol: Epoch 1 -> Extinction -> Epoch 2 (Heritage vs Tabula Rasa).
+    Rebirth {
+        #[arg(short, long, default_value_t = 42)]
+        seed: u64,
+
+        #[arg(short, long, default_value_t = 6)]
+        pop_size: usize,
+
+        #[arg(short = 'n', long, default_value_t = 3)]
+        generations: usize,
+
+        #[arg(long, value_enum, default_value_t = OperatorArg::Mock)]
+        operator: OperatorArg,
+
+        #[arg(long, default_value = "http://localhost:11434/v1/chat/completions")]
+        ollama_url: String,
+
+        #[arg(long, default_value = "qwen2.5-coder:7b")]
+        model: String,
+
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 
     /// Run an evolutionary trial for a specific group.
@@ -119,8 +150,8 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         cooldown_ms: u64,
 
-        #[arg(short, long)]
-        output: Option<PathBuf>,
+        #[arg(short, long, default_value = "run_report.json")]
+        output: PathBuf,
     },
 
     /// Run pre-registered comparative experiment between Group C (Swarm) and Group D (Mutation only).
@@ -177,6 +208,45 @@ fn main() -> Result<()> {
             println!("============================================================");
         }
 
+        Commands::Archive { input } => {
+            if !input.exists() {
+                eprintln!(
+                    "Rapport introuvable: {}. Lancez d'abord une simulation via:\n  cargo run --release --bin nomad -- run --operator ollama\n(ou fournissez le chemin via --input <fichier.json>)",
+                    input.display()
+                );
+                return Ok(());
+            }
+            let content = std::fs::read_to_string(&input)?;
+            let report: nomad_orchestrator::ExperimentRunReport = serde_json::from_str(&content)
+                .map_err(|e| anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e))?;
+
+            println!("============================================================");
+            println!(" MAP-Elites Archive Inspection : {}", report.group.name());
+            println!(" Total Niches Defined : {} x {}", report.archive.dim_x, report.archive.dim_y);
+            println!(" Active Occupied Niches: {} ({:.1}% Coverage)", report.archive.occupied_niches_count(), report.archive.coverage() * 100.0);
+            println!(" QD-Score : {:.3}", report.archive.qd_score());
+            println!("------------------------------------------------------------");
+            println!("{:<10} {:<12} {:<12} {:<12} {:<18} {}", "Niche", "DeadSpace", "NewBinRatio", "BinsUsed", "Capsule ID", "Name");
+            println!("------------------------------------------------------------");
+
+            let mut entries: Vec<_> = report.archive.grid.values().collect();
+            entries.sort_by_key(|e| e.niche_coord);
+
+            for e in entries {
+                println!(
+                    "({:>2},{:>2})     {:<12.3} {:<12.3} {:<12} {:<18} {}",
+                    e.niche_coord.0,
+                    e.niche_coord.1,
+                    e.behavior.dead_space_ratio,
+                    e.behavior.new_bin_ratio,
+                    e.fitness.total_bins,
+                    e.capsule.id.0,
+                    e.capsule.name
+                );
+            }
+            println!("============================================================");
+        }
+
         Commands::Graph {
             input,
             format,
@@ -201,33 +271,388 @@ fn main() -> Result<()> {
                     let mermaid_code = report.phylogeny.to_mermaid();
                     format!(
                         r#"<!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>NOMAD Phylogeny Tree - {}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOMAD Phylogeny Tree - {0}</title>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
+    * {{
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }}
     body {{
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 20px;
-      background: #0f172a;
+      background: #0b0f19;
       color: #f8fafc;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }}
-    h1 {{ color: #38bdf8; }}
-    .meta {{ margin-bottom: 20px; color: #94a3b8; }}
-    .mermaid {{ background: #1e293b; padding: 20px; border-radius: 8px; }}
+    header {{
+      background: #111827;
+      border-bottom: 1px solid #1f2937;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }}
+    .title-group h1 {{
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    .meta-pills {{
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }}
+    .meta-pills span {{
+      background: #1f2937;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #374151;
+    }}
+    .meta-pills strong {{
+      color: #e2e8f0;
+    }}
+    .toolbar {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }}
+    .btn-group {{
+      display: flex;
+      background: #1f2937;
+      border-radius: 8px;
+      padding: 2px;
+      border: 1px solid #374151;
+    }}
+    button {{
+      background: transparent;
+      border: none;
+      color: #f1f5f9;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s, color 0.15s;
+    }}
+    button:hover {{
+      background: #374151;
+      color: #38bdf8;
+    }}
+    .zoom-display {{
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      min-width: 52px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }}
+    .legend {{
+      display: flex;
+      gap: 12px;
+      font-size: 0.8rem;
+      align-items: center;
+      background: #1e293b;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+    }}
+    .legend-item {{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }}
+    .legend-dot {{
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }}
+    .dot-root {{ background: #3b82f6; border: 1px solid #1d4ed8; }}
+    .dot-mutation {{ background: #10b981; border: 1px solid #047857; }}
+    .dot-crossover {{ background: #8b5cf6; border: 1px solid #6d28d9; }}
+    
+    #viewport {{
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(#1e293b 1px, transparent 1px);
+      background-size: 24px 24px;
+      cursor: grab;
+      user-select: none;
+    }}
+    #viewport:active {{
+      cursor: grabbing;
+    }}
+    #canvas {{
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      will-change: transform;
+    }}
+    /* UNCONSTRAINED SVG RENDERING: Explicit natural dimensions ensure no squashing */
+    #canvas svg {{
+      display: block;
+      user-select: none;
+    }}
+    .hint {{
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid #334155;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+    }}
+    #loading {{
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.1rem;
+      color: #38bdf8;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }}
   </style>
 </head>
 <body>
-  <h1>NOMAD Phylogenetic Lineage DAG</h1>
-  <div class="meta">
-    Group: <strong>{}</strong> | Seed: <strong>{}</strong> | Nodes: <strong>{}</strong> | Transitions: <strong>{}</strong>
+  <header>
+    <div class="title-group">
+      <h1>🧬 NOMAD Phylogenetic Lineage DAG</h1>
+      <div class="meta-pills">
+        <span>Groupe : <strong>{1}</strong></span>
+        <span>Seed : <strong>{2}</strong></span>
+        <span>Nœuds : <strong>{3}</strong></span>
+        <span>Transitions : <strong>{4}</strong></span>
+        <span>Champion : <strong>{0}</strong></span>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot dot-root"></div> Racine (Gen 0)</div>
+        <div class="legend-item"><div class="legend-dot dot-mutation"></div> Mutation</div>
+        <div class="legend-item"><div class="legend-dot dot-crossover"></div> Swarm Crossover</div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-dir" title="Basculer entre l'orientation de haut en bas (TD) et de gauche à droite (LR)">⇄ <span id="dir-label">Orientation : LR</span></button>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-zoom-out" title="Zoom Arrière (-)">−</button>
+        <div class="zoom-display" id="zoom-val">100%</div>
+        <button id="btn-zoom-in" title="Zoom Avant (+)">+</button>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-fit" title="Ajuster à la taille de l'écran">⛶ Ajuster</button>
+        <button id="btn-reset" title="Réinitialiser l'échelle à 100%">⟲ 1:1</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="viewport">
+    <div id="loading">Chargement et tracé du graphe génétique...</div>
+    <div id="canvas"></div>
+    <div class="hint">💡 Molette souris pour Zoomer • Cliquer-Glisser pour Déplacer l'arbre</div>
   </div>
-  <pre class="mermaid">
-{}
-  </pre>
+
   <script>
-    mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});
+    const rawMermaidTemplate = `{5}`;
+    let currentDirection = "LR"; // Default to Left-to-Right for optimal phylogenetic tree readability
+
+    let scale = 1.0;
+    let panX = 40;
+    let panY = 40;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('canvas');
+    const loading = document.getElementById('loading');
+    const zoomVal = document.getElementById('zoom-val');
+    const dirLabel = document.getElementById('dir-label');
+
+    function updateTransform() {{
+      canvas.style.transform = `translate(${{panX}}px, ${{panY}}px) scale(${{scale}})`;
+      zoomVal.textContent = `${{Math.round(scale * 100)}}%`;
+    }}
+
+    viewport.addEventListener('mousedown', (e) => {{
+      if (e.button !== 0) return;
+      isDragging = true;
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+    }});
+
+    window.addEventListener('mousemove', (e) => {{
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      updateTransform();
+    }});
+
+    window.addEventListener('mouseup', () => {{
+      isDragging = false;
+    }});
+
+    viewport.addEventListener('wheel', (e) => {{
+      e.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+      const newScale = Math.min(Math.max(scale * zoomFactor, 0.05), 8.0);
+
+      panX = mouseX - (mouseX - panX) * (newScale / scale);
+      panY = mouseY - (mouseY - panY) * (newScale / scale);
+      scale = newScale;
+
+      updateTransform();
+    }}, {{ passive: false }});
+
+    document.getElementById('btn-zoom-in').addEventListener('click', () => {{
+      const rect = viewport.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const newScale = Math.min(scale * 1.25, 8.0);
+      panX = centerX - (centerX - panX) * (newScale / scale);
+      panY = centerY - (centerY - panY) * (newScale / scale);
+      scale = newScale;
+      updateTransform();
+    }});
+
+    document.getElementById('btn-zoom-out').addEventListener('click', () => {{
+      const rect = viewport.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const newScale = Math.max(scale / 1.25, 0.05);
+      panX = centerX - (centerX - panX) * (newScale / scale);
+      panY = centerY - (centerY - panY) * (newScale / scale);
+      scale = newScale;
+      updateTransform();
+    }});
+
+    document.getElementById('btn-reset').addEventListener('click', () => {{
+      scale = 1.0;
+      panX = 60;
+      panY = 60;
+      updateTransform();
+    }});
+
+    function fitGraph() {{
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      
+      const vb = svg.viewBox ? svg.viewBox.baseVal : null;
+      const naturalWidth = (vb && vb.width > 0) ? vb.width : (parseFloat(svg.getAttribute('width')) || 2000);
+      const naturalHeight = (vb && vb.height > 0) ? vb.height : (parseFloat(svg.getAttribute('height')) || 1500);
+
+      const vRect = viewport.getBoundingClientRect();
+      const pad = 60;
+      const availW = Math.max(vRect.width - pad * 2, 200);
+      const availH = Math.max(vRect.height - pad * 2, 200);
+
+      const scaleX = availW / naturalWidth;
+      const scaleY = availH / naturalHeight;
+      scale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.05), 1.0);
+
+      panX = Math.round((vRect.width - naturalWidth * scale) / 2);
+      panY = Math.round((vRect.height - naturalHeight * scale) / 2);
+      updateTransform();
+    }}
+
+    document.getElementById('btn-fit').addEventListener('click', fitGraph);
+
+    document.getElementById('btn-dir').addEventListener('click', () => {{
+      currentDirection = (currentDirection === "LR") ? "TD" : "LR";
+      dirLabel.textContent = `Orientation : ${{currentDirection}}`;
+      renderGraph();
+    }});
+
+    async function renderGraph() {{
+      loading.style.display = 'flex';
+      let code = rawMermaidTemplate;
+      if (currentDirection === "LR") {{
+        code = code.replace(/^graph TD/m, 'graph LR');
+      }} else {{
+        code = code.replace(/^graph LR/m, 'graph TD');
+      }}
+
+      try {{
+        mermaid.initialize({{
+          startOnLoad: false,
+          theme: 'dark',
+          securityLevel: 'loose',
+          flowchart: {{
+            curve: 'basis',
+            nodeSpacing: 45,
+            rankSpacing: 60,
+            useMaxWidth: false,
+            htmlLabels: true
+          }}
+        }});
+        
+        canvas.innerHTML = '';
+        const id = 'svg-' + Date.now();
+        const {{ svg }} = await mermaid.render(id, code);
+        canvas.innerHTML = svg;
+
+        // Force SVG to keep its exact unconstrained natural layout dimensions
+        const svgEl = canvas.querySelector('svg');
+        if (svgEl) {{
+          const vb = svgEl.viewBox ? svgEl.viewBox.baseVal : null;
+          const naturalW = (vb && vb.width > 0) ? vb.width : (parseFloat(svgEl.getAttribute('width')) || 2500);
+          const naturalH = (vb && vb.height > 0) ? vb.height : (parseFloat(svgEl.getAttribute('height')) || 2000);
+
+          svgEl.removeAttribute('style');
+          svgEl.setAttribute('width', naturalW);
+          svgEl.setAttribute('height', naturalH);
+          svgEl.style.width = naturalW + 'px';
+          svgEl.style.height = naturalH + 'px';
+          svgEl.style.maxWidth = 'none';
+          svgEl.style.display = 'block';
+        }}
+
+        loading.style.display = 'none';
+        fitGraph();
+      }} catch (err) {{
+        loading.textContent = 'Erreur lors du rendu du graphe: ' + err.message;
+        console.error(err);
+      }}
+    }}
+
+    // Initial render
+    renderGraph();
   </script>
 </body>
 </html>"#,
@@ -297,6 +722,92 @@ fn main() -> Result<()> {
             }
         }
 
+        Commands::Rebirth {
+            seed,
+            pop_size,
+            generations,
+            operator,
+            ollama_url,
+            model,
+            output,
+        } => {
+            let mut config = ExperimentConfig::default();
+            config.rng_seed = seed;
+            config.population_size = pop_size;
+            config.max_generations = generations;
+
+            let oracle = OracleEvaluator::new(seed);
+            let sandbox = DeterministicSandbox::new();
+
+            let op_instance: Box<dyn SkillOperator> = match operator {
+                OperatorArg::Mock => Box::new(DeterministicMockOperator::default()),
+                OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
+                    ollama_url,
+                    model,
+                    "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+                    "Ollama API (Qwen 2.5 Coder 7B)",
+                    0.7,
+                    0.95,
+                )),
+            };
+
+            let rebirth_report = nomad_orchestrator::execute_rebirth_protocol(
+                config,
+                &oracle,
+                &sandbox,
+                op_instance.as_ref(),
+            )?;
+
+            println!("\n============================================================");
+            println!(" Protocol: MORT ET RENAISSANCE (Section 7.3 & 8.5)");
+            println!("============================================================");
+            println!(
+                " Époque 1 (Genèse)     : Best Bins: {} (eff: {:.2}%), Niches: {}",
+                rebirth_report.epoch1_genesis.best_in_distribution_score.total_bins,
+                rebirth_report.epoch1_genesis.best_in_distribution_score.mean_efficiency * 100.0,
+                rebirth_report.heritage.distinct_niches_count
+            );
+            println!(
+                " Patrimoine Transmis   : {} capsules validées, {} motifs distincts",
+                rebirth_report.heritage.validated_capsules.len(),
+                rebirth_report.heritage.distinct_motifs_count
+            );
+            println!("------------------------------------------------------------");
+            println!(
+                " Époque 2 (Héritière)  : Best Bins: {} (excess: +{}), Eff: {:.2}%",
+                rebirth_report.epoch2_heritage.best_in_distribution_score.total_bins,
+                rebirth_report.epoch2_heritage.best_in_distribution_score.total_excess_bins,
+                rebirth_report.epoch2_heritage.best_in_distribution_score.mean_efficiency * 100.0
+            );
+            println!(
+                " Époque 2 (Tabula Rasa): Best Bins: {} (excess: +{}), Eff: {:.2}%",
+                rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.total_bins,
+                rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.total_excess_bins,
+                rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.mean_efficiency * 100.0
+            );
+            println!("------------------------------------------------------------");
+            println!(
+                " Cumulative Improvement Factor (CIF) : {:.3}x",
+                rebirth_report.cumulative_metrics.cumulative_improvement_factor
+            );
+            println!(
+                " Functional Heritability Rate (R_herit): {:.1}%",
+                rebirth_report.cumulative_metrics.functional_heritability_rate * 100.0
+            );
+            println!(
+                " Innovation Rate (R_innov)             : {:.3} per 1000 evals",
+                rebirth_report.cumulative_metrics.innovation_rate
+            );
+            println!("============================================================");
+
+            if let Some(path) = output {
+                let serialized = serde_json::to_string_pretty(&rebirth_report)?;
+                let mut file = File::create(&path)?;
+                file.write_all(serialized.as_bytes())?;
+                println!("Rebirth report written to {}", path.display());
+            }
+        }
+
         Commands::Run {
             group,
             seed,
@@ -346,6 +857,22 @@ fn main() -> Result<()> {
                 report.best_in_distribution_score.total_fuel
             );
             println!(
+                " Dynamic Trajectory: tLDR = {:.4}",
+                report.best_in_distribution_score.tldr_score
+            );
+            println!(
+                " Behavior Profile : DeadSpaceRatio: {:.1}%, NewBinRatio: {:.1}%, ResVar: {:.2}",
+                report.best_in_distribution_score.behavior.dead_space_ratio * 100.0,
+                report.best_in_distribution_score.behavior.new_bin_ratio * 100.0,
+                report.best_in_distribution_score.behavior.residual_variance
+            );
+            println!(
+                " MAP-Elites Niches: {} active ({:.1}% coverage), QD-Score: {:.3}",
+                report.archive.occupied_niches_count(),
+                report.archive.coverage() * 100.0,
+                report.archive.qd_score()
+            );
+            println!(
                 " OOD-1 Score      : {} bins (excess: +{}), Efficiency: {:.2}%",
                 report.best_ood1_score.total_bins,
                 report.best_ood1_score.total_excess_bins,
@@ -362,12 +889,10 @@ fn main() -> Result<()> {
             println!(" Logic Code       : {}", report.best_capsule.logic_code);
             println!("============================================================");
 
-            if let Some(path) = output {
-                let serialized = serde_json::to_string_pretty(&report)?;
-                let mut file = File::create(&path)?;
-                file.write_all(serialized.as_bytes())?;
-                println!("Report written to {}", path.display());
-            }
+            let serialized = serde_json::to_string_pretty(&report)?;
+            let mut file = File::create(&output)?;
+            file.write_all(serialized.as_bytes())?;
+            println!("Report written to {}", output.display());
         }
 
         Commands::Compare {

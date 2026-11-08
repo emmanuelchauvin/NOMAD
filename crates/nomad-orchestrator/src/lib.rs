@@ -2,9 +2,15 @@
 
 pub mod error;
 pub mod engine;
+pub mod map_elites;
+pub mod pso;
+pub mod rebirth;
 
 pub use error::*;
 pub use engine::*;
+pub use map_elites::*;
+pub use pso::*;
+pub use rebirth::*;
 
 #[cfg(test)]
 mod tests {

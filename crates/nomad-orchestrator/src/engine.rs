@@ -1,4 +1,4 @@
-use rand::{seq::SliceRandom, SeedableRng};
+use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -13,6 +13,8 @@ use nomad_operator::SkillOperator;
 use nomad_sandbox::HeuristicSandbox;
 
 use crate::error::OrchestratorError;
+use crate::map_elites::MapElitesArchive;
+use crate::pso::LineageManager;
 
 /// Recorded statistics for a single generation in the evolutionary run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +27,12 @@ pub struct GenerationRecord {
     pub best_capsule_name: String,
     pub llm_calls_consumed: usize,
     pub executions_consumed: usize,
+    #[serde(default)]
+    pub qd_score: f64,
+    #[serde(default)]
+    pub archive_coverage: f64,
+    #[serde(default)]
+    pub occupied_niches: usize,
 }
 
 /// The complete final output of an experimental run for scientific analysis.
@@ -43,9 +51,21 @@ pub struct ExperimentRunReport {
     pub total_lineage_edges: usize,
     #[serde(default)]
     pub phylogeny: PhylogenyGraph,
+    #[serde(default)]
+    pub archive: MapElitesArchive,
 }
 
-/// The core NOMAD Evolutionary Engine.
+/// ============================================================================
+/// EvolutionEngine : Moteur d'Évolution et d'Orchestration NOMAD
+/// ============================================================================
+/// Coordonne le cycle de vie complet de l'essaim d'organismes :
+/// - Initialisation des graines par le LLM ou le mock.
+/// - Évaluation souveraine par l'Oracle dans le Sandbox isolé.
+/// - Insertion dans l'archive Quality-Diversity MAP-Elites et compétition locale.
+/// - Sélection des parents par curiosité UCB.
+/// - Appariement complémentaire AgentPSO.
+/// - Reproduction via Crossover AST ou Mutation avec validation Anti-Dead-Code.
+/// - Traçabilité dans le graphe phylogénétique.
 pub struct EvolutionEngine<'a> {
     pub config: ExperimentConfig,
     pub oracle: &'a OracleEvaluator,
@@ -53,9 +73,12 @@ pub struct EvolutionEngine<'a> {
     pub operator: &'a dyn SkillOperator,
     pub phylogeny: PhylogenyGraph,
     pub budget: BudgetTracker,
+    pub archive: MapElitesArchive,
+    pub lineages: LineageManager,
 }
 
 impl<'a> EvolutionEngine<'a> {
+    /// Initialise le moteur avec la configuration, l'oracle, le sandbox et l'opérateur de code.
     pub fn new(
         config: ExperimentConfig,
         oracle: &'a OracleEvaluator,
@@ -69,6 +92,8 @@ impl<'a> EvolutionEngine<'a> {
             operator,
             phylogeny: PhylogenyGraph::new(),
             budget: BudgetTracker::default(),
+            archive: MapElitesArchive::new(10, 10),
+            lineages: LineageManager::new(),
         }
     }
 
@@ -78,7 +103,17 @@ impl<'a> EvolutionEngine<'a> {
         }
     }
 
-    /// Executes the full evolutionary protocol for the configured group.
+    /// ========================================================================
+    /// execute_run : Algorithme Principal de la Boucle Évolutionnaire
+    /// ========================================================================
+    /// 1. Initialise la population ancestrale (Gen 0) et peuple l'archive.
+    /// 2. Pour chaque génération de 1 à max_generations :
+    ///    - Contrôle les budgets CPU et LLM.
+    ///    - Classe la population et met à jour le champion global.
+    ///    - Calcule le QD-Score et la couverture de niches de l'archive.
+    ///    - Produit la génération suivante via `produce_next_generation`.
+    /// 3. Évalue indépendamment le grand vainqueur sur les benchmarks OOD-1 et OOD-2.
+    /// 4. Compile et renvoie le rapport complet `ExperimentRunReport`.
     pub fn execute_run(&mut self) -> Result<ExperimentRunReport, OrchestratorError> {
         info!(
             "Starting NOMAD Experiment: Group={:?}, Seed={}, Pop={}, MaxGens={}",
@@ -119,6 +154,10 @@ impl<'a> EvolutionEngine<'a> {
                 best_overall = Some(top_individual.clone());
             }
 
+            let qd_score = self.archive.qd_score();
+            let archive_coverage = self.archive.coverage();
+            let occupied_niches = self.archive.occupied_niches_count();
+
             let record = GenerationRecord {
                 generation: gen,
                 best_bins: top_individual.in_distribution_score.total_bins,
@@ -128,6 +167,9 @@ impl<'a> EvolutionEngine<'a> {
                 best_capsule_name: top_individual.capsule.name.clone(),
                 llm_calls_consumed: self.budget.llm_calls_consumed,
                 executions_consumed: self.budget.executions_consumed,
+                qd_score,
+                archive_coverage,
+                occupied_niches,
             };
             generation_records.push(record);
 
@@ -167,6 +209,7 @@ impl<'a> EvolutionEngine<'a> {
             total_lineage_nodes: self.phylogeny.node_count(),
             total_lineage_edges: self.phylogeny.edge_count(),
             phylogeny: self.phylogeny.clone(),
+            archive: self.archive.clone(),
         })
     }
 
@@ -186,6 +229,7 @@ impl<'a> EvolutionEngine<'a> {
             self.budget.record_llm_call();
             self.throttle_cooldown();
             self.phylogeny.insert_capsule(&capsule);
+            self.lineages.register_seed(capsule.id.clone());
 
             let score = self.oracle.evaluate_in_distribution(
                 &capsule,
@@ -194,6 +238,7 @@ impl<'a> EvolutionEngine<'a> {
             );
             self.budget.record_executions(self.oracle.in_distribution.instances.len());
 
+            self.archive.insert(capsule.clone(), score.clone());
             population.push(EvaluatedIndividual::new(capsule, score));
         }
 
@@ -265,20 +310,18 @@ impl<'a> EvolutionEngine<'a> {
             }
 
             ExperimentalGroup::GroupD => {
-                // Group D: Evolutionary selection top 20%, reproduction by MUTATION ONLY
-                let elite_count = ((pop_size as f64) * self.config.elite_selection_ratio).ceil() as usize;
-                let elite_pool = &current_pop[..elite_count.max(1)];
-
-                // Elitism: carry over the best directly
-                next_population.push(elite_pool[0].clone());
+                // Group D: Evolutionary selection with MAP-Elites niche selection, MUTATION ONLY
+                let elite = self.archive.best_elite().map(|e| e.capsule.clone()).unwrap_or_else(|| current_pop[0].capsule.clone());
+                let elite_score = self.archive.best_elite().map(|e| e.fitness.clone()).unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
+                next_population.push(EvaluatedIndividual::new(elite, elite_score));
 
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
-                    let parent = elite_pool.choose(rng).unwrap();
+                    let parent = self.archive.select_parent_ucb(rng).unwrap_or_else(|| current_pop[0].capsule.clone());
                     let seed = rand::Rng::gen(rng);
 
                     let (mutated, _) = self
                         .operator
-                        .mutate(&parent.capsule, next_gen_idx, seed)
+                        .mutate(&parent, next_gen_idx, seed)
                         .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
                     self.budget.record_llm_call();
@@ -292,38 +335,47 @@ impl<'a> EvolutionEngine<'a> {
                     );
                     self.budget.record_executions(self.oracle.in_distribution.instances.len());
 
+                    self.archive.insert(mutated.clone(), score.clone());
                     next_population.push(EvaluatedIndividual::new(mutated, score));
                 }
             }
 
             ExperimentalGroup::GroupC => {
-                // Group C (NOMAD Swarm): Selection top 20%, reproduction via Mutation + Swarm Crossover
-                let elite_count = ((pop_size as f64) * self.config.elite_selection_ratio).ceil() as usize;
-                let elite_pool = &current_pop[..elite_count.max(2)];
-
-                // Elitism: preserve top individual
-                next_population.push(elite_pool[0].clone());
+                // Group C (NOMAD V2 Swarm): Quality-Diversity MAP-Elites + AgentPSO Swarm Crossover
+                if let Some(elite) = self.archive.best_elite() {
+                    next_population.push(EvaluatedIndividual::new(elite.capsule.clone(), elite.fitness.clone()));
+                } else {
+                    next_population.push(current_pop[0].clone());
+                }
 
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
                     let seed = rand::Rng::gen(rng);
-                    let should_crossover = rand::Rng::gen_bool(rng, 0.50) && elite_pool.len() >= 2;
+                    let should_crossover = rand::Rng::gen_bool(rng, 0.60) && self.archive.occupied_niches_count() >= 2;
 
                     let (child_capsule, _) = if should_crossover {
-                        // Pick two distinct parents from the elite pool
-                        let parent_a = elite_pool.choose(rng).unwrap();
-                        let mut parent_b = elite_pool.choose(rng).unwrap();
-                        while parent_a.capsule.id == parent_b.capsule.id && elite_pool.len() > 1 {
-                            parent_b = elite_pool.choose(rng).unwrap();
-                        }
+                        // 1. Quality-Diversity Parent A Selection via UCB curiosity
+                        let parent_a = self.archive.select_parent_ucb(rng)
+                            .unwrap_or_else(|| current_pop[0].capsule.clone());
+
+                        let parent_a_score = self.archive.grid.values()
+                            .find(|e| e.capsule.id == parent_a.id)
+                            .map(|e| e.fitness.clone())
+                            .unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
+
+                        // 2. AgentPSO Directed Partner Selection for complementary traits
+                        let parent_b = self.archive.select_complementary_partner(&parent_a, &parent_a_score, rng)
+                            .unwrap_or_else(|| current_pop[0].capsule.clone());
 
                         self.operator
-                            .crossover(&parent_a.capsule, &parent_b.capsule, next_gen_idx, seed)
+                            .crossover(&parent_a, &parent_b, next_gen_idx, seed)
                             .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
                     } else {
-                        // Mutation
-                        let parent = elite_pool.choose(rng).unwrap();
+                        // Mutation from a UCB-selected parent
+                        let parent = self.archive.select_parent_ucb(rng)
+                            .unwrap_or_else(|| current_pop[0].capsule.clone());
+
                         self.operator
-                            .mutate(&parent.capsule, next_gen_idx, seed)
+                            .mutate(&parent, next_gen_idx, seed)
                             .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
                     };
 
@@ -337,6 +389,26 @@ impl<'a> EvolutionEngine<'a> {
                         self.config.fuel_limit_per_call,
                     );
                     self.budget.record_executions(self.oracle.in_distribution.instances.len());
+
+                    // Record in AgentPSO lineage state
+                    let host_id = child_capsule.parent_ids.first().cloned().unwrap_or_else(|| child_capsule.id.clone());
+                    let partner_id = child_capsule.parent_ids.get(1).cloned();
+                    let is_improved = if let Some(elite) = self.archive.best_elite() {
+                        score < elite.fitness
+                    } else {
+                        true
+                    };
+
+                    self.lineages.record_evolution(
+                        child_capsule.id.clone(),
+                        &host_id,
+                        partner_id,
+                        child_capsule.semantic_interface.clone(),
+                        is_improved,
+                    );
+
+                    // Local niche competition in MAP-Elites
+                    self.archive.insert(child_capsule.clone(), score.clone());
 
                     next_population.push(EvaluatedIndividual::new(child_capsule, score));
                 }

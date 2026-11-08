@@ -2,9 +2,11 @@
 
 pub mod error;
 pub mod engine;
+pub mod eval_ast;
 
 pub use error::*;
 pub use engine::*;
+pub use eval_ast::*;
 
 #[cfg(test)]
 mod tests {

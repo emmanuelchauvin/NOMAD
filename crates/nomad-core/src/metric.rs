@@ -1,23 +1,41 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use crate::capsule::SkillCapsule;
+use crate::types::BehaviorDescriptor;
 
-/// Detailed outcome of evaluating a heuristic on a single bin packing instance.
+/// ============================================================================
+/// InstanceEvaluation : Évaluation Détaillée d'une Instance Unique
+/// ============================================================================
+/// Résultat complet de l'exécution séquentielle d'une heuristique sur un problème donné.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InstanceEvaluation {
+    /// Nom ou identifiant de l'instance évaluée.
     pub instance_name: String,
+    /// Validité de l'exécution (sans dépassement de capacité ni panic).
     pub is_valid: bool,
+    /// Nombre total de bacs utilisés par l'algorithme.
     pub bins_used: usize,
+    /// Borne inférieure théorique (volumétrique Martello-Toth).
     pub theoretical_min_bins: usize,
+    /// Quantité totale de fuel (instructions logiques) consommée.
     pub fuel_consumed: u64,
+    /// Message d'erreur explicite en cas d'échec ou d'invalidité.
     pub error_message: Option<String>,
+    /// Score expérimental de décroissance de Lyapunov (tLDR) sur cette instance.
+    #[serde(default)]
+    pub tldr_score: f64,
+    /// Historique pas-à-pas du nombre de bacs ouverts [B(1), B(2), ..., B(N)].
+    #[serde(default)]
+    pub trajectory: Vec<usize>,
 }
 
 impl InstanceEvaluation {
+    /// Calcule le nombre de bacs excédentaires au-dessus de l'optimum théorique.
     pub fn excess_bins(&self) -> usize {
         self.bins_used.saturating_sub(self.theoretical_min_bins)
     }
 
+    /// Calcule le ratio d'efficacité de compaction (théorique / utilisé).
     pub fn efficiency_ratio(&self) -> f64 {
         if self.bins_used == 0 {
             0.0
@@ -27,24 +45,72 @@ impl InstanceEvaluation {
     }
 }
 
-/// Aggregated benchmark score across an entire dataset (e.g., In-Distribution or OOD).
+/// ============================================================================
+/// BenchmarkScore : Score Agrégé sur un Jeu de Données Complet
+/// ============================================================================
+/// Mesure de performance globale agrégée sur un ensemble d'instances de test
+/// (In-Distribution d'entraînement, OOD-1 échelle ou OOD-2 décalage de distribution).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BenchmarkScore {
-    /// Overall validity: true if ALL test instances executed successfully without violation.
+    /// Validité globale : vraie uniquement si TOUTES les instances ont réussi sans violation.
     pub is_valid: bool,
-    /// Total bins used across all instances in the dataset (primary metric to minimize).
+    /// Nombre total de bacs utilisés sur l'ensemble du dataset (critère principal à minimiser).
     pub total_bins: usize,
-    /// Total theoretical lower bound bins across instances.
+    /// Somme des bornes inférieures théoriques sur le dataset.
     pub total_theoretical_min_bins: usize,
-    /// Total excess bins above theoretical optimum.
+    /// Total des bacs excédentaires au-dessus de l'optimum théorique.
     pub total_excess_bins: usize,
-    /// Average packing efficiency ratio (higher is better, 1.0 = perfect packing).
+    /// Efficacité moyenne de compaction (1.0 = compaction parfaite sans aucun déchet).
     pub mean_efficiency: f64,
-    /// Total computational fuel/gas consumed (secondary tie-breaker metric).
+    /// Consommation totale de fuel logique (critère secondaire de départage).
     pub total_fuel: u64,
-    /// Number of successfully solved instances out of total.
+    /// Nombre d'instances résolues avec succès.
     pub solved_instances: usize,
+    /// Nombre total d'instances du dataset.
     pub total_instances: usize,
+    /// Descripteur comportemental agrégé pour la projection dans la grille MAP-Elites.
+    #[serde(default)]
+    pub behavior: BehaviorDescriptor,
+    /// Score moyen de dynamique temporelle tLDR (Trajectory-aware Lyapunov Decay Rate).
+    #[serde(default)]
+    pub tldr_score: f64,
+    /// Paramètres détaillés de la régression linéaire du tLDR.
+    #[serde(default)]
+    pub trajectory_metrics: Option<TrajectoryMetrics>,
+}
+
+/// ============================================================================
+/// TrajectoryMetrics : Paramètres de la Régression Dynamique tLDR (Section 6.5)
+/// ============================================================================
+/// Détail mathématique de l'ajustement linéaire du potentiel d'espace résiduel :
+/// y(t) = ln(V(t) + epsilon) régression sur le temps normalisé tau = t / N.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct TrajectoryMetrics {
+    /// Pente de régression beta_1 (une pente fortement négative indique une compaction rapide).
+    pub beta1_slope: f64,
+    /// Écart-type des résidus sigma_res (mesure de la régularité du processus d'insertion).
+    pub sigma_res: f64,
+    /// Score combiné : tLDR = -beta_1 - 0.5 * sigma_res.
+    pub tldr: f64,
+    /// Trajectoire de l'écart relatif volumétrique V(t) sur chaque pas de temps.
+    pub prefix_waste: Vec<f64>,
+}
+
+/// ============================================================================
+/// CumulativeTransmissionMetrics : Métriques de Transmission Culturelle (Section 7.2)
+/// ============================================================================
+/// Indicateurs scientifiques mesurant l'efficacité du patrimoine collectif
+/// et la réalité de l'accumulation culturelle intergénérationnelle.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct CumulativeTransmissionMetrics {
+    /// R_innov : Taux d'innovations comportementales et structurelles validées pour 1 000 évaluations.
+    pub innovation_rate: f64,
+    /// R_herit : Proportion des motifs innovants transmis qui demeurent fonctionnellement actifs.
+    pub functional_heritability_rate: f64,
+    /// CIF : Cumulative Improvement Factor (ratio d'efficacité ou d'excès entre Tabula Rasa et Héritière).
+    pub cumulative_improvement_factor: f64,
+    /// Total count of validated innovations preserved in collective heritage.
+    pub validated_innovations_count: usize,
 }
 
 impl BenchmarkScore {
@@ -59,6 +125,9 @@ impl BenchmarkScore {
             total_fuel: u64::MAX,
             solved_instances: 0,
             total_instances,
+            behavior: BehaviorDescriptor::default(),
+            tldr_score: 0.0,
+            trajectory_metrics: None,
         }
     }
 }

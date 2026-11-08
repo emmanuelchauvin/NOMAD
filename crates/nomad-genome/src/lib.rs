@@ -1,8 +1,16 @@
-//! NOMAD Genome: Phylogenetic DAG modeling and lineage tracing via PetGraph.
+//! NOMAD Genome: Phylogenetic DAG modeling, AST representation, and genetic crossover operators.
 
 pub mod dag;
+pub mod ast;
+pub mod unit;
+pub mod crossover;
+pub mod anti_dead_code;
 
 pub use dag::*;
+pub use ast::*;
+pub use unit::*;
+pub use crossover::*;
+pub use anti_dead_code::*;
 
 #[cfg(test)]
 mod tests {
@@ -17,8 +25,8 @@ mod tests {
         let parent_a = SkillCapsule::new("ParentA", "Root A", "FIRST_FIT", vec![], 0, HashMap::new());
         let parent_b = SkillCapsule::new("ParentB", "Root B", "BEST_FIT", vec![], 0, HashMap::new());
 
-        let idx_a = graph.insert_capsule(&parent_a);
-        let idx_b = graph.insert_capsule(&parent_b);
+        let _idx_a = graph.insert_capsule(&parent_a);
+        let _idx_b = graph.insert_capsule(&parent_b);
 
         assert_eq!(graph.node_count(), 2);
         assert_eq!(graph.parents_of(&parent_a.id).len(), 0);

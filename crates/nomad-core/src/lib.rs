@@ -53,6 +53,9 @@ mod tests {
             total_fuel: 10_000,
             solved_instances: 50,
             total_instances: 50,
+            behavior: BehaviorDescriptor::default(),
+            tldr_score: 0.95,
+            trajectory_metrics: None,
         };
 
         let valid_suboptimal = BenchmarkScore {
@@ -64,6 +67,9 @@ mod tests {
             total_fuel: 8_000,
             solved_instances: 50,
             total_instances: 50,
+            behavior: BehaviorDescriptor::default(),
+            tldr_score: 0.90,
+            trajectory_metrics: None,
         };
 
         let invalid = BenchmarkScore::fatal_penalty(50);

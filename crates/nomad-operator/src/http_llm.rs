@@ -197,8 +197,16 @@ impl SkillOperator for HttpLlamaOperator {
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let system_prompt = "You are an expert algorithmic scientist specializing in online 1D bin packing heuristics.\n\
-Bins have capacity C=100. Items arrive sequentially. Your goal is to return a decision strategy.\n\
-Available primitives: FIRST_FIT, BEST_FIT, WORST_FIT, HARMONIC, or parameterized SCORING formulas: SCORE: alpha=<val> beta=<val> tight_fit=<bool>.\n\
+Bins have capacity C=100. Items arrive sequentially (sizes between 10 and 80). Your goal is to minimize total bins used.\n\
+Available primitives & parameterized scoring:\n\
+- FIRST_FIT, BEST_FIT, WORST_FIT, HARMONIC\n\
+- Advanced scoring formula:\n\
+  SCORE: alpha=<float> beta=<float> dead_space_penalty=<float> exact_fit_bonus=<float> tight_fit=<bool>\n\
+  * alpha: weight on minimizing remaining space (e.g. 1.0 to 2.5)\n\
+  * beta: weight on fullness ratio (e.g. 0.0 to 1.0)\n\
+  * dead_space_penalty: penalty when remaining space < 10 (since items are >=10, space < 10 can never be filled and wastes bins)\n\
+  * exact_fit_bonus: bonus when item fills the bin to exactly 100%\n\
+  * tight_fit: true or false\n\
 Return ONLY the strategy name or formula in a code block.";
 
         let user_prompt = format!("Synthesize heuristic seed #{} with seed parameter {}.", index, seed);
@@ -235,9 +243,10 @@ Return ONLY the strategy name or formula in a code block.";
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let system_prompt = "You are an evolutionary code optimizer for Online 1D Bin Packing heuristics.\n\
-You are given a parent heuristic. Apply a targeted mutation (e.g., adjust scoring parameters alpha/beta, tweak decision thresholds, or refine fit rules) to reduce the number of bins used.\n\
-Return ONLY the mutated heuristic code in a code block.";
+        let system_prompt = "You are an evolutionary code optimizer for Online 1D Bin Packing heuristics (Capacity C=100, item sizes 10 to 80).\n\
+Apply a targeted mutation (e.g. adjust alpha/beta, increase dead_space_penalty to prevent unfillable gaps < 10, or tune exact_fit_bonus to close bins) to reduce total bins used.\n\
+Formula format: SCORE: alpha=<float> beta=<float> dead_space_penalty=<float> exact_fit_bonus=<float> tight_fit=<bool>\n\
+Return ONLY the mutated heuristic in a code block.";
 
         let user_prompt = format!(
             "PARENT HEURISTIC (ID: {}):\n{}\nINTENT: {}\nMutate this heuristic for Generation {}.",
@@ -277,9 +286,10 @@ Return ONLY the mutated heuristic code in a code block.";
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let system_prompt = "You are an evolutionary synthesizer performing SWARM CROSSOVER between two distinct algorithmic lineages for Online 1D Bin Packing.\n\
-Analyze the strengths of Parent A and Parent B. Recombine their complementary heuristic mechanisms into a single, superior hybrid strategy.\n\
-Return ONLY the recombined hybrid strategy code in a code block.";
+        let system_prompt = "You are an evolutionary synthesizer performing SWARM CROSSOVER between two distinct algorithmic lineages for Online 1D Bin Packing (C=100).\n\
+Analyze the strengths of Parent A and Parent B. Recombine their complementary heuristic mechanisms (e.g. blend alpha/beta, take the strongest dead_space_penalty or exact_fit_bonus) into a single, superior hybrid strategy.\n\
+Formula format: SCORE: alpha=<float> beta=<float> dead_space_penalty=<float> exact_fit_bonus=<float> tight_fit=<bool>\n\
+Return ONLY the recombined hybrid strategy in a code block.";
 
         let user_prompt = format!(
             "PARENT A (ID: {}):\nCode: {}\nIntent: {}\n\nPARENT B (ID: {}):\nCode: {}\nIntent: {}\n\nPerform horizontal crossover to produce child for Generation {}.",

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use nomad_core::PackingDecision;
 use crate::error::SandboxError;
+use crate::eval_ast::{AstInterpreter, ScorePolicyContext};
 
 /// Outcome of a single heuristic execution step.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +19,27 @@ pub trait HeuristicSandbox: Send + Sync {
         bin_levels: &[u32],
         bin_capacity: u32,
         fuel_limit: u64,
+    ) -> Result<ExecutionOutcome, SandboxError> {
+        self.execute_with_context(
+            logic_code,
+            item_weight,
+            bin_levels,
+            bin_capacity,
+            fuel_limit,
+            0,
+            50,
+        )
+    }
+
+    fn execute_with_context(
+        &self,
+        logic_code: &str,
+        item_weight: u32,
+        bin_levels: &[u32],
+        bin_capacity: u32,
+        fuel_limit: u64,
+        step_index: usize,
+        total_items: usize,
     ) -> Result<ExecutionOutcome, SandboxError>;
 }
 
@@ -32,13 +54,15 @@ impl DeterministicSandbox {
 }
 
 impl HeuristicSandbox for DeterministicSandbox {
-    fn execute(
+    fn execute_with_context(
         &self,
         logic_code: &str,
         item_weight: u32,
         bin_levels: &[u32],
         bin_capacity: u32,
         fuel_limit: u64,
+        step_index: usize,
+        total_items: usize,
     ) -> Result<ExecutionOutcome, SandboxError> {
         let mut fuel_consumed = 0u64;
 
@@ -51,8 +75,93 @@ impl HeuristicSandbox for DeterministicSandbox {
 
         let trimmed_code = logic_code.trim();
 
-        // 1. Check for standard classical algorithmic policies
-        let decision = if trimmed_code.eq_ignore_ascii_case("FIRST_FIT")
+        // 0. Check for V2 Rust AST score_bin function
+        let is_score_bin = trimmed_code.contains("fn score_bin") || trimmed_code.contains("score_bin(");
+        let parsed_fn = if is_score_bin {
+            syn::parse_str::<syn::ItemFn>(trimmed_code)
+                .or_else(|_| {
+                    syn::parse_file(trimmed_code).map(|f| {
+                        for item in f.items {
+                            if let syn::Item::Fn(func) = item {
+                                if func.sig.ident == "score_bin" {
+                                    return func;
+                                }
+                            }
+                        }
+                        syn::ItemFn {
+                            attrs: Vec::new(),
+                            vis: syn::Visibility::Inherited,
+                            sig: syn::parse_str("fn score_bin()").unwrap(),
+                            block: Box::new(syn::Block {
+                                brace_token: Default::default(),
+                                stmts: Vec::new(),
+                            }),
+                        }
+                    })
+                })
+                .ok()
+        } else {
+            None
+        };
+
+        let decision = if let Some(item_fn) = parsed_fn.filter(|f| f.sig.ident == "score_bin") {
+            let interpreter = AstInterpreter::new(&item_fn, fuel_limit);
+            let total_residual: u32 = bin_levels
+                .iter()
+                .map(|&l| bin_capacity.saturating_sub(l))
+                .sum();
+            let mean_residual = if !bin_levels.is_empty() {
+                total_residual as f64 / bin_levels.len() as f64
+            } else {
+                0.0
+            };
+
+            let mut best_idx = None;
+            let mut best_score = f64::MAX;
+
+            for (idx, &level) in bin_levels.iter().enumerate() {
+                fuel_consumed += 10;
+                if fuel_consumed > fuel_limit {
+                    return Err(SandboxError::FuelLimitExceeded {
+                        fuel_consumed,
+                        fuel_limit,
+                    });
+                }
+
+                if level + item_weight <= bin_capacity {
+                    let residual = bin_capacity - (level + item_weight);
+                    let ctx = ScorePolicyContext {
+                        item_size: item_weight,
+                        bin_residual: residual,
+                        bin_capacity,
+                        step_index,
+                        total_items,
+                        open_bins_count: bin_levels.len(),
+                        mean_residual,
+                    };
+                    let outcome = interpreter
+                        .eval(&ctx)
+                        .map_err(|e| SandboxError::ExecutionCrash(e.to_string()))?;
+                    fuel_consumed += outcome.fuel_consumed;
+                    if fuel_consumed > fuel_limit {
+                        return Err(SandboxError::FuelLimitExceeded {
+                            fuel_consumed,
+                            fuel_limit,
+                        });
+                    }
+
+                    if outcome.score < best_score {
+                        best_score = outcome.score;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+
+            match best_idx {
+                Some(idx) => PackingDecision::PlaceInExisting(idx),
+                None => PackingDecision::OpenNewBin,
+            }
+        } else if trimmed_code.eq_ignore_ascii_case("FIRST_FIT")
             || trimmed_code.contains("first_fit")
             || trimmed_code.contains("FirstFit")
         {
@@ -162,10 +271,15 @@ impl HeuristicSandbox for DeterministicSandbox {
             }
         } else {
             // Parameterized scoring function parser
-            // Form: SCORE(alpha, beta, gamma): score = alpha * remaining + beta * fill_ratio + gamma * is_exact
-            // Or default to heuristic best fit with score evaluation
+            // Form: SCORE: alpha=<val> beta=<val> dead_space_penalty=<val> exact_fit_bonus=<val> tight_fit=<bool>
             let alpha = extract_float_param(trimmed_code, "alpha").unwrap_or(1.0);
             let beta = extract_float_param(trimmed_code, "beta").unwrap_or(0.0);
+            let dead_space_penalty = extract_float_param(trimmed_code, "dead_space_penalty")
+                .or_else(|| extract_float_param(trimmed_code, "waste_penalty"))
+                .unwrap_or(0.0);
+            let exact_fit_bonus = extract_float_param(trimmed_code, "exact_fit_bonus")
+                .or_else(|| extract_float_param(trimmed_code, "closure_bonus"))
+                .unwrap_or(0.0);
             let prefer_tight = extract_bool_param(trimmed_code, "tight_fit").unwrap_or(true);
 
             let mut best_idx = None;
@@ -182,7 +296,16 @@ impl HeuristicSandbox for DeterministicSandbox {
                 if level + item_weight <= bin_capacity {
                     let remaining = (bin_capacity - (level + item_weight)) as f64;
                     let fill_ratio = (level + item_weight) as f64 / bin_capacity as f64;
-                    let score = alpha * remaining + beta * (1.0 - fill_ratio);
+                    let mut score = alpha * remaining + beta * (1.0 - fill_ratio);
+
+                    // Penalize dead space: items are >= 10, so any gap < 10 can never be filled
+                    if remaining > 0.0 && remaining < 10.0 {
+                        score += dead_space_penalty;
+                    }
+                    // Reward exact 100% bin closure
+                    if remaining == 0.0 {
+                        score -= exact_fit_bonus;
+                    }
 
                     if prefer_tight {
                         if score < best_score {
