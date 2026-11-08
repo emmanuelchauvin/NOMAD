@@ -66,16 +66,23 @@ cargo build --release
 
 ### 1. Run an Evolutionary Trial
 ```bash
-# Run Group C (NOMAD Swarm with Crossover) with Ollama (e.g., Qwen 2.5 Coder 7B)
-cargo run --release --bin nomad -- run --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 10 --group c --output run_report.json
+# 1D Online Bin Packing (Group C Swarm with Crossover)
+cargo run --release --bin nomad -- run --domain bin-packing --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 10 --group c --output run_report.json
 
-# Run Group D (Evolutionary Selection with Mutation Only)
+# Multi-Resource Cloud Job Scheduling (CPU & RAM Vector Packing)
+cargo run --release --bin nomad -- run --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 10 --group c --output run_report_sched.json
+
+# Group D (Evolutionary Selection with Mutation Only)
 cargo run --release --bin nomad -- run --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 10 --group d --output run_group_d.json
 ```
 
 ### 2. Run the "Mort et Renaissance" Protocol (Cumulative Culture)
 ```bash
-cargo run --release --bin nomad -- rebirth --operator ollama --model qwen2.5-coder:7b --pop-size 6 -n 8 --output rebirth_report.json
+# Bin Packing Cumulative Culture Protocol
+cargo run --release --bin nomad -- rebirth --domain bin-packing --operator ollama --model qwen2.5-coder:7b --pop-size 6 -n 8 --output rebirth_report.json
+
+# Cloud Scheduling Cumulative Culture Protocol
+cargo run --release --bin nomad -- rebirth --domain scheduling --operator mock --pop-size 6 -n 4
 ```
 *Outputs: Cumulative Improvement Factor ($CIF$), Functional Heritability ($R_{\text{herit}}$), and Innovation Rate ($R_{\text{innov}}$).*
 
@@ -92,20 +99,23 @@ start arbre.html
 
 ### 5. Datasets & Deterministic Baselines
 ```bash
-# Cryptographic SHA-256 dataset verification
-cargo run --release --bin nomad -- dataset
+# Cryptographic SHA-256 dataset verification (Bin Packing & Scheduling)
+cargo run --release --bin nomad -- dataset --domain bin-packing
+cargo run --release --bin nomad -- dataset --domain scheduling
 
-# Classical baselines (First-Fit, Best-Fit, Worst-Fit)
-cargo run --release --bin nomad -- baseline
+# Classical baselines (First-Fit, Best-Fit, Balanced-Fit)
+cargo run --release --bin nomad -- baseline --domain bin-packing
+cargo run --release --bin nomad -- baseline --domain scheduling
 ```
 
 ---
 
 ## 5. Scientific Validation & Testing
 
-NOMAD is verified by an automated test suite comprising 16 unit tests and 4 macro-acceptance protocols:
-- `cargo test --workspace` (All 16 unit & integration tests pass deterministically)
-- Level 1-3 Anti-dead-code validation
+NOMAD is verified by an automated test suite comprising **19 unit tests** and 4 macro-acceptance protocols:
+- `cargo test --workspace` (All 19 unit & integration tests pass deterministically)
+- Level 1-3 Anti-dead-code validation with surgical $C_{\text{null}}$ ablation
+- Multi-Resource Cloud Job Scheduling (CPU/RAM vector packing)
 - MAP-Elites niche competition & replacement
 - Cryptographic reproducibility across random seeds
 

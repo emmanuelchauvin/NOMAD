@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use tracing::info;
 
 use nomad_core::{
-    CumulativeTransmissionMetrics, ExperimentConfig, ExperimentalGroup, SkillCapsule,
+    CumulativeTransmissionMetrics, ExperimentConfig, ExperimentalGroup, ProblemDomain, SkillCapsule,
 };
-use nomad_evaluator::OracleEvaluator;
+use nomad_evaluator::{OracleEvaluator, SchedulingOracle};
 use nomad_operator::SkillOperator;
 use nomad_sandbox::HeuristicSandbox;
 
@@ -66,8 +66,19 @@ pub struct RebirthExperimentReport {
 /// 4. **Métrologie Scientifique :** Calcule formellement le $CIF$ (gain relatif), le $R_{\text{herit}}$
 ///    (conservation des motifs) et le $R_{\text{innov}}$ (taux d'innovation par millier d'évals).
 pub fn execute_rebirth_protocol(
+    base_config: ExperimentConfig,
+    oracle: &OracleEvaluator,
+    sandbox: &dyn HeuristicSandbox,
+    operator: &dyn SkillOperator,
+) -> Result<RebirthExperimentReport, OrchestratorError> {
+    execute_rebirth_protocol_with_sched(base_config, oracle, None, sandbox, operator)
+}
+
+/// Exécute le protocole "Mort et Renaissance" avec support optionnel d'un oracle de scheduling multi-ressources.
+pub fn execute_rebirth_protocol_with_sched(
     mut base_config: ExperimentConfig,
     oracle: &OracleEvaluator,
+    sched_oracle: Option<&SchedulingOracle>,
     sandbox: &dyn HeuristicSandbox,
     operator: &dyn SkillOperator,
 ) -> Result<RebirthExperimentReport, OrchestratorError> {
@@ -77,6 +88,9 @@ pub fn execute_rebirth_protocol(
     info!("Phase 1: Epoch 1 (Genesis) running for {} generations...", base_config.max_generations);
     base_config.group = ExperimentalGroup::GroupC;
     let mut engine_epoch1 = EvolutionEngine::new(base_config.clone(), oracle, sandbox, operator);
+    if let Some(sched) = sched_oracle {
+        engine_epoch1 = engine_epoch1.with_scheduling_oracle(sched);
+    }
     let epoch1_report = engine_epoch1.execute_run()?;
 
     // Extract validated collective heritage
@@ -119,10 +133,21 @@ pub fn execute_rebirth_protocol(
     let mut config_heritage = base_config.clone();
     config_heritage.rng_seed = base_config.rng_seed + 101;
     let mut engine_heritage = EvolutionEngine::new(config_heritage, oracle, sandbox, operator);
+    if let Some(sched) = sched_oracle {
+        engine_heritage = engine_heritage.with_scheduling_oracle(sched);
+    }
 
     // Seed the MAP-Elites archive of Population A with validated heritage capsules
     for cap in &heritage.validated_capsules {
-        let score = oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call);
+        let score = if base_config.domain == ProblemDomain::MultiResourceScheduling {
+            if let Some(sched) = sched_oracle {
+                sched.evaluate_dataset(&sched.in_distribution, cap, sandbox, base_config.fuel_limit_per_call)
+            } else {
+                oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
+            }
+        } else {
+            oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
+        };
         engine_heritage.archive.insert(cap.clone(), score);
         engine_heritage.phylogeny.insert_capsule(cap);
     }
@@ -133,6 +158,9 @@ pub fn execute_rebirth_protocol(
     let mut config_tabula = base_config.clone();
     config_tabula.rng_seed = base_config.rng_seed + 101; // Identical seed and budget!
     let mut engine_tabula = EvolutionEngine::new(config_tabula, oracle, sandbox, operator);
+    if let Some(sched) = sched_oracle {
+        engine_tabula = engine_tabula.with_scheduling_oracle(sched);
+    }
     let epoch2_tabula_rasa_report = engine_tabula.execute_run()?;
 
     // 4. Compute Cumulative Metrics (Section 7.2)

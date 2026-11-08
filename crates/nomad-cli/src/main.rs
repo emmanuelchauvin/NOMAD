@@ -123,6 +123,9 @@ enum Commands {
 
     /// Run the "Mort et Renaissance" protocol: Epoch 1 -> Extinction -> Epoch 2 (Heritage vs Tabula Rasa).
     Rebirth {
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
+
         #[arg(short, long, default_value_t = 42)]
         seed: u64,
 
@@ -797,6 +800,7 @@ fn main() -> Result<()> {
         }
 
         Commands::Rebirth {
+            domain,
             seed,
             pop_size,
             generations,
@@ -805,16 +809,23 @@ fn main() -> Result<()> {
             model,
             output,
         } => {
+            let prob_domain: ProblemDomain = domain.into();
             let mut config = ExperimentConfig::default();
+            config.domain = prob_domain;
             config.rng_seed = seed;
             config.population_size = pop_size;
             config.max_generations = generations;
 
             let oracle = OracleEvaluator::new(seed);
+            let sched_oracle = SchedulingOracle::new(seed);
             let sandbox = DeterministicSandbox::new();
 
             let op_instance: Box<dyn SkillOperator> = match operator {
-                OperatorArg::Mock => Box::new(DeterministicMockOperator::default()),
+                OperatorArg::Mock => {
+                    let mut mock = DeterministicMockOperator::default();
+                    mock.domain = prob_domain;
+                    Box::new(mock)
+                }
                 OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
                     ollama_url,
                     model,
@@ -825,9 +836,10 @@ fn main() -> Result<()> {
                 )),
             };
 
-            let rebirth_report = nomad_orchestrator::execute_rebirth_protocol(
+            let rebirth_report = nomad_orchestrator::execute_rebirth_protocol_with_sched(
                 config,
                 &oracle,
+                Some(&sched_oracle),
                 &sandbox,
                 op_instance.as_ref(),
             )?;
