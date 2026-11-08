@@ -937,14 +937,17 @@ fn main() -> Result<()> {
                     mock.domain = prob_domain;
                     Box::new(mock)
                 }
-                OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
-                    ollama_url,
-                    model,
-                    "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364", // SHA256 digest of qwen2.5-coder:7b
-                    "Ollama API (Qwen 2.5 Coder 7B)",
-                    0.7,
-                    0.95,
-                )),
+                OperatorArg::Ollama => Box::new(
+                    HttpLlamaOperator::new(
+                        ollama_url,
+                        model,
+                        "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364", // SHA256 digest of qwen2.5-coder:7b
+                        "Ollama API (Qwen 2.5 Coder 7B)",
+                        0.7,
+                        0.95,
+                    )
+                    .with_domain(prob_domain),
+                ),
             };
 
             let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, op_instance.as_ref())
