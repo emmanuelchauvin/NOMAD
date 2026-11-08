@@ -162,6 +162,12 @@ pub struct ScoreBinInputs {
     pub open_bins_count: usize,
     /// Espace résiduel moyen parmi l'ensemble des bacs ouverts.
     pub mean_residual: f64,
+    /// Espace résiduel après insertion de l'objet (bin_residual - item_size).
+    #[serde(default)]
+    pub post_residual: u32,
+    /// Nombre total de bacs ouverts pouvant accueillir l'objet courant (si == 1, dernière chance).
+    #[serde(default)]
+    pub fitting_bins_count: usize,
 }
 
 /// ============================================================================

@@ -79,23 +79,18 @@ impl MapElitesArchive {
     /// Projette le vecteur de comportement continu d'une heuristique dans les indices
     /// discrets (x, y) de la grille de niches.
     pub fn coord_for_behavior(&self, b: &BehaviorDescriptor) -> (usize, usize) {
-        // Axe X : Dead space ratio normalisé.
-        // En scheduling: dead_space_ratio est le tight_ratio (généralement 0.05 à 0.35)
-        // En bin packing: dead_space_ratio est l'espace mort (généralement 0.00 à 0.40)
-        let max_x = if b.dead_space_ratio <= 0.35 { 0.35 } else { 0.60 };
-        let norm_x = (b.dead_space_ratio / max_x).clamp(0.0, 0.999);
+        // Axe X : Dead space ratio critique [1..15] normalisé sur [0.15, 0.75].
+        let norm_x = ((b.dead_space_ratio - 0.15) / 0.60).clamp(0.0, 0.999);
         let x = (norm_x * self.dim_x as f64).floor() as usize;
 
-        // Axe Y : Residual variance / Imbalance normalisée
-        // Permet de séparer les politiques à remplissage homogène de celles à résidus dispersés
-        // Si residual_variance <= 40.0 (caractéristique du multi-resource scheduling où imbalance est entre 5 et 30) :
-        // on normalise sur [0..30.0] pour une résolution fine et dense !
-        // Si residual_variance > 40.0 (bin packing C=100 où variance est entre 50 et 180) :
-        // on normalise sur [40..200.0] pour exploiter toute la grille.
-        let norm_y = if b.residual_variance > 40.0 {
-            ((b.residual_variance - 40.0) / 160.0).clamp(0.0, 0.999)
-        } else if b.residual_variance > 0.0 {
+        // Axe Y : Entropie de Shannon composite mi/fin de parcours (ou Imbalance en scheduling)
+        // Si residual_variance <= 3.0 : Bin Packing avec entropie de Shannon composite [0.20, 1.80]
+        let norm_y = if b.residual_variance <= 3.0 && b.residual_variance > 0.0 {
+            ((b.residual_variance - 0.20) / 1.60).clamp(0.0, 0.999)
+        } else if b.residual_variance <= 40.0 && b.residual_variance > 0.0 {
             (b.residual_variance / 30.0).clamp(0.0, 0.999)
+        } else if b.residual_variance > 40.0 {
+            ((b.residual_variance - 40.0) / 160.0).clamp(0.0, 0.999)
         } else {
             ((b.new_bin_ratio - 0.45) / 0.15).clamp(0.0, 0.999)
         };
@@ -129,16 +124,17 @@ impl MapElitesArchive {
         match self.grid.get_mut(&k) {
             Some(existing) => {
                 // Compétition locale intra-niche :
-                // 1. Moins de bacs est toujours strictement meilleur
-                // 2. À égalité de bacs : un organisme évolué (génération supérieure) surpasse un seed naïf
-                // 3. À génération égale : départage par la sobriété en fuel
+                // 1. Moins de bacs est toujours strictement meilleur (ou meilleure efficacité)
+                // 2. En cas d'égalité stricte sur total_bins, départager par tldr_score supérieur (stabilité de Lyapunov)
+                // 3. À égalité de total_bins et tldr_score proche (< 1e-3), départager par PARCIMONIE STRICTE : total_fuel inférieur
                 let is_strictly_better = if fitness.total_bins < existing.fitness.total_bins {
                     true
                 } else if fitness.total_bins == existing.fitness.total_bins {
-                    if existing.capsule.generation > capsule.generation {
-                        false // Un seed naïf ne peut pas éjecter un organisme évolué
-                    } else if capsule.generation > existing.capsule.generation {
-                        true  // Un organisme évolué remplace un ancêtre à score égal
+                    let tldr_diff = fitness.tldr_score - existing.fitness.tldr_score;
+                    if tldr_diff > 1e-3 {
+                        true
+                    } else if tldr_diff < -1e-3 {
+                        false
                     } else {
                         fitness.total_fuel < existing.fitness.total_fuel
                     }
@@ -225,9 +221,22 @@ impl MapElitesArchive {
         host_score: &BenchmarkScore,
         rng: &mut ChaCha8Rng,
     ) -> Option<SkillCapsule> {
+        let host_hash = host.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+
         if self.grid.len() < 2 {
-            // If only 1 elite exists, return it if different
-            return self.grid.values().next().map(|e| e.capsule.clone());
+            // If only 1 elite exists, return it ONLY if different from host in ID and AST hash
+            let candidate = self.grid.values().next().map(|e| e.capsule.clone());
+            if let Some(ref c) = candidate {
+                if c.id == host.id {
+                    return None;
+                }
+                if let (Some(h1), Some(h2)) = (host_hash, c.ast_fingerprint.as_ref().map(|f| &f.ast_hash)) {
+                    if h1 == h2 {
+                        return None;
+                    }
+                }
+            }
+            return candidate;
         }
 
         let mut best_partner = None;
@@ -236,6 +245,11 @@ impl MapElitesArchive {
         for entry in self.grid.values() {
             if entry.capsule.id == host.id {
                 continue;
+            }
+            if let (Some(h1), Some(h2)) = (host_hash, entry.structural_fingerprint.as_ref().map(|f| &f.ast_hash)) {
+                if h1 == h2 {
+                    continue;
+                }
             }
 
             let q_b = entry.fitness.mean_efficiency;
@@ -354,6 +368,54 @@ mod tests {
         // Test UCB selection
         let parent = archive.select_parent_ucb(&mut rng).unwrap();
         assert_eq!(parent.id, cap3.id);
+    }
+
+    #[test]
+    fn test_map_elites_fuel_parsimony_and_tldr_tie_breaking() {
+        let mut archive = MapElitesArchive::new(10, 10);
+
+        let cap_base = SkillCapsule::new("Base", "Desc", "code", vec![], 5, HashMap::new());
+        let score_base = BenchmarkScore {
+            is_valid: true,
+            total_bins: 500,
+            total_theoretical_min_bins: 480,
+            total_excess_bins: 20,
+            mean_efficiency: 0.96,
+            total_fuel: 100_000,
+            solved_instances: 50,
+            total_instances: 50,
+            behavior: BehaviorDescriptor {
+                residual_variance: 1.2,
+                new_bin_ratio: 0.30,
+                mean_fullness: 0.90,
+                dead_space_ratio: 0.15,
+            },
+            tldr_score: 0.80,
+            trajectory_metrics: None,
+        };
+        assert!(archive.insert(cap_base.clone(), score_base.clone()));
+
+        // Candidate 1: Higher tLDR with equal bins replaces incumbent even with higher fuel
+        let cap_higher_tldr = SkillCapsule::new("HigherTLDR", "Desc", "code", vec![], 2, HashMap::new());
+        let mut score_higher_tldr = score_base.clone();
+        score_higher_tldr.tldr_score = 0.85;
+        score_higher_tldr.total_fuel = 150_000;
+        assert!(archive.insert(cap_higher_tldr.clone(), score_higher_tldr.clone()));
+        assert_eq!(archive.best_elite().unwrap().capsule.id, cap_higher_tldr.id);
+
+        // Candidate 2: Higher generation but higher fuel and identical tLDR is REJECTED (bloat prevention)
+        let cap_bloated = SkillCapsule::new("Bloated", "Desc", "code", vec![], 9, HashMap::new());
+        let mut score_bloated = score_higher_tldr.clone();
+        score_bloated.total_fuel = 200_000;
+        assert!(!archive.insert(cap_bloated.clone(), score_bloated.clone()));
+        assert_eq!(archive.best_elite().unwrap().capsule.id, cap_higher_tldr.id);
+
+        // Candidate 3: Lower generation (Gen 0 seed) with identical bins and tLDR, but lower fuel WINS (strict parsimony)
+        let cap_parsimonious = SkillCapsule::new("ParsimoniousSeed", "Desc", "code", vec![], 0, HashMap::new());
+        let mut score_parsimonious = score_higher_tldr.clone();
+        score_parsimonious.total_fuel = 60_000;
+        assert!(archive.insert(cap_parsimonious.clone(), score_parsimonious.clone()));
+        assert_eq!(archive.best_elite().unwrap().capsule.id, cap_parsimonious.id);
     }
 }
 

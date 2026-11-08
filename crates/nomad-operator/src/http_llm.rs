@@ -239,7 +239,7 @@ impl HttpLlamaOperator {
             }
 
             let code = format!(
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64 * {:.2};\n    if bin_residual < 10 {{\n        score = score + {:.1};\n    }}\n    if bin_residual == 0 {{\n        score = score - {:.1};\n    }}\n    score\n}}",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64 * {:.2};\n    if post_residual < 10 {{\n        score = score + {:.1};\n    }}\n    if post_residual == 0 {{\n        score = score - {:.1};\n    }}\n    score\n}}",
                 alpha, penalty, bonus
             );
             if let Ok(item_fn) = parse_score_bin(&code) {
@@ -252,18 +252,26 @@ impl HttpLlamaOperator {
         let penalty_val: f64 = rng.gen_range(60.0..110.0);
         let bonus_val: f64 = rng.gen_range(30.0..70.0);
         let alpha_val: f64 = rng.gen_range(1.0..1.5);
+        let opp_penalty: f64 = rng.gen_range(25.0..55.0);
+        let match_bonus: f64 = rng.gen_range(45.0..75.0);
 
         let code = match fallback_variant % 4 {
             0 => format!(
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {{\n    let mut score = bin_residual as f64 * {:.2};\n    if bin_residual == next_item_size && next_item_size > 0 {{\n        score = score - 60.0;\n    }}\n    if bin_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
-                alpha_val, penalty_val
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64 * {:.2};\n    if bin_residual >= next_item_size && post_residual < next_item_size {{\n        score = score + {:.1};\n    }}\n    if post_residual == next_item_size && next_item_size > 0 {{\n        score = score - {:.1};\n    }}\n    if post_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
+                alpha_val, opp_penalty, match_bonus, penalty_val
             ),
             1 => format!(
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {{\n        score = score - 50.0;\n    }}\n    if bin_residual == 0 {{\n        score = score - {:.1};\n    }}\n    score\n}}",
-                bonus_val
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64;\n    if bin_residual >= next_item_size && post_residual < next_item_size {{\n        score = score + {:.1};\n    }}\n    if post_residual == next_item_size || (post_residual >= next_item_size && post_residual - next_item_size < 10) {{\n        score = score - {:.1};\n    }}\n    if post_residual == 0 {{\n        score = score - {:.1};\n    }}\n    score\n}}",
+                opp_penalty, match_bonus, bonus_val
             ),
-            2 => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 55.0;\n    } else if (bin_residual as f64) < mean_residual {\n        score = score - 15.0;\n    }\n    score\n}".to_string(),
-            _ => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 50.0;\n    }\n    score\n}".to_string(),
+            2 => format!(
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64;\n    if post_residual == next_item_size || (post_residual >= next_item_size && post_residual - next_item_size < 10) {{\n        score = score - {:.1};\n    }} else if (post_residual as f64) < mean_residual {{\n        score = score - 15.0;\n    }}\n    score\n}}",
+                match_bonus
+            ),
+            _ => format!(
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64;\n    if bin_residual >= next_item_size && post_residual < next_item_size {{\n        score = score + {:.1};\n    }}\n    if fitting_bins_count == 1 {{\n        score = score - 25.0;\n    }}\n    score\n}}",
+                opp_penalty
+            ),
         };
 
         let item_fn = parse_score_bin(&code).expect("Template must be valid Rust AST");
@@ -353,30 +361,40 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block wit
                 format!("Synthesize cloud scheduling heuristic seed #{} with seed parameter {}.", index, seed)
             )
         } else {
+            let archetype_desc = match index {
+                0 => "ARCHETYPE: Non-linear polynomial coupling post_residual with normalized stream progress (step_index as f64 / total_items as f64). Avoid hardcoded piecewise constants; use smooth non-linear interaction terms.",
+                1 => "ARCHETYPE: Harmonic classes logic (explore modulo arithmetic, capacity fractions, integer division thresholds on post_residual and next_item_size).",
+                2 => "ARCHETYPE: Strict dead space avoidance (penalizing post_residual in unusable small gaps) coupled with open_bins_count pressure.",
+                3 => "ARCHETYPE: Aggressive 2-step lookahead matching (comparing post_residual against next_item_size and relative to mean_residual).",
+                _ => "ARCHETYPE: Free exploratory multi-variable heuristic combining lookahead, global state, and dynamic time horizon without preset templates.",
+            };
             (
                 "You are an expert algorithmic scientist specializing in online 1D bin packing heuristics in Rust.\n\
-Bins have capacity C=100. Items arrive sequentially (sizes between 10 and 80). Your goal is to minimize total bins used.\n\
+Bins have capacity C=100. Items arrive sequentially (sizes between 10 and 80). Your goal is to synthesize a heuristic function that minimizes total bins used.\n\
 Implement the heuristic as a valid Rust function with the following exact signature:\n\
 ```rust\n\
-pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n\
-    let mut score = bin_residual as f64;\n\
+pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n\
+    let mut score = post_residual as f64;\n\
     score\n\
 }\n\
 ```\n\
-CRITICAL REQUIREMENTS FOR SOTA PERFORMANCE:\n\
-1. The candidate bin with the MINIMUM score is selected for placing item_size.\n\
-   SIGN CONVENTION: LOWER score is strictly BETTER.\n\
-   - To FAVOR a candidate bin (bonus): SUBTRACT from score (e.g., `score -= 60.0`).\n\
-   - To PENALIZE an undesirable bin: ADD to score (e.g., `score += 80.0`).\n\
-   - WARNING: NEVER multiply by 0 or add positive numbers to award a bonus!\n\
-2. To outperform standard Best-Fit, an advanced heuristic MUST be dynamic and multi-variable:\n\
-   - Dynamic horizon awareness: Combine `bin_residual` with progress `step_index as f64 / total_items as f64`.\n\
-   - In early stages (low progress): prioritize keeping large flexible spaces for upcoming unknown items.\n\
-   - In late stages (high progress): prioritize tightly closing existing bins to avoid opening new empty bins near the end.\n\
-   - Lookahead awareness (k=2): `next_item_size` reveals the size of the immediately following item. If `bin_residual == next_item_size`, SUBTRACT a large bonus (`score -= 60.0`) because placing `item_size` here enables `next_item_size` to perfectly close this bin with zero residual!\n\
-   - Global state: You can use `open_bins_count`, `mean_residual`, or compare `bin_residual` to `item_size`.\n\
+AVAILABLE INPUT VARIABLES:\n\
+- `item_size: u32` : Current item size (10..80).\n\
+- `bin_residual: u32` : Space currently available in the bin before placing the item.\n\
+- `post_residual: u32` : Remaining space in the bin after placing the item (bin_residual - item_size).\n\
+- `bin_capacity: u32` : Total bin capacity (C=100).\n\
+- `step_index: usize` and `total_items: usize` : Stream progression (step_index as f64 / total_items as f64).\n\
+- `open_bins_count: usize` : Number of currently active open bins.\n\
+- `mean_residual: f64` : Mean residual across all currently open bins.\n\
+- `next_item_size: u32` : Lookahead item size (k=2), or 0 if this is the last item.\n\
+- `fitting_bins_count: usize` : Number of open bins that can fit item_size (if == 1, this bin is the last chance before opening a new bin).\n\
+CRITICAL OPTIMIZATION OBJECTIVE:\n\
+- THE ORACLE MINIMIZES THE RETURNED SCORE: LOWER score = HIGHER priority to select this bin.\n\
+- SUBTRACT from score to favor / reward desirable placements.\n\
+- ADD to score to penalize undesirable placements (e.g. creating unusable dead space).\n\
+- Invent your own functional relationships, non-linear couplings, and calibrated numerical constants.\n\
 Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
-                format!("Synthesize heuristic seed #{} with seed parameter {}.", index, seed)
+                format!("Synthesize heuristic seed #{} (seed parameter {}). {}", index, seed, archetype_desc)
             )
         };
 
@@ -450,9 +468,10 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
             (
                 "You are an evolutionary code optimizer for Online 1D Bin Packing heuristics in Rust.\n\
 Apply an algorithmic mutation to improve compaction and reduce total bins used.\n\
-SIGN CONVENTION: The candidate bin with the MINIMUM score is selected. To FAVOR a bin, SUBTRACT (score -= 50.0). To PENALIZE, ADD (score += 50.0). Do NOT multiply by 0 or add positive bonuses.\n\
-Combine multiple input variables: `bin_residual`, `item_size`, `step_index`/`total_items` (time horizon), `mean_residual`, and lookahead `next_item_size`.\n\
-Introduce non-linear conditionals, lookahead pairing bonuses (`if bin_residual == next_item_size { score -= 60.0; }`), time-decaying penalties, or horizon-aware placement logic.\n\
+CRITICAL: THE ORACLE MINIMIZES THE SCORE. LOWER SCORE = HIGHER PRIORITY TO SELECT THIS BIN. SUBTRACT TO REWARD, ADD TO PENALIZE.\n\
+Combine available inputs: `item_size`, `bin_residual`, `post_residual`, `bin_capacity`, `step_index`, `total_items`, `open_bins_count`, `mean_residual`, `next_item_size`, and `fitting_bins_count`.\n\
+Search for effective variable couplings, non-linear conditionals, fine-tuned thresholds, or lookahead trade-offs.\n\
+Invent your own logic and calibrated constants. Do NOT copy preset templates.\n\
 Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!(
                     "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.",

@@ -5,7 +5,7 @@ use thiserror::Error;
 use nomad_core::{GraftManifest, SkillCapsule, ValidationStatus};
 
 use crate::ast::parse_score_bin;
-use crate::unit::{collect_dependencies, extract_logical_units};
+use crate::unit::{collect_dependencies, collect_expr_dependencies, extract_logical_units};
 
 #[derive(Debug, Error)]
 pub enum AntiDeadCodeError {
@@ -17,20 +17,44 @@ pub enum AntiDeadCodeError {
     FragmentNotFound(String),
     #[error("Grafted fragment was neutralized, dead-store, or made no-op")]
     FragmentNeutralized,
+    #[error("Unproductive variable shadowing detected on variable `{0}`")]
+    UnproductiveShadowing(String),
+}
+
+fn extract_pat_ident(pat: &Pat) -> Option<String> {
+    match pat {
+        Pat::Ident(PatIdent { ident, .. }) => Some(ident.to_string()),
+        Pat::Type(pat_type) => extract_pat_ident(&pat_type.pat),
+        _ => None,
+    }
 }
 
 /// Extrait le nom de variable défini par un statement (let ident = ... ou ident = ...)
 fn extract_defined_ident(stmt: &Stmt) -> Option<String> {
     match stmt {
-        Stmt::Local(Local { pat, .. }) => match pat {
-            Pat::Ident(PatIdent { ident, .. }) => Some(ident.to_string()),
-            _ => None,
-        },
+        Stmt::Local(Local { pat, .. }) => extract_pat_ident(pat),
         Stmt::Expr(Expr::Assign(assign), _) => match &*assign.left {
             Expr::Path(path) => path.path.get_ident().map(|i| i.to_string()),
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// Collecte les identifiants lus (et non définis) par une instruction.
+fn collect_read_dependencies(stmt: &Stmt) -> Vec<String> {
+    match stmt {
+        Stmt::Local(local) => {
+            if let Some(init) = &local.init {
+                collect_expr_dependencies(&init.expr)
+            } else {
+                Vec::new()
+            }
+        }
+        Stmt::Expr(Expr::Assign(assign), _) => {
+            collect_expr_dependencies(&assign.right)
+        }
+        _ => collect_dependencies(stmt),
     }
 }
 
@@ -117,6 +141,43 @@ pub fn compute_liveness(item_fn: &ItemFn) -> Vec<bool> {
 }
 
 /// ============================================================================
+/// detect_unproductive_shadowing : Linter Anti-Shadowing Destructeur
+/// ============================================================================
+/// Détecte toute redéclaration `let var = ...` qui écrase une variable locale `var`
+/// déclarée plus haut sans qu'elle ait été lue entre-temps (variable shadowing inutile).
+pub fn detect_unproductive_shadowing(item_fn: &ItemFn) -> Option<String> {
+    let stmts = &item_fn.block.stmts;
+    let mut declared_vars: std::collections::HashMap<String, (usize, bool)> = std::collections::HashMap::new();
+
+    for (idx, stmt) in stmts.iter().enumerate() {
+        // Collecter les variables lues par cette instruction (en excluant les définitions de variables)
+        let reads = collect_read_dependencies(stmt);
+        for read in &reads {
+            if let Some(entry) = declared_vars.get_mut(read) {
+                entry.1 = true;
+            }
+        }
+
+        // Vérifier si cette instruction déclare une variable locale `let var = ...`
+        if let Stmt::Local(local) = stmt {
+            if let Some(var_name) = extract_pat_ident(&local.pat) {
+                if var_name != "score" {
+                    if let Some((_prev_idx, was_read)) = declared_vars.get(&var_name) {
+                        if !*was_read {
+                            // La déclaration précédente de `var_name` n'a jamais été lue avant d'être écrasée !
+                            return Some(var_name);
+                        }
+                    }
+                    declared_vars.insert(var_name, (idx, false));
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// ============================================================================
 /// verify_level1_structural_survival : Validation Anti-Dead-Code Niveau 1 (Structurelle)
 /// ============================================================================
 /// Vérifie formellement dans l'arbre syntaxique (AST) de l'organisme enfant que le fragment
@@ -156,6 +217,11 @@ pub fn verify_level1_structural_survival(
                 return Err(AntiDeadCodeError::FragmentNeutralized);
             }
         }
+    }
+
+    // 3. Passe anti-shadowing : rejeter toute redéclaration qui écrase une variable locale sans lecture intermédiaire
+    if let Some(shadowed_var) = detect_unproductive_shadowing(&item_fn) {
+        return Err(AntiDeadCodeError::UnproductiveShadowing(shadowed_var));
     }
 
     Ok(ValidationStatus::PassedLevel1Structural)
@@ -218,6 +284,50 @@ mod tests {
         let (child, _manifest) = deterministic_ast_crossover(&host, &donor, 42, 2).unwrap();
         let status = verify_level1_structural_survival(&child).expect("Level 1 check should pass");
         assert_eq!(status, ValidationStatus::PassedLevel1Structural);
+    }
+
+    #[test]
+    fn test_detect_unproductive_shadowing_rejection() {
+        let shadowed_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let horizon_factor = 1.0 + 5.0 * (step_index as f64);
+            let horizon_factor = 1.0 + 8.0 * (step_index as f64);
+            let score = bin_residual as f64 * horizon_factor;
+            score
+        }
+        "#;
+
+        let parsed = parse_score_bin(shadowed_code).unwrap();
+        let detected = detect_unproductive_shadowing(&parsed);
+        assert_eq!(detected, Some("horizon_factor".to_string()));
+
+        let capsule = SkillCapsule::new_v2(
+            "Shadowed", "Interface", shadowed_code, vec![], 1, HashMap::new(),
+            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
+            ValidationStatus::Unvalidated,
+            Some(GraftManifest {
+                graft_id: "graft-1".to_string(),
+                donor_capsule: nomad_core::CapsuleId("donor".to_string()),
+                host_capsule: nomad_core::CapsuleId("host".to_string()),
+                donor_ast_hash: "hash".to_string(),
+                grafted_fragment_hash: "horizon_factor".to_string(),
+                host_locus: "body_stmt_index_1".to_string(),
+                dependency_hash: "dep".to_string(),
+                repair_version: None,
+                repair_diff_hash: None,
+            }),
+        );
+
+        let res = verify_level1_structural_survival(&capsule);
+        assert!(matches!(res, Err(AntiDeadCodeError::UnproductiveShadowing(v)) if v == "horizon_factor"));
     }
 }
 

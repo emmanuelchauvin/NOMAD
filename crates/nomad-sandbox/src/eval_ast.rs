@@ -37,6 +37,10 @@ pub struct ScorePolicyContext {
     pub open_bins_count: usize,
     /// Moyenne d'espace résiduel des bacs ouverts.
     pub mean_residual: f64,
+    /// Espace résiduel après insertion de l'objet (bin_residual - item_size).
+    pub post_residual: u32,
+    /// Nombre total de bacs ouverts pouvant accueillir l'objet courant (si == 1, dernière chance).
+    pub fitting_bins_count: usize,
 }
 
 /// ============================================================================
@@ -150,8 +154,10 @@ impl<'a> AstInterpreter<'a> {
         vars.insert("total_items".to_string(), ctx.total_items as f64);
         vars.insert("open_bins_count".to_string(), ctx.open_bins_count as f64);
         vars.insert("mean_residual".to_string(), ctx.mean_residual);
+        vars.insert("post_residual".to_string(), ctx.post_residual as f64);
+        vars.insert("fitting_bins_count".to_string(), ctx.fitting_bins_count as f64);
 
-        self.eval_with_vars(vars, ctx.bin_residual as f64)
+        self.eval_with_vars(vars, ctx.post_residual as f64)
     }
 
     /// ========================================================================
@@ -374,6 +380,8 @@ mod tests {
             total_items: 50,
             open_bins_count: 1,
             mean_residual: 50.0,
+            post_residual: 5,
+            fitting_bins_count: 1,
         };
 
         let outcome = interpreter.eval(&ctx_small).unwrap();
@@ -390,6 +398,8 @@ mod tests {
             total_items: 50,
             open_bins_count: 1,
             mean_residual: 50.0,
+            post_residual: 5,
+            fitting_bins_count: 1,
         };
 
         let outcome_large = interpreter.eval(&ctx_large).unwrap();

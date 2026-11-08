@@ -75,20 +75,20 @@ impl SkillOperator for DeterministicMockOperator {
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let bin_variants = [
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let mut score = post_residual as f64;\n    score\n}",
                 "Best Fit linear remaining capacity baseline",
             ),
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 60.0;\n    }\n    if bin_residual < 10 {\n        score = score + 95.0;\n    }\n    score\n}",
-                "Best Fit with lookahead pairing bonus and dead space penalty",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let mut score = post_residual as f64;\n    if bin_residual >= next_item_size && post_residual < next_item_size {\n        score = score + 40.0;\n    }\n    if post_residual == next_item_size && next_item_size > 0 {\n        score = score - 60.0;\n    }\n    if post_residual < 10 {\n        score = score + 95.0;\n    }\n    score\n}",
+                "Best Fit with lookahead pairing bonus, opportunity penalty, and dead space penalty",
             ),
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 50.0;\n    }\n    if bin_residual == 0 {\n        score = score - 50.0;\n    }\n    score\n}",
-                "Best Fit with exact closure and lookahead bonus",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let mut score = post_residual as f64;\n    if post_residual == next_item_size || (post_residual >= next_item_size && post_residual - next_item_size < 10) {\n        score = score - 50.0;\n    }\n    if post_residual == 0 {\n        score = score - 50.0;\n    }\n    score\n}",
+                "Best Fit with exact closure and lookahead harmonic bonus",
             ),
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {\n    let mut score = bin_residual as f64 * 1.25;\n    if bin_residual == next_item_size && next_item_size > 0 {\n        score = score - 40.0;\n    }\n    score\n}",
-                "Scaled tightness scoring with lookahead",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let mut score = post_residual as f64 * 1.25;\n    if bin_residual >= next_item_size && post_residual < next_item_size {\n        score = score + 35.0;\n    }\n    if fitting_bins_count == 1 {\n        score = score - 25.0;\n    }\n    score\n}",
+                "Scaled tightness scoring with lookahead opportunity cost and fitting bins priority",
             ),
         ];
 
@@ -180,12 +180,14 @@ impl SkillOperator for DeterministicMockOperator {
                 )
             }
         } else if parent.logic_code.contains("score_bin") {
-            if parent.logic_code.contains("bin_residual < 10") {
+            if parent.logic_code.contains("post_residual < 10") {
+                parent.logic_code.replace("95.0", &format!("{:.1}", penalty_val))
+            } else if parent.logic_code.contains("bin_residual < 10") {
                 parent.logic_code.replace("95.0", &format!("{:.1}", penalty_val))
             } else {
                 // Introduce dead space conditional branch
                 format!(
-                    "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
+                    "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64;\n    if post_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
                     penalty_val
                 )
             }
@@ -278,7 +280,7 @@ impl SkillOperator for DeterministicMockOperator {
 
         // Fallback for hybrid or legacy
         let recombined_code = format!(
-            "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual < 10 {{\n        score = score + 95.0;\n    }}\n    score\n}}"
+            "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64;\n    if post_residual < 10 {{\n        score = score + 95.0;\n    }}\n    score\n}}"
         );
 
         let name = format!("SwarmCross-g{}-{}-{}", generation, &parent_a.id.0[..4.min(parent_a.id.0.len())], &parent_b.id.0[..4.min(parent_b.id.0.len())]);

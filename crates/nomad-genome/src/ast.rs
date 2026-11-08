@@ -28,7 +28,10 @@ pub fn score_bin(\
     step_index: usize, \
     total_items: usize, \
     open_bins_count: usize, \
-    mean_residual: f64\
+    mean_residual: f64, \
+    next_item_size: u32, \
+    post_residual: u32, \
+    fitting_bins_count: usize\
 ) -> f64";
 
 /// ============================================================================

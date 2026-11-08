@@ -106,6 +106,30 @@ pub fn compute_trajectory_tldr(
     (tldr, metrics)
 }
 
+/// Calcule l'entropie de Shannon de la distribution des résidus discrétisée en 10 buckets
+fn compute_residual_entropy(bin_levels: &[u32], capacity: u32) -> f64 {
+    if bin_levels.is_empty() {
+        return 0.0;
+    }
+    let num_buckets = 10;
+    let mut counts = [0usize; 10];
+    for &lvl in bin_levels {
+        let rem = capacity.saturating_sub(lvl) as f64;
+        let b = ((rem / capacity as f64) * num_buckets as f64).floor() as usize;
+        let idx = b.min(num_buckets - 1);
+        counts[idx] += 1;
+    }
+    let total = bin_levels.len() as f64;
+    let mut entropy = 0.0;
+    for &c in &counts {
+        if c > 0 {
+            let p = c as f64 / total;
+            entropy -= p * p.ln();
+        }
+    }
+    entropy
+}
+
 /// ============================================================================
 /// OracleEvaluator : Évaluateur Souverain et Sanctuarisé de NOMAD
 /// ============================================================================
@@ -276,6 +300,8 @@ impl OracleEvaluator {
         fuel_limit_per_call: u64,
     ) -> (InstanceEvaluation, BehaviorDescriptor, TrajectoryMetrics) {
         let mut bin_levels: Vec<u32> = Vec::new();
+        let mut mid_levels: Vec<u32> = Vec::new();
+        let mid_course_step = instance.items.len() / 2;
         let mut total_fuel = 0u64;
         let mut trajectory = Vec::with_capacity(instance.items.len());
         let mut new_bins_opened = 0usize;
@@ -365,6 +391,9 @@ impl OracleEvaluator {
                     }
 
                     trajectory.push(bin_levels.len());
+                    if step_idx == mid_course_step {
+                        mid_levels = bin_levels.clone();
+                    }
                 }
                 Err(err) => {
                     return (
@@ -397,11 +426,7 @@ impl OracleEvaluator {
             .collect();
 
         let mean_residual: f64 = residuals.iter().sum::<f64>() / open_count as f64;
-        let residual_variance: f64 = residuals
-            .iter()
-            .map(|&r| (r - mean_residual).powi(2))
-            .sum::<f64>()
-            / open_count as f64;
+        let _ = mean_residual;
 
         let mean_fullness: f64 = bin_levels
             .iter()
@@ -409,16 +434,22 @@ impl OracleEvaluator {
             .sum::<f64>()
             / open_count as f64;
 
+        // Axe X : dead space dans la zone critique [1..15]
         let dead_space_count = bin_levels
             .iter()
             .filter(|&&lvl| {
                 let rem = instance.capacity - lvl;
-                rem > 0 && rem < 10
+                rem >= 1 && rem <= 15
             })
             .count();
 
+        // Axe Y : Entropie de Shannon composite (mi-parcours & fin de parcours)
+        let entropy_mid = compute_residual_entropy(&mid_levels, instance.capacity);
+        let entropy_end = compute_residual_entropy(&bin_levels, instance.capacity);
+        let combined_entropy = 0.5 * entropy_mid + 0.5 * entropy_end;
+
         let behavior = BehaviorDescriptor {
-            residual_variance,
+            residual_variance: combined_entropy,
             new_bin_ratio: new_bins_opened as f64 / num_items as f64,
             mean_fullness,
             dead_space_ratio: dead_space_count as f64 / open_count as f64,

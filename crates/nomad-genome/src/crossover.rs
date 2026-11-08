@@ -77,6 +77,15 @@ pub fn deterministic_ast_crossover(
     if let syn::Stmt::Local(local) = &chosen_unit.stmt {
         if let syn::Pat::Ident(pat_ident) = &local.pat {
             let var_name = pat_ident.ident.to_string();
+            let already_defined = stmts.iter().any(|s| {
+                if let syn::Stmt::Local(l) = s {
+                    if let syn::Pat::Ident(p) = &l.pat {
+                        return p.ident == var_name;
+                    }
+                }
+                false
+            });
+
             if let Some(init) = &local.init {
                 let init_expr = &init.expr;
                 if var_name == "score" {
@@ -90,7 +99,7 @@ pub fn deterministic_ast_crossover(
                         .iter()
                         .flat_map(|s| collect_dependencies(s))
                         .collect();
-                    if !downstream_deps.contains(&var_name) {
+                    if already_defined || !downstream_deps.contains(&var_name) {
                         // Modulation causale directe du score avec le fragment donneur
                         stmt_to_insert = syn::parse_quote! {
                             score = score * 0.95 + ((#init_expr) as f64) * 0.05;
@@ -215,11 +224,25 @@ pub fn multi_locus_ast_crossover(
     if let syn::Stmt::Local(local) = &unit1.stmt {
         if let syn::Pat::Ident(pat_ident) = &local.pat {
             let var_name = pat_ident.ident.to_string();
+            let already_defined = stmts.iter().any(|s| {
+                if let syn::Stmt::Local(l) = s {
+                    if let syn::Pat::Ident(p) = &l.pat {
+                        return p.ident == var_name;
+                    }
+                }
+                false
+            });
+
             if let Some(init) = &local.init {
                 let init_expr = &init.expr;
                 if var_name == "score" {
                     stmt1 = syn::parse_quote! {
                         score = score * 0.80 + ((#init_expr) as f64) * 0.20;
+                    };
+                } else if already_defined {
+                    // Anti-shadowing : fusion causale légère pour ne pas écraser une variable locale
+                    stmt1 = syn::parse_quote! {
+                        score = score + ((#init_expr) as f64) * 0.02;
                     };
                 }
             }
@@ -230,14 +253,64 @@ pub fn multi_locus_ast_crossover(
     // Locus 2: fin du corps (juste avant return)
     let locus2 = stmts.len().saturating_sub(1);
     let mut stmt2 = unit2.stmt.clone();
+    let use_regime_dispatch = seed % 2 == 1;
+
     if let syn::Stmt::Local(local) = &unit2.stmt {
         if let syn::Pat::Ident(pat_ident) = &local.pat {
             let var_name = pat_ident.ident.to_string();
+            let already_defined = stmts.iter().any(|s| {
+                if let syn::Stmt::Local(l) = s {
+                    if let syn::Pat::Ident(p) = &l.pat {
+                        return p.ident == var_name;
+                    }
+                }
+                false
+            });
+
             if let Some(init) = &local.init {
                 let init_expr = &init.expr;
                 if var_name == "score" {
+                    if use_regime_dispatch {
+                        // Croisement par Branchement de Régime (Regime Dispatch Crossover)
+                        // Préserve l'amplitude et l'échelle intrinsèque de chaque parent dans son domaine de régime
+                        if host.logic_code.contains("score_node") {
+                            if (seed / 2) % 2 == 0 {
+                                stmt2 = syn::parse_quote! {
+                                    if (step_index as f64 / total_jobs.max(1) as f64) >= 0.5 {
+                                        score = (#init_expr) as f64;
+                                    }
+                                };
+                            } else {
+                                stmt2 = syn::parse_quote! {
+                                    if (node_residual_cpu as f64) >= mean_cpu_residual {
+                                        score = (#init_expr) as f64;
+                                    }
+                                };
+                            }
+                        } else {
+                            if (seed / 2) % 2 == 0 {
+                                stmt2 = syn::parse_quote! {
+                                    if (step_index as f64 / total_items.max(1) as f64) >= 0.5 {
+                                        score = (#init_expr) as f64;
+                                    }
+                                };
+                            } else {
+                                stmt2 = syn::parse_quote! {
+                                    if (bin_residual as f64) >= mean_residual {
+                                        score = (#init_expr) as f64;
+                                    }
+                                };
+                            }
+                        }
+                    } else {
+                        // Combinaison convexe déterministe standard
+                        stmt2 = syn::parse_quote! {
+                            score = score * 0.70 + ((#init_expr) as f64) * 0.30;
+                        };
+                    }
+                } else if already_defined {
                     stmt2 = syn::parse_quote! {
-                        score = score * 0.70 + ((#init_expr) as f64) * 0.30;
+                        score = score * 0.95 + ((#init_expr) as f64) * 0.05;
                     };
                 } else {
                     stmt2 = syn::parse_quote! {
@@ -294,6 +367,10 @@ pub fn multi_locus_ast_crossover(
 
     let mut metadata = HashMap::new();
     metadata.insert("crossover_type".to_string(), "multi_locus_ast".to_string());
+    metadata.insert(
+        "crossover_mode".to_string(),
+        if use_regime_dispatch { "regime_dispatch".to_string() } else { "convex_combination".to_string() },
+    );
     metadata.insert("host_id".to_string(), host.id.0.clone());
     metadata.insert("donor_id".to_string(), donor.id.0.clone());
     metadata.insert("graft_id".to_string(), graft_id);
@@ -426,5 +503,11 @@ mod tests {
         assert!(child.is_crossover());
         assert!(manifest.host_locus.starts_with("multi_loci_"));
         assert!(child.metadata.get("crossover_type").unwrap() == "multi_locus_ast");
+        assert_eq!(child.metadata.get("crossover_mode").unwrap(), "regime_dispatch");
+
+        // Test convex combination mode with even seed
+        let (child_convex, _) = multi_locus_ast_crossover(&host, &donor, 100, 2)
+            .expect("Multi-locus convex crossover should succeed");
+        assert_eq!(child_convex.metadata.get("crossover_mode").unwrap(), "convex_combination");
     }
 }

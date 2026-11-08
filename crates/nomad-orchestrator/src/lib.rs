@@ -87,4 +87,41 @@ mod tests {
         assert!(report.best_ood2_score.is_valid);
         assert!(report.generations_history.iter().all(|r| r.crossover_rate >= 0.20 && r.crossover_rate <= 0.85));
     }
+
+    #[test]
+    fn test_no_self_crossover_in_swarm_evolution() {
+        let mut config = ExperimentConfig::default();
+        config.group = ExperimentalGroup::GroupC;
+        config.rng_seed = 42;
+        config.population_size = 6;
+        config.max_generations = 2;
+
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        let report = engine.execute_run().expect("Run execution should succeed");
+
+        // Verify that in the entire phylogenetic DAG, NO crossover has parent_a == parent_b
+        let mut crossover_count = 0;
+        for node in report.phylogeny.all_nodes() {
+            if node.is_crossover {
+                let parents = report.phylogeny.parents_of(&node.id);
+                if parents.len() >= 2 {
+                    crossover_count += 1;
+                    let p1 = &parents[0];
+                    let p2 = &parents[1];
+                    assert_ne!(p1, p2, "Self-crossover detected! Parent 1 must not equal Parent 2");
+
+                    let n1 = report.phylogeny.find_node(p1);
+                    let n2 = report.phylogeny.find_node(p2);
+                    if let (Some(n1), Some(n2)) = (n1, n2) {
+                        assert_ne!(n1.content_hash, n2.content_hash, "Parents have identical content/AST hash!");
+                    }
+                }
+            }
+        }
+        assert!(crossover_count > 0, "At least one crossover should have occurred in Group C");
+    }
 }

@@ -188,6 +188,7 @@ impl HeuristicSandbox for DeterministicSandbox {
 
             let mut best_idx = None;
             let mut best_score = f64::MAX;
+            let fitting_bins_count = bin_levels.iter().filter(|&&lvl| lvl + item_weight <= bin_capacity).count();
 
             for (idx, &level) in bin_levels.iter().enumerate() {
                 fuel_consumed += 10;
@@ -199,16 +200,19 @@ impl HeuristicSandbox for DeterministicSandbox {
                 }
 
                 if level + item_weight <= bin_capacity {
-                    let residual = bin_capacity - (level + item_weight);
+                    let current_residual = bin_capacity - level;
+                    let post_residual = bin_capacity - (level + item_weight);
                     let ctx = ScorePolicyContext {
                         item_size: item_weight,
                         next_item_size: next_item_weight,
-                        bin_residual: residual,
+                        bin_residual: current_residual,
                         bin_capacity,
                         step_index,
                         total_items,
                         open_bins_count: bin_levels.len(),
                         mean_residual,
+                        post_residual,
+                        fitting_bins_count,
                     };
                     let outcome = interpreter
                         .eval(&ctx)

@@ -1,4 +1,4 @@
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -81,6 +81,7 @@ pub struct EvolutionEngine<'a> {
     pub phylogeny: PhylogenyGraph,
     pub budget: BudgetTracker,
     pub archive: MapElitesArchive,
+    pub cultural_archive: Option<MapElitesArchive>,
     pub lineages: LineageManager,
     pub adaptive_crossover_rate: f64,
 }
@@ -102,6 +103,7 @@ impl<'a> EvolutionEngine<'a> {
             phylogeny: PhylogenyGraph::new(),
             budget: BudgetTracker::default(),
             archive: MapElitesArchive::new(10, 10),
+            cultural_archive: None,
             lineages: LineageManager::new(),
             adaptive_crossover_rate: 0.60,
         }
@@ -110,6 +112,12 @@ impl<'a> EvolutionEngine<'a> {
     /// Associe un oracle de scheduling multi-ressources au moteur d'évolution.
     pub fn with_scheduling_oracle(mut self, sched_oracle: &'a SchedulingOracle) -> Self {
         self.scheduling_oracle = Some(sched_oracle);
+        self
+    }
+
+    /// Associe une archive culturelle en lecture seule (patrimoine des époques précédentes).
+    pub fn with_cultural_archive(mut self, cultural_archive: MapElitesArchive) -> Self {
+        self.cultural_archive = Some(cultural_archive);
         self
     }
 
@@ -241,23 +249,10 @@ impl<'a> EvolutionEngine<'a> {
     ) -> Result<Vec<EvaluatedIndividual>, OrchestratorError> {
         let mut population = Vec::with_capacity(self.config.population_size);
 
-        // 1. Incorporate collective heritage capsules already seeded in the archive (Rebirth Protocol)
-        let existing_heritage: Vec<(SkillCapsule, BenchmarkScore)> = self
-            .archive
-            .grid
-            .values()
-            .map(|entry| (entry.capsule.clone(), entry.fitness.clone()))
-            .collect();
-
-        for (cap, score) in existing_heritage.into_iter().take(self.config.population_size / 2) {
-            self.phylogeny.insert_capsule(&cap);
-            self.lineages.register_seed(cap.id.clone());
-            population.push(EvaluatedIndividual::new(cap, score));
-        }
-
-        // 2. Fill the remaining slots with freshly generated seeds
-        let remaining_slots = self.config.population_size.saturating_sub(population.len());
-        for i in 0..remaining_slots {
+        // Anti-Inbreeding : 100% de nouvelles graines LLM-Seed sont générées à chaque époque
+        // pour démarrer sur des fondations fraîches (Tabula Rasa), le patrimoine étant conservé
+        // en lecture seule dans l'archive culturelle de référence.
+        for i in 0..self.config.population_size {
             let seed = rand::Rng::gen(rng);
             let (capsule, _audit) = self
                 .operator
@@ -267,7 +262,19 @@ impl<'a> EvolutionEngine<'a> {
             self.budget.record_llm_call();
             self.throttle_cooldown();
 
-            let (capsule, score) = self.evaluate_and_validate(capsule);
+            let (mut capsule, mut score) = self.evaluate_and_validate(capsule);
+            if self.config.domain == ProblemDomain::BinPacking1D && score.is_valid && score.total_bins <= 1266 {
+                let (opt_cap, opt_score) = nomad_evaluator::optimize_capsule_constants(
+                    &capsule,
+                    self.oracle,
+                    self.sandbox,
+                    self.config.fuel_limit_per_call,
+                    12,
+                    seed,
+                );
+                capsule = opt_cap;
+                score = opt_score;
+            }
             self.phylogeny.insert_capsule(&capsule);
             self.lineages.register_seed(capsule.id.clone());
             self.archive.insert(capsule.clone(), score.clone());
@@ -399,9 +406,13 @@ impl<'a> EvolutionEngine<'a> {
                     next_population.push(current_pop[0].clone());
                 }
 
+                // Anti-Inbreeding : plafond d'utilisation d'un même parent ancestral à max 30% des croisements
+                let mut ancestral_usage_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                let max_ancestral_usage = ((pop_size as f64) * 0.30).ceil().max(1.0) as usize;
+
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
                     let seed = rand::Rng::gen(rng);
-                    let should_crossover = rand::Rng::gen_bool(rng, self.adaptive_crossover_rate) && (self.archive.occupied_niches_count() >= 2 || current_pop.len() >= 2);
+                    let should_crossover = rand::Rng::gen_bool(rng, self.adaptive_crossover_rate) && (self.archive.occupied_niches_count() >= 2 || current_pop.len() >= 2 || self.cultural_archive.is_some());
 
                     let (child_capsule, _) = if should_crossover {
                         // 1. Quality-Diversity Parent A Selection via UCB curiosity
@@ -413,23 +424,69 @@ impl<'a> EvolutionEngine<'a> {
                             .map(|e| e.fitness.clone())
                             .unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
 
-                        // 2. AgentPSO Directed Partner Selection for complementary traits
-                        let parent_b = if self.archive.occupied_niches_count() >= 2 {
-                            self.archive.select_complementary_partner(&parent_a, &parent_a_score, rng)
-                                .unwrap_or_else(|| current_pop[rng.gen_range(0..current_pop.len())].capsule.clone())
-                        } else {
-                            // Archive has 1 niche: draw partner from current population
-                            let candidate = &current_pop[rng.gen_range(0..current_pop.len())].capsule;
-                            if candidate.id != parent_a.id {
-                                candidate.clone()
-                            } else {
-                                current_pop[(rng.gen_range(0..current_pop.len()) + 1) % current_pop.len()].capsule.clone()
-                            }
-                        };
+                        let parent_a_hash = parent_a.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
 
-                        self.operator
-                            .crossover(&parent_a, &parent_b, next_gen_idx, seed)
-                            .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
+                        // 2. Sélection dirigée de Parent B :
+                        // Option A : Tirage dans l'archive culturelle en lecture seule (35% à 50% garanti)
+                        let mut chosen_b = None;
+                        if let Some(ref mut cultural) = self.cultural_archive {
+                            if rand::Rng::gen_bool(rng, 0.40) {
+                                if let Some(cand) = cultural.select_complementary_partner(&parent_a, &parent_a_score, rng) {
+                                    let cand_hash = cand.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                                    let usage = ancestral_usage_counts.get(&cand.id.0).copied().unwrap_or(0);
+                                    if usage < max_ancestral_usage && cand.id != parent_a.id && parent_a_hash != cand_hash {
+                                        chosen_b = Some(cand);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Option B : Recherche dans l'archive MAP-Elites active
+                        if chosen_b.is_none() && self.archive.occupied_niches_count() >= 2 {
+                            if let Some(cand) = self.archive.select_complementary_partner(&parent_a, &parent_a_score, rng) {
+                                let cand_hash = cand.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                                let usage = ancestral_usage_counts.get(&cand.id.0).copied().unwrap_or(0);
+                                if usage < max_ancestral_usage && cand.id != parent_a.id && parent_a_hash != cand_hash {
+                                    chosen_b = Some(cand);
+                                }
+                            }
+                        }
+
+                        // Option C : Recherche dans la population courante avec garantie de dissemblance
+                        if chosen_b.is_none() {
+                            for ind in current_pop {
+                                let ind_hash = ind.capsule.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                                let usage = ancestral_usage_counts.get(&ind.capsule.id.0).copied().unwrap_or(0);
+                                if usage < max_ancestral_usage && ind.capsule.id != parent_a.id && parent_a_hash != ind_hash {
+                                    chosen_b = Some(ind.capsule.clone());
+                                    break;
+                                }
+                            }
+                        }
+
+                        // 3. Application du croisement avec INTERDICTION ABSOLUE D'AUTO-CROISEMENT
+                        match chosen_b {
+                            Some(parent_b) => {
+                                let p_b_hash = parent_b.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                                if parent_a.id == parent_b.id || (parent_a_hash.is_some() && parent_a_hash == p_b_hash) {
+                                    // Biais d'auto-croisement détecté : repli immédiat sur la mutation pure
+                                    self.operator
+                                        .mutate(&parent_a, next_gen_idx, seed)
+                                        .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
+                                } else {
+                                    *ancestral_usage_counts.entry(parent_b.id.0.clone()).or_insert(0) += 1;
+                                    self.operator
+                                        .crossover(&parent_a, &parent_b, next_gen_idx, seed)
+                                        .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
+                                }
+                            }
+                            None => {
+                                // Aucun partenaire dissemblable disponible : repli sur la mutation
+                                self.operator
+                                    .mutate(&parent_a, next_gen_idx, seed)
+                                    .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
+                            }
+                        }
                     } else {
                         // Mutation from a UCB-selected parent
                         let parent = self.archive.select_parent_ucb(rng)
@@ -443,7 +500,19 @@ impl<'a> EvolutionEngine<'a> {
                     self.budget.record_llm_call();
                     self.throttle_cooldown();
 
-                    let (child_capsule, score) = self.evaluate_and_validate(child_capsule);
+                    let (mut child_capsule, mut score) = self.evaluate_and_validate(child_capsule);
+                    if self.config.domain == ProblemDomain::BinPacking1D && score.is_valid && score.total_bins <= 1266 {
+                        let (opt_cap, opt_score) = nomad_evaluator::optimize_capsule_constants(
+                            &child_capsule,
+                            self.oracle,
+                            self.sandbox,
+                            self.config.fuel_limit_per_call,
+                            12,
+                            seed,
+                        );
+                        child_capsule = opt_cap;
+                        score = opt_score;
+                    }
                     self.phylogeny.insert_capsule(&child_capsule);
 
                     // Record in AgentPSO lineage state

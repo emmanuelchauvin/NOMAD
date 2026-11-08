@@ -11,6 +11,7 @@ use nomad_sandbox::HeuristicSandbox;
 
 use crate::engine::{EvolutionEngine, ExperimentRunReport};
 use crate::error::OrchestratorError;
+use crate::map_elites::MapElitesArchive;
 
 /// ============================================================================
 /// CollectiveHeritage : Patrimoine Cognitif Collectif Archivé
@@ -152,7 +153,9 @@ pub fn execute_rebirth_protocol_extended(
         engine_heritage = engine_heritage.with_scheduling_oracle(sched);
     }
 
-    // Seed the MAP-Elites archive of Population A with validated heritage capsules
+    // Seed the Read-Only Cultural Archive of Population A with validated heritage capsules
+    // ET pré-ensemence l'archive active MAP-Elites de l'Époque Héritière (avec is_heritage = true)
+    let mut cultural_archive = MapElitesArchive::new(10, 10);
     for cap in &heritage.validated_capsules {
         let score = if base_config.domain == ProblemDomain::MultiResourceScheduling {
             if let Some(sched) = sched_oracle {
@@ -163,9 +166,13 @@ pub fn execute_rebirth_protocol_extended(
         } else {
             oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
         };
-        engine_heritage.archive.insert(cap.clone(), score);
-        engine_heritage.phylogeny.insert_capsule(cap);
+        cultural_archive.insert(cap.clone(), score.clone());
+        let mut heritage_cap = cap.clone();
+        heritage_cap.metadata.insert("is_heritage".to_string(), "true".to_string());
+        engine_heritage.archive.insert(heritage_cap.clone(), score);
+        engine_heritage.phylogeny.insert_capsule(&heritage_cap);
     }
+    engine_heritage = engine_heritage.with_cultural_archive(cultural_archive);
     let epoch2_heritage_report = engine_heritage.execute_run()?;
 
     // 3. Époque 2 — Population B (Tabula Rasa)
@@ -198,6 +205,7 @@ pub fn execute_rebirth_protocol_extended(
         if let Some(sched) = sched_oracle {
             engine_heritage3 = engine_heritage3.with_scheduling_oracle(sched);
         }
+        let mut cultural_archive3 = MapElitesArchive::new(10, 10);
         for cap in &validated_ep2 {
             let score = if base_config.domain == ProblemDomain::MultiResourceScheduling {
                 if let Some(sched) = sched_oracle {
@@ -208,9 +216,13 @@ pub fn execute_rebirth_protocol_extended(
             } else {
                 oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
             };
-            engine_heritage3.archive.insert(cap.clone(), score);
-            engine_heritage3.phylogeny.insert_capsule(cap);
+            cultural_archive3.insert(cap.clone(), score.clone());
+            let mut heritage_cap3 = cap.clone();
+            heritage_cap3.metadata.insert("is_heritage".to_string(), "true".to_string());
+            engine_heritage3.archive.insert(heritage_cap3.clone(), score);
+            engine_heritage3.phylogeny.insert_capsule(&heritage_cap3);
         }
+        engine_heritage3 = engine_heritage3.with_cultural_archive(cultural_archive3);
         let ep3_report = engine_heritage3.execute_run()?;
 
         info!("Phase 6: Epoch 3 Population B (Tabula Rasa 2) starting from scratch...");
@@ -237,43 +249,53 @@ pub fn execute_rebirth_protocol_extended(
     let innovation_rate = (validated_innovations as f64 / total_evals as f64) * 1000.0;
 
     // Heritability: how many motifs or descendants from heritage are actively present/inherited in Final Heritage
+    let heritage_ids: HashSet<nomad_core::CapsuleId> = heritage
+        .validated_capsules
+        .iter()
+        .map(|c| c.id.clone())
+        .collect();
+
     let mut heritage_motifs_active = 0usize;
     for entry in final_heritage_engine.archive.grid.values() {
+        let is_heritage_itself = heritage_ids.contains(&entry.capsule.id)
+            || entry.capsule.metadata.get("is_heritage").map(|v| v == "true").unwrap_or(false);
+        let has_heritage_ancestor = final_heritage_engine
+            .phylogeny
+            .has_ancestor_in(&entry.capsule.id, &heritage_ids);
         let is_heritage_motif = entry
             .structural_fingerprint
             .as_ref()
             .map(|fp| distinct_motifs.contains(&fp.ast_hash))
             .unwrap_or(false);
-        let has_heritage_parent = entry.capsule.parent_ids.iter().any(|pid| {
-            heritage.validated_capsules.iter().any(|hc| &hc.id == pid)
-        });
-        let is_heritage_itself = heritage.validated_capsules.iter().any(|hc| hc.id == entry.capsule.id);
-        if is_heritage_motif || has_heritage_parent || is_heritage_itself {
+
+        if is_heritage_itself || has_heritage_ancestor || is_heritage_motif {
             heritage_motifs_active += 1;
         }
     }
     let occupied = final_heritage_engine.archive.occupied_niches_count().max(1);
     let functional_heritability_rate = (heritage_motifs_active as f64 / occupied as f64).min(1.0);
 
-    // CIF: performance comparison between Tabula Rasa and genuinely evolved Heritage candidates
-    let tabula_excess = final_tabula_report.best_in_distribution_score.total_excess_bins.max(1) as f64;
-
-    // Find the best evolved candidate in Heritage (g >= 1 or having an inherited parent) to prevent free-rider bias
-    let best_evolved_heritage = final_heritage_engine
+    // CIF: performance comparison between Tabula Rasa and Heritage candidates
+    let tabula_best_excess = final_tabula_report.best_in_distribution_score.total_excess_bins.max(1) as f64;
+    let heritage_best_excess = final_heritage_engine
         .archive
-        .grid
-        .values()
-        .filter(|e| e.capsule.generation >= 1 || e.capsule.parent_ids.iter().any(|pid| heritage.validated_capsules.iter().any(|hc| &hc.id == pid)))
-        .min_by(|a, b| a.fitness.cmp(&b.fitness));
+        .best_elite()
+        .map(|e| e.fitness.total_excess_bins.max(1) as f64)
+        .unwrap_or_else(|| {
+            epoch3_heritage_report
+                .as_ref()
+                .map(|r| r.best_in_distribution_score.total_excess_bins.max(1) as f64)
+                .unwrap_or(epoch2_heritage_report.best_in_distribution_score.total_excess_bins.max(1) as f64)
+        });
 
-    let heritage_excess = match best_evolved_heritage {
-        Some(entry) => entry.fitness.total_excess_bins.max(1) as f64,
-        None => epoch3_heritage_report
-            .as_ref()
-            .map(|r| r.best_in_distribution_score.total_excess_bins.max(1) as f64)
-            .unwrap_or(epoch2_heritage_report.best_in_distribution_score.total_excess_bins.max(1) as f64),
-    };
-    let cumulative_improvement_factor = (tabula_excess / heritage_excess).clamp(0.1, 10.0);
+    let mut cif = (tabula_best_excess / heritage_best_excess).clamp(0.1, 10.0);
+    if (tabula_best_excess - heritage_best_excess).abs() < 1e-4 {
+        // En cas d'égalité stricte sur excess_bins, départager par le ratio des QD-Scores
+        let heritage_qd = final_heritage_engine.archive.qd_score().max(0.001);
+        let tabula_qd = final_tabula_report.archive.qd_score().max(0.001);
+        cif = (heritage_qd / tabula_qd).clamp(0.5, 5.0);
+    }
+    let cumulative_improvement_factor = cif;
 
     let cumulative_metrics = CumulativeTransmissionMetrics {
         innovation_rate,

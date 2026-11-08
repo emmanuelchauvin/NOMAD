@@ -4,11 +4,13 @@ pub mod dataset;
 pub mod oracle;
 pub mod anti_dead_code;
 pub mod scheduling;
+pub mod optimizer;
 
 pub use dataset::*;
 pub use oracle::*;
 pub use anti_dead_code::*;
 pub use scheduling::*;
+pub use optimizer::*;
 
 #[cfg(test)]
 mod tests {
@@ -107,11 +109,12 @@ mod tests {
         println!(">>> Best Fit + Horizon: {} bins", s2.total_bins);
 
         // Test 3: The 1264 Champion from run_report_qwen_v2.json
-        let c3 = r#"pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {
+        // Test 3: The 1264 Champion from run_v2 with updated signature using post_residual
+        let c3 = r#"pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
             let progress = step_index as f64 / total_items as f64;
             let dynamic_factor = if progress < 0.5 { 1.0 } else { 2.0 };
             let decay_penalty = (1.0 - progress).powi(3);
-            let mut score = bin_residual as f64 
+            let mut score = post_residual as f64 
                 - item_size as f64 * dynamic_factor 
                 - open_bins_count as f64 / total_items as f64 * 5.0 
                 + mean_residual * (1.0 - decay_penalty);
@@ -122,7 +125,7 @@ mod tests {
                 score += mean_residual * decay_penalty;
             }
 
-            let non_linear_factor = if bin_residual < item_size { 2.0 } else { 1.0 };
+            let non_linear_factor = if post_residual < item_size { 2.0 } else { 1.0 };
             let adjusted_score = score * non_linear_factor;
             let time_decay_penalty = (1.0 - progress).powi(4);
             let penalized_score = adjusted_score * (1.0 + time_decay_penalty);
@@ -133,11 +136,11 @@ mod tests {
         println!(">>> 1264 Champion from v2: {} bins", s3.total_bins);
 
         // Test 4: The 1264 Champion WITH lookahead pairing bonus
-        let c4 = r#"pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {
+        let c4 = r#"pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
             let progress = step_index as f64 / total_items as f64;
             let dynamic_factor = if progress < 0.5 { 1.0 } else { 2.0 };
             let decay_penalty = (1.0 - progress).powi(3);
-            let mut score = bin_residual as f64 
+            let mut score = post_residual as f64 
                 - item_size as f64 * dynamic_factor 
                 - open_bins_count as f64 / total_items as f64 * 5.0 
                 + mean_residual * (1.0 - decay_penalty);
@@ -149,11 +152,11 @@ mod tests {
             }
 
             // Lookahead micro-matching
-            if bin_residual == next_item_size && next_item_size > 0 {
+            if post_residual == next_item_size && next_item_size > 0 {
                 score -= 35.0 * (1.0 + progress);
             }
 
-            let non_linear_factor = if bin_residual < item_size { 2.0 } else { 1.0 };
+            let non_linear_factor = if post_residual < item_size { 2.0 } else { 1.0 };
             let adjusted_score = score * non_linear_factor;
             let time_decay_penalty = (1.0 - progress).powi(4);
             let penalized_score = adjusted_score * (1.0 + time_decay_penalty);

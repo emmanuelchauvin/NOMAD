@@ -67,6 +67,17 @@ pub fn collect_dependencies(stmt: &Stmt) -> Vec<String> {
     deps
 }
 
+/// Parcourt récursivement une expression AST pour lister toutes les variables référencées.
+pub fn collect_expr_dependencies(expr: &Expr) -> Vec<String> {
+    let mut collector = DependencyCollector {
+        identifiers: HashSet::new(),
+    };
+    collector.visit_expr(expr);
+    let mut deps: Vec<String> = collector.identifiers.into_iter().collect();
+    deps.sort();
+    deps
+}
+
 /// ============================================================================
 /// extract_logical_units : Algorithme d'Extraction des Unités Logiques
 /// ============================================================================
