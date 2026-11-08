@@ -81,7 +81,7 @@ cargo run --release --bin nomad -- rebirth --operator ollama --model qwen2.5-cod
 
 ### 3. Inspect the MAP-Elites Quality-Diversity Archive
 ```bash
-cargo run --release --bin nomad -- archive --input run_report.json
+cargo run --release --bin nomad -- archive --input run_report_qwen_v2.json
 ```
 
 ### 4. Export & Visualize Interactive Phylogenetic Tree (HTML / SVG)
