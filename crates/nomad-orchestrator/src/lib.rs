@@ -42,6 +42,18 @@ mod tests {
         assert!(report.total_lineage_nodes >= 6);
         assert!(report.best_ood1_score.is_valid);
         assert!(report.best_ood2_score.is_valid);
+        assert!(report.generations_history.iter().all(|r| r.crossover_rate >= 0.20 && r.crossover_rate <= 0.85));
+    }
+
+    #[test]
+    fn test_adaptive_operator_crossover_bounds() {
+        let config = ExperimentConfig::default();
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+
+        let engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        assert!((engine.adaptive_crossover_rate - 0.60).abs() < 1e-6);
     }
 
     #[test]
@@ -73,5 +85,6 @@ mod tests {
         assert!(report.best_in_distribution_score.mean_efficiency > 0.70);
         assert!(report.best_ood1_score.is_valid);
         assert!(report.best_ood2_score.is_valid);
+        assert!(report.generations_history.iter().all(|r| r.crossover_rate >= 0.20 && r.crossover_rate <= 0.85));
     }
 }

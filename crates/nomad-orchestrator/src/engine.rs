@@ -16,6 +16,10 @@ use crate::error::OrchestratorError;
 use crate::map_elites::MapElitesArchive;
 use crate::pso::LineageManager;
 
+fn default_crossover_rate() -> f64 {
+    0.60
+}
+
 /// Recorded statistics for a single generation in the evolutionary run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerationRecord {
@@ -33,6 +37,8 @@ pub struct GenerationRecord {
     pub archive_coverage: f64,
     #[serde(default)]
     pub occupied_niches: usize,
+    #[serde(default = "default_crossover_rate")]
+    pub crossover_rate: f64,
 }
 
 /// The complete final output of an experimental run for scientific analysis.
@@ -76,6 +82,7 @@ pub struct EvolutionEngine<'a> {
     pub budget: BudgetTracker,
     pub archive: MapElitesArchive,
     pub lineages: LineageManager,
+    pub adaptive_crossover_rate: f64,
 }
 
 impl<'a> EvolutionEngine<'a> {
@@ -96,6 +103,7 @@ impl<'a> EvolutionEngine<'a> {
             budget: BudgetTracker::default(),
             archive: MapElitesArchive::new(10, 10),
             lineages: LineageManager::new(),
+            adaptive_crossover_rate: 0.60,
         }
     }
 
@@ -178,6 +186,7 @@ impl<'a> EvolutionEngine<'a> {
                 qd_score,
                 archive_coverage,
                 occupied_niches,
+                crossover_rate: self.adaptive_crossover_rate,
             };
             generation_records.push(record);
 
@@ -392,7 +401,7 @@ impl<'a> EvolutionEngine<'a> {
 
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
                     let seed = rand::Rng::gen(rng);
-                    let should_crossover = rand::Rng::gen_bool(rng, 0.60) && (self.archive.occupied_niches_count() >= 2 || current_pop.len() >= 2);
+                    let should_crossover = rand::Rng::gen_bool(rng, self.adaptive_crossover_rate) && (self.archive.occupied_niches_count() >= 2 || current_pop.len() >= 2);
 
                     let (child_capsule, _) = if should_crossover {
                         // 1. Quality-Diversity Parent A Selection via UCB curiosity
@@ -456,6 +465,15 @@ impl<'a> EvolutionEngine<'a> {
 
                     // Local niche competition in MAP-Elites
                     self.archive.insert(child_capsule.clone(), score.clone());
+
+                    // Adaptive Operator Selection: self-tune crossover probability based on success
+                    if should_crossover {
+                        if is_improved || child_capsule.validation == nomad_core::ValidationStatus::PassedLevel3Behavioral {
+                            self.adaptive_crossover_rate = (self.adaptive_crossover_rate + 0.02).min(0.85);
+                        } else {
+                            self.adaptive_crossover_rate = (self.adaptive_crossover_rate - 0.01).max(0.25);
+                        }
+                    }
 
                     next_population.push(EvaluatedIndividual::new(child_capsule, score));
                 }

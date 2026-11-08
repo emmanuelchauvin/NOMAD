@@ -120,10 +120,11 @@ cargo run --release --bin nomad -- compare --domain scheduling --operator mock -
 
 ## 5. Scientific Validation & Testing
 
-NOMAD is verified by an automated test suite comprising **20 unit tests** and 4 macro-acceptance protocols:
-- `cargo test --workspace` (All 20 unit & integration tests pass deterministically)
+NOMAD is verified by an automated test suite comprising **21 unit tests** and 4 macro-acceptance protocols:
+- `cargo test --workspace` (All 21 unit & integration tests pass deterministically)
 - Level 1-3 Anti-dead-code validation with surgical $C_{\text{null}}$ ablation
 - Multi-Resource Cloud Job Scheduling (CPU/RAM vector packing)
+- Adaptive Operator Selection (AOS) for dynamic Swarm crossover control
 - MAP-Elites niche competition & replacement
 - Cryptographic reproducibility across random seeds
 

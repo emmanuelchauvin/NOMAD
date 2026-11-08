@@ -9,7 +9,7 @@
 
 L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `SPECIFICATIONS.md` (Sections 0 à 14) est **validé à 100%** :
 
-* **Validation Technique (Workspace Rust) :** **20 tests automatisés sur 20 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe, les opérateurs LLM & Mock, le Sandbox fuel-metered, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites, AgentPSO, le protocole de Rebirth et l'Ordonnancement Cloud Multi-Ressources.
+* **Validation Technique (Workspace Rust) :** **21 tests automatisés sur 21 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe, les opérateurs LLM & Mock, le Sandbox fuel-metered, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth et l'Ordonnancement Cloud Multi-Ressources.
 * **Validation Scientifique (Les 4 Tests d'Acceptation) :**
   1. **Test 1 (Plafond 1265 & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux.
   2. **Test 2 (Résilience Génétique & MAP-Elites) :** Résolution prouvée du mode collapse de la V1. Maintien pérenne d'un front de Pareto de 6 niches actives avec réduction de l'espace mort de $58,8\%$ à $23,6\%$.
@@ -43,9 +43,10 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-orchestrator`** | `test_map_elites_insertion_and_local_competition` | Grille 2D Quality-Diversity, compétition intra-niche et curiosité UCB. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_evolutionary_run_group_c_swarm` | Simulation évolutionnaire complète du Groupe C (Swarm QD) sur 3 générations. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_evolutionary_run_scheduling_swarm` | Simulation évolutionnaire complète sur l'Ordonnancement Cloud Multi-Ressources. | ✅ PASS |
+| **`nomad-orchestrator`** | `test_adaptive_operator_crossover_bounds` | Méta-évolution : contrôle adaptatif du taux de croisement d'essaim (AOS) borné. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_rebirth_protocol_execution` | Protocole complet "Mort et Renaissance" (Époque 1 $\rightarrow$ Extinction $\rightarrow$ Époque 2). | ✅ PASS |
 
-**Bilan : 20 passed; 0 failed; 0 ignored; 0 warnings.**
+**Bilan : 21 passed; 0 failed; 0 ignored; 0 warnings.**
 
 ---
 
