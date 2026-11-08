@@ -5,7 +5,7 @@ use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
 
 use nomad_core::{
-    PolicyKind, SkillCapsule, ValidationStatus,
+    PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus,
 };
 use nomad_genome::{
     compute_structural_fingerprint, deterministic_ast_crossover, parse_score_bin,
@@ -53,6 +53,7 @@ pub struct DeterministicMockOperator {
     pub model_name: String,
     pub model_sha256: String,
     pub engine_version: String,
+    pub domain: ProblemDomain,
 }
 
 impl Default for DeterministicMockOperator {
@@ -61,6 +62,7 @@ impl Default for DeterministicMockOperator {
             model_name: "Mock-NOMAD-Darwin-7B".to_string(),
             model_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
             engine_version: "nomad-mock-v2.0".to_string(),
+            domain: ProblemDomain::BinPacking1D,
         }
     }
 }
@@ -71,7 +73,7 @@ impl SkillOperator for DeterministicMockOperator {
         index: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let variants = [
+        let bin_variants = [
             (
                 "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}",
                 "Best Fit linear remaining capacity baseline",
@@ -90,12 +92,36 @@ impl SkillOperator for DeterministicMockOperator {
             ),
         ];
 
+        let sched_variants = [
+            (
+                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let mut score = node_residual_cpu as f64 + node_residual_ram as f64;\n    score\n}",
+                "Linear CPU+RAM residual baseline",
+            ),
+            (
+                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let mut score = cpu_norm * cpu_norm + ram_norm * ram_norm;\n    score\n}",
+                "Euclidean 2D Vector Balanced Fit",
+            ),
+            (
+                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let mut score = (cpu_norm + ram_norm) + imbalance * 3.0;\n    score\n}",
+                "Vector Fit with strict resource imbalance penalty",
+            ),
+            (
+                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let horizon = (total_jobs - step_index) as f64 / total_jobs as f64;\n    let mut score = (node_residual_cpu as f64 + node_residual_ram as f64) * (1.0 + horizon * 0.4);\n    score\n}",
+                "Dynamic horizon-adaptive cloud scheduler",
+            ),
+        ];
+
         let mut rng = ChaCha8Rng::seed_from_u64(seed ^ (index as u64));
-        let variant_idx = rng.gen_range(0..variants.len());
-        let (code, desc) = variants[variant_idx];
+        let (code, desc) = if self.domain == ProblemDomain::MultiResourceScheduling {
+            let variant_idx = rng.gen_range(0..sched_variants.len());
+            sched_variants[variant_idx]
+        } else {
+            let variant_idx = rng.gen_range(0..bin_variants.len());
+            bin_variants[variant_idx]
+        };
         let name = format!("Seed-Heuristic-{:03}", index);
 
-        let prompt = format!("SYSTEM: Synthesize an online bin packing heuristic.\nSEED INDEX: {}", index);
+        let prompt = format!("SYSTEM: Synthesize an optimization heuristic.\nDOMAIN: {:?}\nSEED INDEX: {}", self.domain, index);
         let audit = ReproducibilityAudit {
             model_name: self.model_name.clone(),
             model_sha256: self.model_sha256.clone(),
@@ -142,7 +168,18 @@ impl SkillOperator for DeterministicMockOperator {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let penalty_val: f64 = rng.gen_range(50.0..120.0);
 
-        let new_code = if parent.logic_code.contains("score_bin") {
+        let new_code = if parent.logic_code.contains("score_node") {
+            if parent.logic_code.contains("imbalance * 3.0") {
+                let factor: f64 = rng.gen_range(1.5..5.5);
+                parent.logic_code.replace("imbalance * 3.0", &format!("imbalance * {:.1}", factor))
+            } else {
+                let factor: f64 = rng.gen_range(1.5..4.5);
+                format!(
+                    "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {{\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let mut score = (cpu_norm + ram_norm) + imbalance * {:.1};\n    score\n}}",
+                    factor
+                )
+            }
+        } else if parent.logic_code.contains("score_bin") {
             if parent.logic_code.contains("bin_residual < 10") {
                 parent.logic_code.replace("95.0", &format!("{:.1}", penalty_val))
             } else {
@@ -209,8 +246,10 @@ impl SkillOperator for DeterministicMockOperator {
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        // Attempt deterministic AST crossover first if both parents have parseable score_bin
-        if parent_a.logic_code.contains("score_bin") && parent_b.logic_code.contains("score_bin") {
+        // Attempt deterministic AST crossover first if both parents have parseable scoring functions
+        if (parent_a.logic_code.contains("score_") || parent_a.logic_code.contains("fn score"))
+            && (parent_b.logic_code.contains("score_") || parent_b.logic_code.contains("fn score"))
+        {
             if let Ok((child, manifest)) = deterministic_ast_crossover(parent_a, parent_b, seed, generation) {
                 let audit = ReproducibilityAudit {
                     model_name: self.model_name.clone(),

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use nomad_core::PackingDecision;
+use nomad_core::{PackingDecision, SchedulingDecision, SchedulingInputs};
 use crate::error::SandboxError;
 use crate::eval_ast::{AstInterpreter, ScorePolicyContext};
 
@@ -7,6 +7,13 @@ use crate::eval_ast::{AstInterpreter, ScorePolicyContext};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionOutcome {
     pub decision: PackingDecision,
+    pub fuel_consumed: u64,
+}
+
+/// Outcome of a single scheduling heuristic execution step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SchedulingExecutionOutcome {
+    pub decision: SchedulingDecision,
     pub fuel_consumed: u64,
 }
 
@@ -41,6 +48,18 @@ pub trait HeuristicSandbox: Send + Sync {
         step_index: usize,
         total_items: usize,
     ) -> Result<ExecutionOutcome, SandboxError>;
+
+    fn execute_scheduling(
+        &self,
+        logic_code: &str,
+        job_cpu: u32,
+        job_ram: u32,
+        node_levels: &[(u32, u32)],
+        node_capacity: (u32, u32),
+        fuel_limit: u64,
+        step_index: usize,
+        total_jobs: usize,
+    ) -> Result<SchedulingExecutionOutcome, SandboxError>;
 }
 
 /// Deterministic, zero-dependency sandboxed evaluation engine with instruction-level fuel metering.
@@ -353,6 +372,206 @@ impl HeuristicSandbox for DeterministicSandbox {
             decision,
             fuel_consumed,
         })
+    }
+
+    fn execute_scheduling(
+        &self,
+        logic_code: &str,
+        job_cpu: u32,
+        job_ram: u32,
+        node_levels: &[(u32, u32)],
+        node_capacity: (u32, u32),
+        fuel_limit: u64,
+        step_index: usize,
+        total_jobs: usize,
+    ) -> Result<SchedulingExecutionOutcome, SandboxError> {
+        let mut fuel_consumed = 0u64;
+
+        if job_cpu > node_capacity.0 || job_ram > node_capacity.1 {
+            return Err(SandboxError::ItemExceedsCapacity {
+                weight: job_cpu.max(job_ram),
+                capacity: node_capacity.0.max(node_capacity.1),
+            });
+        }
+
+        let trimmed_code = logic_code.trim();
+
+        // 1. Classical baseline shortcuts
+        if trimmed_code == "FIRST_FIT_NODE" {
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 5;
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    return Ok(SchedulingExecutionOutcome {
+                        decision: SchedulingDecision::PlaceOnNode(idx),
+                        fuel_consumed,
+                    });
+                }
+            }
+            return Ok(SchedulingExecutionOutcome {
+                decision: SchedulingDecision::OpenNewNode,
+                fuel_consumed,
+            });
+        }
+
+        if trimmed_code == "BEST_FIT_CPU" {
+            let mut best_idx = None;
+            let mut min_res_cpu = u32::MAX;
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 5;
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    let res_cpu = node_capacity.0 - (used_cpu + job_cpu);
+                    if res_cpu < min_res_cpu {
+                        min_res_cpu = res_cpu;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+            let decision = best_idx.map(SchedulingDecision::PlaceOnNode).unwrap_or(SchedulingDecision::OpenNewNode);
+            return Ok(SchedulingExecutionOutcome { decision, fuel_consumed });
+        }
+
+        if trimmed_code == "BEST_FIT_RAM" {
+            let mut best_idx = None;
+            let mut min_res_ram = u32::MAX;
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 5;
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    let res_ram = node_capacity.1 - (used_ram + job_ram);
+                    if res_ram < min_res_ram {
+                        min_res_ram = res_ram;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+            let decision = best_idx.map(SchedulingDecision::PlaceOnNode).unwrap_or(SchedulingDecision::OpenNewNode);
+            return Ok(SchedulingExecutionOutcome { decision, fuel_consumed });
+        }
+
+        if trimmed_code == "BALANCED_FIT" {
+            let mut best_idx = None;
+            let mut min_norm = f64::MAX;
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 10;
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    let res_cpu_norm = (node_capacity.0 - (used_cpu + job_cpu)) as f64 / node_capacity.0 as f64;
+                    let res_ram_norm = (node_capacity.1 - (used_ram + job_ram)) as f64 / node_capacity.1 as f64;
+                    let norm = (res_cpu_norm * res_cpu_norm + res_ram_norm * res_ram_norm).sqrt();
+                    if norm < min_norm {
+                        min_norm = norm;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+            let decision = best_idx.map(SchedulingDecision::PlaceOnNode).unwrap_or(SchedulingDecision::OpenNewNode);
+            return Ok(SchedulingExecutionOutcome { decision, fuel_consumed });
+        }
+
+        // 2. Synthesized AST evaluation via score_node
+        let parsed_fn = syn::parse_str::<syn::ItemFn>(trimmed_code)
+            .or_else(|_| {
+                syn::parse_file(trimmed_code).map(|f| {
+                    for item in f.items {
+                        if let syn::Item::Fn(func) = item {
+                            if func.sig.ident == "score_node" {
+                                return func;
+                            }
+                        }
+                    }
+                    syn::ItemFn {
+                        attrs: Vec::new(),
+                        vis: syn::Visibility::Inherited,
+                        sig: syn::parse_str("fn score_node()").unwrap(),
+                        block: Box::new(syn::Block {
+                            brace_token: Default::default(),
+                            stmts: Vec::new(),
+                        }),
+                    }
+                })
+            })
+            .ok();
+
+        let decision = if let Some(item_fn) = parsed_fn.filter(|f| f.sig.ident == "score_node") {
+            let interpreter = AstInterpreter::new(&item_fn, fuel_limit);
+            let total_res_cpu: u32 = node_levels.iter().map(|&(u, _)| node_capacity.0.saturating_sub(u)).sum();
+            let total_res_ram: u32 = node_levels.iter().map(|&(_, r)| node_capacity.1.saturating_sub(r)).sum();
+            let n_nodes = node_levels.len().max(1) as f64;
+            let mean_cpu_residual = total_res_cpu as f64 / n_nodes;
+            let mean_ram_residual = total_res_ram as f64 / n_nodes;
+
+            let mut best_idx = None;
+            let mut best_score = f64::MAX;
+
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 10;
+                if fuel_consumed > fuel_limit {
+                    return Err(SandboxError::FuelLimitExceeded { fuel_consumed, fuel_limit });
+                }
+
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    let res_cpu = node_capacity.0 - (used_cpu + job_cpu);
+                    let res_ram = node_capacity.1 - (used_ram + job_ram);
+                    let ctx = SchedulingInputs {
+                        job_cpu,
+                        job_ram,
+                        node_residual_cpu: res_cpu,
+                        node_residual_ram: res_ram,
+                        node_capacity_cpu: node_capacity.0,
+                        node_capacity_ram: node_capacity.1,
+                        step_index,
+                        total_jobs,
+                        active_nodes_count: node_levels.len(),
+                        mean_cpu_residual,
+                        mean_ram_residual,
+                    };
+                    let outcome = interpreter.eval_scheduling(&ctx)
+                        .map_err(|e| SandboxError::ExecutionCrash(e.to_string()))?;
+                    fuel_consumed += outcome.fuel_consumed;
+                    if fuel_consumed > fuel_limit {
+                        return Err(SandboxError::FuelLimitExceeded { fuel_consumed, fuel_limit });
+                    }
+                    if outcome.score < best_score {
+                        best_score = outcome.score;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+
+            match best_idx {
+                Some(idx) => SchedulingDecision::PlaceOnNode(idx),
+                None => SchedulingDecision::OpenNewNode,
+            }
+        } else {
+            // Fallback: first fit
+            let mut found = None;
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    found = Some(idx);
+                    break;
+                }
+            }
+            match found {
+                Some(idx) => SchedulingDecision::PlaceOnNode(idx),
+                None => SchedulingDecision::OpenNewNode,
+            }
+        };
+
+        // Safety verification
+        if let SchedulingDecision::PlaceOnNode(idx) = decision {
+            if idx >= node_levels.len() {
+                return Err(SandboxError::InvalidBinIndex { index: idx, open_bins: node_levels.len() });
+            }
+            let (u_cpu, u_ram) = node_levels[idx];
+            if u_cpu + job_cpu > node_capacity.0 || u_ram + job_ram > node_capacity.1 {
+                return Err(SandboxError::CapacityOverflow {
+                    index: idx,
+                    current_level: u_cpu.max(u_ram),
+                    weight: job_cpu.max(job_ram),
+                    capacity: node_capacity.0.max(node_capacity.1),
+                });
+            }
+        }
+
+        Ok(SchedulingExecutionOutcome { decision, fuel_consumed })
     }
 }
 

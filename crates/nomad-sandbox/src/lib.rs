@@ -52,4 +52,53 @@ mod tests {
         let res = sandbox.execute("FIRST_FIT", 105, &[], 100, 10_000);
         assert!(res.is_err());
     }
+
+    #[test]
+    fn test_sandbox_scheduling_execution() {
+        use nomad_core::SchedulingDecision;
+        let sandbox = DeterministicSandbox::new();
+        let node_levels = vec![(10, 30), (28, 120)]; // (cpu, ram) used
+        let capacity = (32, 128); // 32 cores, 128 GB
+        let fuel_limit = 20_000;
+
+        // Job requiring 4 cores, 16 GB
+        // First fit node should place in index 0 (10+4=14 <= 32, 30+16=46 <= 128)
+        let outcome_ff = sandbox.execute_scheduling(
+            "FIRST_FIT_NODE",
+            4,
+            16,
+            &node_levels,
+            capacity,
+            fuel_limit,
+            0,
+            10,
+        ).unwrap();
+        assert_eq!(outcome_ff.decision, SchedulingDecision::PlaceOnNode(0));
+
+        // Job requiring 20 cores, 10 GB (node 1 has only 4 cores left, fits only on node 0)
+        let outcome_job20 = sandbox.execute_scheduling(
+            "BALANCED_FIT",
+            20,
+            10,
+            &node_levels,
+            capacity,
+            fuel_limit,
+            1,
+            10,
+        ).unwrap();
+        assert_eq!(outcome_job20.decision, SchedulingDecision::PlaceOnNode(0));
+
+        // Job requiring 30 cores, 100 GB (fits on neither node 0 nor node 1) -> OpenNewNode
+        let outcome_new = sandbox.execute_scheduling(
+            "BALANCED_FIT",
+            30,
+            100,
+            &node_levels,
+            capacity,
+            fuel_limit,
+            2,
+            10,
+        ).unwrap();
+        assert_eq!(outcome_new.decision, SchedulingDecision::OpenNewNode);
+    }
 }

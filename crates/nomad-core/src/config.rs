@@ -1,9 +1,20 @@
 use serde::{Deserialize, Serialize};
-use crate::types::ExperimentalGroup;
+use crate::types::{ExperimentalGroup, ProblemDomain};
+
+fn default_node_cpu() -> u32 {
+    32
+}
+
+fn default_node_ram() -> u32 {
+    128
+}
 
 /// Configuration for an evolutionary run according to the pre-registered protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExperimentConfig {
+    /// Combinatorial domain for the experiment (default: BinPacking1D).
+    #[serde(default)]
+    pub domain: ProblemDomain,
     /// Experimental group designation (A, B, C, or D).
     pub group: ExperimentalGroup,
     /// Random number generator seed for exact reproducibility.
@@ -24,6 +35,12 @@ pub struct ExperimentConfig {
     pub memory_limit_bytes: usize,
     /// Bin capacity for the 1D Bin Packing problem (default: 100).
     pub bin_capacity: u32,
+    /// CPU capacity for scheduling nodes (default: 32 cores).
+    #[serde(default = "default_node_cpu")]
+    pub node_capacity_cpu: u32,
+    /// RAM capacity for scheduling nodes (default: 128 GB).
+    #[serde(default = "default_node_ram")]
+    pub node_capacity_ram: u32,
     /// Optional cooldown pause in milliseconds between LLM calls to prevent GPU thermal throttling.
     #[serde(default)]
     pub cooldown_ms: u64,
@@ -32,6 +49,7 @@ pub struct ExperimentConfig {
 impl Default for ExperimentConfig {
     fn default() -> Self {
         Self {
+            domain: ProblemDomain::BinPacking1D,
             group: ExperimentalGroup::GroupC,
             rng_seed: 42,
             population_size: 100,
@@ -42,6 +60,8 @@ impl Default for ExperimentConfig {
             fuel_limit_per_call: 50_000,
             memory_limit_bytes: 4 * 1024 * 1024, // 4 MB
             bin_capacity: 100,
+            node_capacity_cpu: 32,
+            node_capacity_ram: 128,
             cooldown_ms: 0,
         }
     }

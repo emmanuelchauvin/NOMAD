@@ -41,6 +41,46 @@ pub enum PackingDecision {
 }
 
 /// ============================================================================
+/// SchedulingDecision : Décision d'Allocation de Ressource Cloud
+/// ============================================================================
+/// Décision discrète produite par une heuristique pour affecter une tâche (Job)
+/// à un nœud de calcul (Node) ou allouer une nouvelle machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SchedulingDecision {
+    /// Placer la tâche sur le nœud existant à l'indice spécifié (0-indexé).
+    PlaceOnNode(usize),
+    /// Allouer une nouvelle machine (Node) pour y démarrer la tâche.
+    OpenNewNode,
+}
+
+/// ============================================================================
+/// ProblemDomain : Domaine Combinatoire Traité par NOMAD
+/// ============================================================================
+/// Spécifie la nature du problème d'optimisation abordé par les organismes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ProblemDomain {
+    /// 1D Online Bin Packing canonique (minimisation de bacs).
+    BinPacking1D,
+    /// Multi-Resource Cloud Job Scheduling (CPU / RAM multi-dimensionnel).
+    MultiResourceScheduling,
+}
+
+impl Default for ProblemDomain {
+    fn default() -> Self {
+        Self::BinPacking1D
+    }
+}
+
+impl ProblemDomain {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::BinPacking1D => "1D Online Bin Packing",
+            Self::MultiResourceScheduling => "Multi-Resource Cloud Job Scheduling (CPU/RAM)",
+        }
+    }
+}
+
+/// ============================================================================
 /// ExperimentalGroup : Groupes d'Expérimentation NOMAD
 /// ============================================================================
 /// Désignation des groupes de l'étude scientifique pré-enregistrée (Section 3).
@@ -119,6 +159,36 @@ pub struct ScoreBinInputs {
     pub open_bins_count: usize,
     /// Espace résiduel moyen parmi l'ensemble des bacs ouverts.
     pub mean_residual: f64,
+}
+
+/// ============================================================================
+/// SchedulingInputs : Paramètres d'Entrée de `score_node`
+/// ============================================================================
+/// Ensemble des paramètres passés à la fonction canonique de scoring pour chaque nœud candidat.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SchedulingInputs {
+    /// CPU requis par la tâche courante (cores).
+    pub job_cpu: u32,
+    /// RAM requise par la tâche courante (GB).
+    pub job_ram: u32,
+    /// CPU résiduel disponible sur le nœud candidat.
+    pub node_residual_cpu: u32,
+    /// RAM résiduelle disponible sur le nœud candidat.
+    pub node_residual_ram: u32,
+    /// Capacité totale CPU du nœud.
+    pub node_capacity_cpu: u32,
+    /// Capacité totale RAM du nœud.
+    pub node_capacity_ram: u32,
+    /// Indice séquentiel de la tâche dans la séquence (0-indexé).
+    pub step_index: usize,
+    /// Nombre total de tâches dans l'instance.
+    pub total_jobs: usize,
+    /// Nombre actuel de nœuds actifs alloués.
+    pub active_nodes_count: usize,
+    /// Moyenne d'espace CPU résiduel parmi les nœuds actifs.
+    pub mean_cpu_residual: f64,
+    /// Moyenne d'espace RAM résiduel parmi les nœuds actifs.
+    pub mean_ram_residual: f64,
 }
 
 /// ============================================================================

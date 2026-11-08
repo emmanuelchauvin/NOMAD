@@ -1,5 +1,5 @@
 # Rapport de Validation Scientifique et Suite de Tests : NOMAD V2 (DARWIN.RS)
-## Référence : `Spec V2 bis.md` — Section 8 (Protocoles Scientifiques et Tests d'Acceptation)
+## Référence : `SPECIFICATIONS.md` — Section 10 (Protocoles Scientifiques et Tests d'Acceptation)
 **Date d'évaluation :** Novembre 2026  
 **Environnement de test :** Rust 1.85+ (Edition 2021), LLM Local Ollama (`qwen2.5-coder:7b` sur GPU) & Moteur Déterministe Mock.
 
@@ -7,7 +7,7 @@
 
 ## 1. Synthèse Générale de Validation
 
-L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `Spec V2 bis.md` (Sections 1 à 14) est **validé à 100%** :
+L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `SPECIFICATIONS.md` (Sections 0 à 14) est **validé à 100%** :
 
 * **Validation Technique (Workspace Rust) :** **16 tests automatisés sur 16 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe, le Sandbox fuel-metered, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites, AgentPSO et le protocole de Rebirth.
 * **Validation Scientifique (Les 4 Tests d'Acceptation) :**

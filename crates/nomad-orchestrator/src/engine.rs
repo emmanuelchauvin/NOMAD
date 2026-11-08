@@ -5,9 +5,9 @@ use tracing::{info, warn};
 
 use nomad_core::{
     BenchmarkScore, BudgetTracker, EvaluatedIndividual, ExperimentConfig, ExperimentalGroup,
-    SkillCapsule,
+    ProblemDomain, SkillCapsule,
 };
-use nomad_evaluator::{validate_anti_dead_code_3levels, OracleEvaluator};
+use nomad_evaluator::{validate_anti_dead_code_3levels, OracleEvaluator, SchedulingOracle};
 use nomad_genome::PhylogenyGraph;
 use nomad_operator::SkillOperator;
 use nomad_sandbox::HeuristicSandbox;
@@ -69,6 +69,7 @@ pub struct ExperimentRunReport {
 pub struct EvolutionEngine<'a> {
     pub config: ExperimentConfig,
     pub oracle: &'a OracleEvaluator,
+    pub scheduling_oracle: Option<&'a SchedulingOracle>,
     pub sandbox: &'a dyn HeuristicSandbox,
     pub operator: &'a dyn SkillOperator,
     pub phylogeny: PhylogenyGraph,
@@ -88,6 +89,7 @@ impl<'a> EvolutionEngine<'a> {
         Self {
             config,
             oracle,
+            scheduling_oracle: None,
             sandbox,
             operator,
             phylogeny: PhylogenyGraph::new(),
@@ -95,6 +97,12 @@ impl<'a> EvolutionEngine<'a> {
             archive: MapElitesArchive::new(10, 10),
             lineages: LineageManager::new(),
         }
+    }
+
+    /// Associe un oracle de scheduling multi-ressources au moteur d'évolution.
+    pub fn with_scheduling_oracle(mut self, sched_oracle: &'a SchedulingOracle) -> Self {
+        self.scheduling_oracle = Some(sched_oracle);
+        self
     }
 
     fn throttle_cooldown(&self) {
@@ -185,16 +193,21 @@ impl<'a> EvolutionEngine<'a> {
 
         // 3. Independent Out-Of-Distribution Evaluation of the Best Heuristic
         info!("Evaluating winning capsule {} on OOD benchmarks...", best_ind.capsule.id);
-        let ood1_score = self.oracle.evaluate_ood1(
-            &best_ind.capsule,
-            self.sandbox,
-            self.config.fuel_limit_per_call,
-        );
-        let ood2_score = self.oracle.evaluate_ood2(
-            &best_ind.capsule,
-            self.sandbox,
-            self.config.fuel_limit_per_call,
-        );
+        let (ood1_score, ood2_score) = if self.config.domain == ProblemDomain::MultiResourceScheduling {
+            if let Some(sched) = self.scheduling_oracle {
+                (
+                    sched.evaluate_dataset(&sched.ood1_scale, &best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
+                    sched.evaluate_dataset(&sched.ood2_skewed, &best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
+                )
+            } else {
+                (BenchmarkScore::fatal_penalty(50), BenchmarkScore::fatal_penalty(50))
+            }
+        } else {
+            (
+                self.oracle.evaluate_ood1(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
+                self.oracle.evaluate_ood2(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
+            )
+        };
 
         Ok(ExperimentRunReport {
             group: self.config.group,
@@ -257,6 +270,24 @@ impl<'a> EvolutionEngine<'a> {
 
     /// Evaluates a candidate capsule and runs the full 3-level Anti-Dead-Code verification pipeline.
     fn evaluate_and_validate(&mut self, mut capsule: SkillCapsule) -> (SkillCapsule, BenchmarkScore) {
+        if self.config.domain == ProblemDomain::MultiResourceScheduling {
+            if let Some(sched) = self.scheduling_oracle {
+                let _ = sched.validate_anti_dead_code_scheduling(
+                    &mut capsule,
+                    self.sandbox,
+                    self.config.fuel_limit_per_call,
+                );
+                let score = sched.evaluate_dataset(
+                    &sched.in_distribution,
+                    &capsule,
+                    self.sandbox,
+                    self.config.fuel_limit_per_call,
+                );
+                self.budget.record_executions(sched.in_distribution.instances.len());
+                return (capsule, score);
+            }
+        }
+
         let _ = validate_anti_dead_code_3levels(
             &mut capsule,
             self.oracle,

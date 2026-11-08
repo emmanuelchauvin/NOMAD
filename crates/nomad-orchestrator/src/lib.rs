@@ -43,4 +43,35 @@ mod tests {
         assert!(report.best_ood1_score.is_valid);
         assert!(report.best_ood2_score.is_valid);
     }
+
+    #[test]
+    fn test_evolutionary_run_scheduling_swarm() {
+        use nomad_core::ProblemDomain;
+        use nomad_evaluator::SchedulingOracle;
+
+        let mut config = ExperimentConfig::default();
+        config.domain = ProblemDomain::MultiResourceScheduling;
+        config.group = ExperimentalGroup::GroupC;
+        config.rng_seed = 42;
+        config.population_size = 6;
+        config.max_generations = 3;
+
+        let oracle = OracleEvaluator::new(42);
+        let sched_oracle = SchedulingOracle::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let mut operator = DeterministicMockOperator::default();
+        operator.domain = ProblemDomain::MultiResourceScheduling;
+
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator)
+            .with_scheduling_oracle(&sched_oracle);
+        let report = engine.execute_run().expect("Scheduling run execution should succeed");
+
+        assert_eq!(report.group, ExperimentalGroup::GroupC);
+        assert_eq!(report.total_generations, 3);
+        assert!(report.best_in_distribution_score.is_valid);
+        assert!(report.best_in_distribution_score.total_bins > 0);
+        assert!(report.best_in_distribution_score.mean_efficiency > 0.70);
+        assert!(report.best_ood1_score.is_valid);
+        assert!(report.best_ood2_score.is_valid);
+    }
 }

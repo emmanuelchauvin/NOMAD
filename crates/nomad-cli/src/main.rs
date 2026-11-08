@@ -5,8 +5,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use nomad_core::{ExperimentConfig, ExperimentalGroup};
-use nomad_evaluator::{Dataset, OracleEvaluator};
+use nomad_core::{ExperimentConfig, ExperimentalGroup, ProblemDomain};
+use nomad_evaluator::{Dataset, OracleEvaluator, SchedulingDataset, SchedulingOracle};
 use nomad_operator::{DeterministicMockOperator, HttpLlamaOperator, SkillOperator};
 use nomad_orchestrator::EvolutionEngine;
 use nomad_sandbox::DeterministicSandbox;
@@ -41,6 +41,22 @@ impl From<GroupArg> for ExperimentalGroup {
             GroupArg::B => ExperimentalGroup::GroupB,
             GroupArg::C => ExperimentalGroup::GroupC,
             GroupArg::D => ExperimentalGroup::GroupD,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+#[value(rename_all = "kebab-case")]
+enum DomainArg {
+    BinPacking,
+    Scheduling,
+}
+
+impl From<DomainArg> for ProblemDomain {
+    fn from(arg: DomainArg) -> Self {
+        match arg {
+            DomainArg::BinPacking => ProblemDomain::BinPacking1D,
+            DomainArg::Scheduling => ProblemDomain::MultiResourceScheduling,
         }
     }
 }
@@ -91,12 +107,18 @@ enum Commands {
     Dataset {
         #[arg(short, long, default_value_t = 42)]
         seed: u64,
+
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
     },
 
-    /// Run classical algorithmic baselines (First-Fit, Best-Fit, Worst-Fit).
+    /// Run classical algorithmic baselines.
     Baseline {
         #[arg(short, long, default_value_t = 42)]
         seed: u64,
+
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
     },
 
     /// Run the "Mort et Renaissance" protocol: Epoch 1 -> Extinction -> Epoch 2 (Heritage vs Tabula Rasa).
@@ -125,6 +147,9 @@ enum Commands {
 
     /// Run an evolutionary trial for a specific group.
     Run {
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
+
         #[arg(short = 'G', long, value_enum, default_value_t = GroupArg::C)]
         group: GroupArg,
 
@@ -674,51 +699,100 @@ fn main() -> Result<()> {
             }
         }
 
-        Commands::Dataset { seed } => {
-            let in_dist = Dataset::generate_in_distribution(seed);
-            let ood1 = Dataset::generate_ood1_scale(seed);
-            let ood2 = Dataset::generate_ood2_distribution_shift(seed);
+        Commands::Dataset { seed, domain } => {
+            if domain == DomainArg::Scheduling {
+                let in_dist = SchedulingDataset::generate_in_distribution(seed);
+                let ood1 = SchedulingDataset::generate_ood_scale(seed);
+                let ood2 = SchedulingDataset::generate_ood_skewed(seed);
 
-            println!("--- Pre-Registered Benchmark Datasets (Seed: {}) ---", seed);
-            println!("In-Distribution (50 instances, N=50,  U(10,80)) :");
-            println!("  SHA-256: {}", in_dist.dataset_hash);
-            println!("OOD-1 Scale     (50 instances, N=500, U(10,80)) :");
-            println!("  SHA-256: {}", ood1.dataset_hash);
-            println!("OOD-2 Shift     (50 instances, N=500, Power-Law):");
-            println!("  SHA-256: {}", ood2.dataset_hash);
+                println!("--- Pre-Registered Multi-Resource Scheduling Datasets (Seed: {}) ---", seed);
+                println!("In-Distribution (50 instances, N=50 jobs,  Node: 32C/128G) :");
+                println!("  SHA-256: {}", in_dist.dataset_hash);
+                println!("OOD-1 Scale     (50 instances, N=300 jobs, Node: 32C/128G) :");
+                println!("  SHA-256: {}", ood1.dataset_hash);
+                println!("OOD-2 Skewed    (50 instances, N=100 jobs, Asymmetric)    :");
+                println!("  SHA-256: {}", ood2.dataset_hash);
+            } else {
+                let in_dist = Dataset::generate_in_distribution(seed);
+                let ood1 = Dataset::generate_ood1_scale(seed);
+                let ood2 = Dataset::generate_ood2_distribution_shift(seed);
+
+                println!("--- Pre-Registered Benchmark Datasets (Seed: {}) ---", seed);
+                println!("In-Distribution (50 instances, N=50,  U(10,80)) :");
+                println!("  SHA-256: {}", in_dist.dataset_hash);
+                println!("OOD-1 Scale     (50 instances, N=500, U(10,80)) :");
+                println!("  SHA-256: {}", ood1.dataset_hash);
+                println!("OOD-2 Shift     (50 instances, N=500, Power-Law):");
+                println!("  SHA-256: {}", ood2.dataset_hash);
+            }
         }
 
-        Commands::Baseline { seed } => {
-            let oracle = OracleEvaluator::new(seed);
-            println!("--- Classical Heuristic Benchmarks (Dataset Seed: {}) ---", seed);
+        Commands::Baseline { seed, domain } => {
+            let sandbox = DeterministicSandbox::new();
+            if domain == DomainArg::Scheduling {
+                let sched_oracle = SchedulingOracle::new(seed);
+                println!("--- Multi-Resource Scheduling Baselines (Dataset Seed: {}) ---", seed);
 
-            for name in &["FIRST_FIT", "BEST_FIT", "WORST_FIT"] {
-                let in_score = oracle.evaluate_classical_baseline(name, &oracle.in_distribution);
-                let ood1_score = oracle.evaluate_classical_baseline(name, &oracle.ood1_scale);
-                let ood2_score = oracle.evaluate_classical_baseline(name, &oracle.ood2_powerlaw);
+                for name in &["FIRST_FIT_NODE", "BEST_FIT_CPU", "BEST_FIT_RAM", "BALANCED_FIT"] {
+                    let in_score = sched_oracle.evaluate_classical_baseline(name, &sched_oracle.in_distribution, &sandbox);
+                    let ood1_score = sched_oracle.evaluate_classical_baseline(name, &sched_oracle.ood1_scale, &sandbox);
+                    let ood2_score = sched_oracle.evaluate_classical_baseline(name, &sched_oracle.ood2_skewed, &sandbox);
 
-                println!("\n[Heuristic: {}]", name);
-                println!(
-                    "  In-Dist : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
-                    in_score.total_bins,
-                    in_score.total_excess_bins,
-                    in_score.mean_efficiency * 100.0,
-                    in_score.total_fuel
-                );
-                println!(
-                    "  OOD-1   : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
-                    ood1_score.total_bins,
-                    ood1_score.total_excess_bins,
-                    ood1_score.mean_efficiency * 100.0,
-                    ood1_score.total_fuel
-                );
-                println!(
-                    "  OOD-2   : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
-                    ood2_score.total_bins,
-                    ood2_score.total_excess_bins,
-                    ood2_score.mean_efficiency * 100.0,
-                    ood2_score.total_fuel
-                );
+                    println!("\n[Heuristic: {}]", name);
+                    println!(
+                        "  In-Dist : {} nodes (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        in_score.total_bins,
+                        in_score.total_excess_bins,
+                        in_score.mean_efficiency * 100.0,
+                        in_score.total_fuel
+                    );
+                    println!(
+                        "  OOD-1   : {} nodes (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        ood1_score.total_bins,
+                        ood1_score.total_excess_bins,
+                        ood1_score.mean_efficiency * 100.0,
+                        ood1_score.total_fuel
+                    );
+                    println!(
+                        "  OOD-2   : {} nodes (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        ood2_score.total_bins,
+                        ood2_score.total_excess_bins,
+                        ood2_score.mean_efficiency * 100.0,
+                        ood2_score.total_fuel
+                    );
+                }
+            } else {
+                let oracle = OracleEvaluator::new(seed);
+                println!("--- Classical Heuristic Benchmarks (Dataset Seed: {}) ---", seed);
+
+                for name in &["FIRST_FIT", "BEST_FIT", "WORST_FIT"] {
+                    let in_score = oracle.evaluate_classical_baseline(name, &oracle.in_distribution);
+                    let ood1_score = oracle.evaluate_classical_baseline(name, &oracle.ood1_scale);
+                    let ood2_score = oracle.evaluate_classical_baseline(name, &oracle.ood2_powerlaw);
+
+                    println!("\n[Heuristic: {}]", name);
+                    println!(
+                        "  In-Dist : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        in_score.total_bins,
+                        in_score.total_excess_bins,
+                        in_score.mean_efficiency * 100.0,
+                        in_score.total_fuel
+                    );
+                    println!(
+                        "  OOD-1   : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        ood1_score.total_bins,
+                        ood1_score.total_excess_bins,
+                        ood1_score.mean_efficiency * 100.0,
+                        ood1_score.total_fuel
+                    );
+                    println!(
+                        "  OOD-2   : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        ood2_score.total_bins,
+                        ood2_score.total_excess_bins,
+                        ood2_score.mean_efficiency * 100.0,
+                        ood2_score.total_fuel
+                    );
+                }
             }
         }
 
@@ -809,6 +883,7 @@ fn main() -> Result<()> {
         }
 
         Commands::Run {
+            domain,
             group,
             seed,
             pop_size,
@@ -820,7 +895,9 @@ fn main() -> Result<()> {
             output,
         } => {
             let exp_group: ExperimentalGroup = group.into();
+            let prob_domain: ProblemDomain = domain.into();
             let mut config = ExperimentConfig::default();
+            config.domain = prob_domain;
             config.group = exp_group;
             config.rng_seed = seed;
             config.population_size = pop_size;
@@ -828,10 +905,15 @@ fn main() -> Result<()> {
             config.cooldown_ms = cooldown_ms;
 
             let oracle = OracleEvaluator::new(seed);
+            let sched_oracle = SchedulingOracle::new(seed);
             let sandbox = DeterministicSandbox::new();
 
             let op_instance: Box<dyn SkillOperator> = match operator {
-                OperatorArg::Mock => Box::new(DeterministicMockOperator::default()),
+                OperatorArg::Mock => {
+                    let mut mock = DeterministicMockOperator::default();
+                    mock.domain = prob_domain;
+                    Box::new(mock)
+                }
                 OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
                     ollama_url,
                     model,
@@ -842,7 +924,8 @@ fn main() -> Result<()> {
                 )),
             };
 
-            let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, op_instance.as_ref());
+            let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, op_instance.as_ref())
+                .with_scheduling_oracle(&sched_oracle);
             let report = engine.execute_run()?;
 
             println!("\n============================================================");

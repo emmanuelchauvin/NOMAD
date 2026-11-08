@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use nomad_core::SchedulingInputs;
 use syn::{BinOp, Expr, ExprBinary, ExprCast, ExprIf, ExprLit, ExprParen, ExprPath, ExprUnary, ItemFn, Lit, Local, Pat, PatIdent, Stmt, UnOp};
 use thiserror::Error;
 
@@ -73,29 +74,12 @@ impl<'a> AstInterpreter<'a> {
     }
 
     /// ========================================================================
-    /// eval : Algorithme d'Interprétation Séquentielle de `score_bin`
+    /// eval_with_vars : Interprétation Séquentielle Générique avec Variables
     /// ========================================================================
-    /// 1. Initialise la table des symboles locaux avec les 7 arguments canoniques.
-    /// 2. Parcourt séquentiellement chaque statement du bloc de code :
-    ///    - Déclaration de variables locales (`let mut score = ...`).
-    ///    - Évaluation des conditions de branchement (`if ... { ... }`).
-    ///    - Affectations et opérations arithmétiques (+, -, *, /).
-    /// 3. Décrémente le budget de fuel à chaque instruction visitée.
-    /// 4. Renvoie le score final calculé et les métriques d'exécution.
-    pub fn eval(&self, ctx: &ScorePolicyContext) -> Result<AstEvalOutcome, EvalError> {
-        let mut vars = HashMap::new();
-        vars.insert("item_size".to_string(), ctx.item_size as f64);
-        vars.insert("bin_residual".to_string(), ctx.bin_residual as f64);
-        vars.insert("bin_capacity".to_string(), ctx.bin_capacity as f64);
-        vars.insert("step_index".to_string(), ctx.step_index as f64);
-        vars.insert("total_items".to_string(), ctx.total_items as f64);
-        vars.insert("open_bins_count".to_string(), ctx.open_bins_count as f64);
-        vars.insert("mean_residual".to_string(), ctx.mean_residual);
-
+    pub fn eval_with_vars(&self, mut vars: HashMap<String, f64>, default_fallback: f64) -> Result<AstEvalOutcome, EvalError> {
         let mut fuel_consumed = 0u64;
         let mut branches_taken = 0usize;
         let mut score_mutations = 0usize;
-
         let mut return_val = None;
 
         for stmt in &self.item_fn.block.stmts {
@@ -141,7 +125,7 @@ impl<'a> AstInterpreter<'a> {
 
         let final_score = return_val
             .or_else(|| vars.get("score").copied())
-            .unwrap_or(ctx.bin_residual as f64);
+            .unwrap_or(default_fallback);
 
         Ok(AstEvalOutcome {
             score: final_score,
@@ -149,6 +133,43 @@ impl<'a> AstInterpreter<'a> {
             branches_taken,
             score_mutations,
         })
+    }
+
+    /// ========================================================================
+    /// eval : Algorithme d'Interprétation Séquentielle de `score_bin`
+    /// ========================================================================
+    pub fn eval(&self, ctx: &ScorePolicyContext) -> Result<AstEvalOutcome, EvalError> {
+        let mut vars = HashMap::new();
+        vars.insert("item_size".to_string(), ctx.item_size as f64);
+        vars.insert("bin_residual".to_string(), ctx.bin_residual as f64);
+        vars.insert("bin_capacity".to_string(), ctx.bin_capacity as f64);
+        vars.insert("step_index".to_string(), ctx.step_index as f64);
+        vars.insert("total_items".to_string(), ctx.total_items as f64);
+        vars.insert("open_bins_count".to_string(), ctx.open_bins_count as f64);
+        vars.insert("mean_residual".to_string(), ctx.mean_residual);
+
+        self.eval_with_vars(vars, ctx.bin_residual as f64)
+    }
+
+    /// ========================================================================
+    /// eval_scheduling : Interprétation Séquentielle de `score_node`
+    /// ========================================================================
+    pub fn eval_scheduling(&self, ctx: &SchedulingInputs) -> Result<AstEvalOutcome, EvalError> {
+        let mut vars = HashMap::new();
+        vars.insert("job_cpu".to_string(), ctx.job_cpu as f64);
+        vars.insert("job_ram".to_string(), ctx.job_ram as f64);
+        vars.insert("node_residual_cpu".to_string(), ctx.node_residual_cpu as f64);
+        vars.insert("node_residual_ram".to_string(), ctx.node_residual_ram as f64);
+        vars.insert("node_capacity_cpu".to_string(), ctx.node_capacity_cpu as f64);
+        vars.insert("node_capacity_ram".to_string(), ctx.node_capacity_ram as f64);
+        vars.insert("step_index".to_string(), ctx.step_index as f64);
+        vars.insert("total_jobs".to_string(), ctx.total_jobs as f64);
+        vars.insert("active_nodes_count".to_string(), ctx.active_nodes_count as f64);
+        vars.insert("mean_cpu_residual".to_string(), ctx.mean_cpu_residual);
+        vars.insert("mean_ram_residual".to_string(), ctx.mean_ram_residual);
+
+        let fallback = (ctx.node_residual_cpu + ctx.node_residual_ram) as f64;
+        self.eval_with_vars(vars, fallback)
     }
 
     fn eval_expr(

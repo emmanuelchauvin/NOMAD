@@ -32,16 +32,33 @@ pub fn score_bin(\
 ) -> f64";
 
 /// ============================================================================
-/// parse_score_bin : Algorithme d'Analyse Syntaxique et d'Extraction AST
+/// CANONICAL_SCORE_NODE_SIGNATURE : Signature Canonique Scheduling Multi-Ressource
 /// ============================================================================
-/// Analyse une chaîne de code source Rust via `syn` et extrait la fonction `score_bin`.
-/// 1. Tente d'abord de parser le code comme une fonction unique `ItemFn`.
-/// 2. En cas d'échec (ex: code complet avec imports ou blocs englobants), parse comme `File`
-///    et recherche récursivement l'item portant l'identifiant `score_bin`.
-pub fn parse_score_bin(source: &str) -> Result<ItemFn, AstError> {
+pub const CANONICAL_SCORE_NODE_SIGNATURE: &str = "\
+pub fn score_node(\
+    job_cpu: u32, \
+    job_ram: u32, \
+    node_residual_cpu: u32, \
+    node_residual_ram: u32, \
+    node_capacity_cpu: u32, \
+    node_capacity_ram: u32, \
+    step_index: usize, \
+    total_jobs: usize, \
+    active_nodes_count: usize, \
+    mean_cpu_residual: f64, \
+    mean_ram_residual: f64\
+) -> f64";
+
+/// ============================================================================
+/// parse_heuristic_fn : Analyse Syntaxique et Extraction AST d'une Heuristique
+/// ============================================================================
+/// Analyse une chaîne de code source Rust via `syn` et extrait la fonction de scoring
+/// (`score_bin`, `score_node`, ou toute fonction d'heuristique préfixée par `score_`).
+pub fn parse_heuristic_fn(source: &str) -> Result<ItemFn, AstError> {
     // Tentative de parsing direct en fonction unique
     if let Ok(item_fn) = syn::parse_str::<ItemFn>(source) {
-        if item_fn.sig.ident == "score_bin" {
+        let ident_str = item_fn.sig.ident.to_string();
+        if ident_str.starts_with("score_") {
             return Ok(item_fn);
         }
     }
@@ -50,13 +67,22 @@ pub fn parse_score_bin(source: &str) -> Result<ItemFn, AstError> {
     let file: File = syn::parse_file(source)?;
     for item in file.items {
         if let Item::Fn(item_fn) = item {
-            if item_fn.sig.ident == "score_bin" {
+            let ident_str = item_fn.sig.ident.to_string();
+            if ident_str.starts_with("score_") {
                 return Ok(item_fn);
             }
         }
     }
 
     Err(AstError::ScoreBinNotFound)
+}
+
+/// ============================================================================
+/// parse_score_bin : Algorithme d'Analyse Syntaxique et d'Extraction AST
+/// ============================================================================
+/// Rétrocompatible avec toutes les suites de tests V2.
+pub fn parse_score_bin(source: &str) -> Result<ItemFn, AstError> {
+    parse_heuristic_fn(source)
 }
 
 /// ============================================================================
