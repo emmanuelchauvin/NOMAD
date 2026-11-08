@@ -30,8 +30,8 @@ Pour garantir une intégrité scientifique sans équivoque face aux comités de 
 | **`grand_rebirth_sched.json`**| V2.0 | Cloud Scheduling (Rebirth 3E) | 3 époques, $N=4$ gens, $\text{Pop}=6$ | **391 serveurs** à l'Époque 3 (gain net vs 392 Époque 1) | **Rebirth Multi-Époques :** Amélioration cumulative inter-extinctions. |
 | **`grand_run_bp_v2_6.json`** | V2.6 | Bin Packing 1D (Groupe C) | $N=5$ gens, $\text{Pop}=8$ | **1 265 bacs**, QD-Score = 4.414 (5 niches actives) | **Run Débogage V2.6 :** Validation de l'ascent de constantes & MAP-Elites. |
 | **`grand_rebirth_bp_v2_6.json`**| V2.6 | Bin Packing 1D (Rebirth) | 2 époques, $N=5$ gens, $\text{Pop}=8$ | **$CIF = 1.004\text{x}$**, $R_{\text{herit}} = 50.0\%$, $R_{\text{innov}} = 1.538$ | **Run V2.6 Rebirth :** Test de non-régression du pré-ensemencement culturel. |
-| **`ablation_group_c.json`** | V2.6 | Bin Packing 1D (Groupe C) | $N=15$ gens, $\text{Pop}=10$ | **1 265 bacs**, Fuel: **652 504**, Champion: `SwarmCross-g2` | **Ablation Swarm Crossover :** Le crossover AST produit le champion final (Niveau 3 certifié). |
-| **`ablation_group_d.json`** | V2.6 | Bin Packing 1D (Groupe D) | $N=15$ gens, $\text{Pop}=10$ | **1 265 bacs**, Fuel: **778 102**, Champion: `LLM-Seed-008` | **Ablation Mutation Seule :** Bloqué sur la graine Gen 0; +19.2% de fuel consommé. |
+| **`ablation_group_c.json`** | V2.6 | Bin Packing 1D (Groupe C) | $N=15$ gens, $\text{Pop}=10$ | **1 265 bacs**, Fuel: **668 216**, Champion: `SwarmCross-g2` | **Ablation Swarm Crossover :** Le crossover AST produit le champion final (Niveau 3 certifié, QD 8.023). |
+| **`ablation_group_d.json`** | V2.6 | Bin Packing 1D (Groupe D) | $N=15$ gens, $\text{Pop}=10$ | **1 265 bacs**, Fuel: **778 102**, Champion: `LLM-Seed-008` | **Ablation Mutation Seule :** Bloqué sur la graine Gen 0; +16.4% de fuel consommé. |
 
 ---
 
@@ -240,31 +240,32 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | Métrique Expérimentale | Groupe C (NOMAD Swarm Crossover) | Groupe D (Mutation LLM Seule) | Avantage Démontré |
 | :--- | :---: | :---: | :--- |
 | **Fichier JSON Source** | `ablation_group_c.json` | `ablation_group_d.json` | Données brutes immuables |
-| **Heuristique Championne** | **`SwarmCross-g2-d93d-f902`** (Génération 2) | **`LLM-Seed-008`** (Génération 0) | **Groupe C : Découverte évolutive** (Groupe D bloqué sur la graine) |
-| **Parents du Champion** | `LLM-Seed-000` + `SwarmCross-g1-d93d-b262` | Aucun (Graine initiale) | Recombinaison horizontale validée |
+| **Heuristique Championne** | **`SwarmCross-g2-d93d-d9c0`** (Génération 2) | **`LLM-Seed-008`** (Génération 0) | **Groupe C : Découverte évolutive** (Groupe D bloqué sur la graine) |
+| **Parents du Champion** | `d93db8b80c6a3e41` + `d9c0b1ad7ba17213` | Aucun (Graine initiale) | Recombinaison horizontale validée |
 | **Statut de Validation Anti-Bloat** | **`PassedLevel3Behavioral`** (Ablation $C_{\text{null}}$ réussie) | `PassedLevel2Computational` | **Preuve de non-neutralité causale du greffon** |
-| **Consommation de Fuel (Parsimonie)** | **652 504** | **778 102** | **-16.14% de fuel consommé** (gain net d'efficacité) |
+| **Consommation de Fuel (Parsimonie)** | **668 216** | **778 102** | **-14.12% de fuel consommé** (gain net d'efficacité) |
 | **Bacs En-Distribution** | 1 265 bacs (optimal Best-Fit) | 1 265 bacs (optimal Best-Fit) | Égalité sur l'objectif scalaire brut |
 | **Généralisation OOD-1 (N=500 objets)**| 11 774 bacs (95.90% eff.) | 11 774 bacs (95.90% eff.) | Sanctuarisation hors-distribution |
 | **Généralisation OOD-2 (Loi de puissance)**| 2 353 bacs (98.56% eff.) | 2 353 bacs (98.56% eff.) | Sanctuarisation hors-distribution |
-| **Transitions Phylogénétiques** | **182 transitions** (réseau réticulé complexe) | **126 transitions** (arbre vertical strict) | Recombinaison horizontale active (+44.4% de liens) |
-| **Couverture MAP-Elites** | 7 niches actives (QD-Score : 6.272) | 8 niches actives (QD-Score : 7.079) | Préservation de diversité phénotypique |
+| **Transitions Phylogénétiques** | **179 transitions** (réseau réticulé complexe) | **126 transitions** (arbre vertical strict) | Recombinaison horizontale active (+42.1% de liens) |
+| **Couverture MAP-Elites** | **9 niches actives (QD-Score : 8.023)** | 8 niches actives (QD-Score : 7.079) | **Groupe C supérieur en diversité et qualité** |
 
-* **Code Émergent du Champion Recombinant `SwarmCross-g2-d93d-f902` :**
+* **Code Émergent du Champion Recombinant `SwarmCross-g2-d93d-d9c0` :**
   ```rust
   pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
       let stream_progress = (step_index as f64 / total_items as f64).powi(2);
       let residual_ratio = post_residual as f64 / bin_capacity as f64;
       let score = 1.0 - (1.5 * stream_progress + 0.5) * residual_ratio.powi(3);
-      let score = score * 0.70 + ((post_residual as f64) as f64) * 0.30;
+      let score = score * 0.95 + ((post_residual as f64 / bin_capacity as f64) as f64) * 0.05;
       score
   }
   ```
   *(Exécuté de façon sécurisée dans le sandbox AST in-process `syn` et syntaxiquement conforme aux spécifications de compilation `rustc` via variable shadowing).*
 * **Conclusions Clés de l'Ablation :**
-  1. **Rupture de l'inertie des graines :** Dans le Groupe D (mutation seule), aucune mutation n'a réussi à surclasser la graine initiale `LLM-Seed-008` sur 15 générations entières. Dans le Groupe C, le crossover d'essaim a combiné deux lignées complémentaires pour créer `SwarmCross-g2-d93d-f902` dès la génération 2, qui a détrôné la graine sur le critère de parcimonie computationnelle.
-  2. **Gain de Parcimonie Énergétique (-16.14% de Fuel) :** Le champion recombinant exécute une logique polynomiale fluide sans branchement conditionnel coûteux, réduisant la consommation de fuel de 778 102 à 652 504.
-  3. **Vérification Formelle de la Greffe (Niveau 3) :** `SwarmCross-g2-d93d-f902` possède un `graft_manifest` (`graft-6f72674e6ed6`) certifié par ablation causale différentielle ($C_{\text{null}}$).
+  1. **Rupture de l'inertie des graines :** Dans le Groupe D (mutation seule), aucune mutation n'a réussi à surclasser la graine initiale `LLM-Seed-008` sur 15 générations entières. Dans le Groupe C, le crossover d'essaim a combiné deux lignées complémentaires pour créer `SwarmCross-g2-d93d-d9c0` dès la génération 2, qui a détrôné la graine sur les critères de parcimonie computationnelle et de QD-Score.
+  2. **Gain de Parcimonie Énergétique (-14.12% de Fuel) :** Le champion recombinant exécute une logique polynomiale fluide sans branchement conditionnel coûteux, réduisant la consommation de fuel de 778 102 à 668 216.
+  3. **Supériorité de Couverture Quality-Diversity :** Le Groupe C maintient **9 niches actives (QD-Score : 8.023)** contre 8 niches (QD-Score : 7.079) pour le Groupe D.
+  4. **Vérification Formelle de la Greffe (Niveau 3) :** `SwarmCross-g2-d93d-d9c0` possède un `graft_manifest` (`graft-b8458f46cbe8`) certifié par ablation causale différentielle ($C_{\text{null}}$).
 
 ---
 
