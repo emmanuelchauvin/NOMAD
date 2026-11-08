@@ -9,7 +9,7 @@
 
 L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `SPECIFICATIONS.md` (Sections 0 à 14) est **validé à 100%** :
 
-* **Validation Technique (Workspace Rust) :** **19 tests automatisés sur 19 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe, le Sandbox fuel-metered, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites, AgentPSO, le protocole de Rebirth et l'Ordonnancement Cloud Multi-Ressources.
+* **Validation Technique (Workspace Rust) :** **20 tests automatisés sur 20 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe, les opérateurs LLM & Mock, le Sandbox fuel-metered, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites, AgentPSO, le protocole de Rebirth et l'Ordonnancement Cloud Multi-Ressources.
 * **Validation Scientifique (Les 4 Tests d'Acceptation) :**
   1. **Test 1 (Plafond 1265 & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux.
   2. **Test 2 (Résilience Génétique & MAP-Elites) :** Résolution prouvée du mode collapse de la V1. Maintien pérenne d'un front de Pareto de 6 niches actives avec réduction de l'espace mort de $58,8\%$ à $23,6\%$.
@@ -31,6 +31,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-genome`** | `test_deterministic_ast_crossover_success` | Recombinaison déterministe AST hôte/donneur et génération du `GraftManifest`. | ✅ PASS |
 | **`nomad-genome`** | `test_level1_structural_verification` | Validation Anti-Dead-Code Niveau 1 : présence syntaxique intacte du greffon. | ✅ PASS |
 | **`nomad-genome`** | `test_phylogeny_dag_lineage_and_crossover` | Traçabilité phylogénétique dans le DAG `petgraph` (racines, mutations, croisements). | ✅ PASS |
+| **`nomad-operator`** | `test_http_llama_operator_ast_normalization` | Normalisation multi-domaine (Bin Packing & Ordonnancement Cloud) et templates de repli AST. | ✅ PASS |
 | **`nomad-sandbox`** | `test_sandbox_first_fit_and_best_fit` | Exécution exacte des heuristiques canoniques de Bin Packing. | ✅ PASS |
 | **`nomad-sandbox`** | `test_sandbox_overflow_protection` | Protection contre les débordements de bacs et rejets immédiats des violations. | ✅ PASS |
 | **`nomad-sandbox`** | `test_sandbox_scheduling_execution` | Exécution et respect des contraintes multi-ressources (CPU/RAM) pour le Cloud. | ✅ PASS |
@@ -44,7 +45,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-orchestrator`** | `test_evolutionary_run_scheduling_swarm` | Simulation évolutionnaire complète sur l'Ordonnancement Cloud Multi-Ressources. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_rebirth_protocol_execution` | Protocole complet "Mort et Renaissance" (Époque 1 $\rightarrow$ Extinction $\rightarrow$ Époque 2). | ✅ PASS |
 
-**Bilan : 19 passed; 0 failed; 0 ignored; 0 warnings.**
+**Bilan : 20 passed; 0 failed; 0 ignored; 0 warnings.**
 
 ---
 

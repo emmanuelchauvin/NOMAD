@@ -184,6 +184,9 @@ enum Commands {
 
     /// Run pre-registered comparative experiment between Group C (Swarm) and Group D (Mutation only).
     Compare {
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
+
         #[arg(short, long, default_value_t = 5)]
         runs: usize,
 
@@ -826,14 +829,17 @@ fn main() -> Result<()> {
                     mock.domain = prob_domain;
                     Box::new(mock)
                 }
-                OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
-                    ollama_url,
-                    model,
-                    "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
-                    "Ollama API (Qwen 2.5 Coder 7B)",
-                    0.7,
-                    0.95,
-                )),
+                OperatorArg::Ollama => Box::new(
+                    HttpLlamaOperator::new(
+                        ollama_url,
+                        model,
+                        "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+                        "Ollama API (Qwen 2.5 Coder 7B)",
+                        0.7,
+                        0.95,
+                    )
+                    .with_domain(prob_domain),
+                ),
             };
 
             let rebirth_report = nomad_orchestrator::execute_rebirth_protocol_with_sched(
@@ -991,6 +997,7 @@ fn main() -> Result<()> {
         }
 
         Commands::Compare {
+            domain,
             runs,
             pop_size,
             generations,
@@ -1000,8 +1007,10 @@ fn main() -> Result<()> {
             cooldown_ms,
             output,
         } => {
+            let prob_domain: ProblemDomain = domain.into();
             println!("============================================================");
             println!(" Running Paired Study: Group C (Swarm) vs Group D (Mutation)");
+            println!(" Target Domain        : {:?}", prob_domain);
             println!(" Number of Paired Runs: {}", runs);
             if cooldown_ms > 0 {
                 println!(" Thermal Cooldown: {} ms between LLM calls", cooldown_ms);
@@ -1009,15 +1018,22 @@ fn main() -> Result<()> {
             println!("============================================================");
 
             let op_instance: Box<dyn SkillOperator> = match operator {
-                OperatorArg::Mock => Box::new(DeterministicMockOperator::default()),
-                OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
-                    ollama_url,
-                    model,
-                    "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
-                    "Ollama API (Qwen 2.5 Coder 7B)",
-                    0.7,
-                    0.95,
-                )),
+                OperatorArg::Mock => {
+                    let mut mock = DeterministicMockOperator::default();
+                    mock.domain = prob_domain;
+                    Box::new(mock)
+                }
+                OperatorArg::Ollama => Box::new(
+                    HttpLlamaOperator::new(
+                        ollama_url,
+                        model,
+                        "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+                        "Ollama API (Qwen 2.5 Coder 7B)",
+                        0.7,
+                        0.95,
+                    )
+                    .with_domain(prob_domain),
+                ),
             };
 
             let mut paired_results = Vec::new();
@@ -1025,16 +1041,19 @@ fn main() -> Result<()> {
             for r in 0..runs {
                 let seed = 1000 + (r as u64) * 7;
                 let oracle = OracleEvaluator::new(seed);
+                let sched_oracle = SchedulingOracle::new(seed);
                 let sandbox = DeterministicSandbox::new();
 
                 // Group D run
                 let mut config_d = ExperimentConfig::default();
+                config_d.domain = prob_domain;
                 config_d.group = ExperimentalGroup::GroupD;
                 config_d.rng_seed = seed;
                 config_d.population_size = pop_size;
                 config_d.max_generations = generations;
                 config_d.cooldown_ms = cooldown_ms;
-                let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref());
+                let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
+                    .with_scheduling_oracle(&sched_oracle);
                 let report_d = engine_d.execute_run()?;
 
                 // GPU breathing pause between Group D and Group C
@@ -1042,12 +1061,14 @@ fn main() -> Result<()> {
 
                 // Group C run
                 let mut config_c = ExperimentConfig::default();
+                config_c.domain = prob_domain;
                 config_c.group = ExperimentalGroup::GroupC;
                 config_c.rng_seed = seed;
                 config_c.population_size = pop_size;
                 config_c.max_generations = generations;
                 config_c.cooldown_ms = cooldown_ms;
-                let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref());
+                let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
+                    .with_scheduling_oracle(&sched_oracle);
                 let report_c = engine_c.execute_run()?;
 
                 println!(
