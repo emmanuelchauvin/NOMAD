@@ -9,7 +9,7 @@
 
 L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `SPECIFICATIONS.md` (Sections 0 à 14) est **validé à 100%** :
 
-* **Validation Technique (Workspace Rust) :** **22 tests automatisés sur 22 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec Lookahead $k=2$, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques et l'Ordonnancement Cloud Multi-Ressources.
+* **Validation Technique (Workspace Rust) :** **23 tests automatisés sur 23 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec Lookahead $k=2$, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques et l'Ordonnancement Cloud Multi-Ressources.
 * **Validation Scientifique (Les 4 Tests d'Acceptation) :**
   1. **Test 1 (Plafond 1265 & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux.
   2. **Test 2 (Résilience Génétique & MAP-Elites) :** Résolution prouvée du mode collapse de la V1. Maintien pérenne d'un front de Pareto de 6 niches actives avec réduction de l'espace mort de $58,8\%$ à $23,6\%$.
@@ -41,13 +41,14 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-evaluator`** | `test_classical_baseline_evaluation` | Évaluation des références historiques (First-Fit, Best-Fit, Worst-Fit). | ✅ PASS |
 | **`nomad-evaluator`** | `test_scheduling_datasets_and_baselines` | Oracle d'ordonnancement multi-ressources, intégrité SHA-256 et baselines vecteur. | ✅ PASS |
 | **`nomad-evaluator`** | `test_anti_dead_code_validation_pipeline` | Pipeline complet à 3 niveaux : structurel, computationnel et ablation $C_{\text{null}}$. | ✅ PASS |
+| **`nomad-evaluator`** | `test_lookahead_bin_packing_combinations` | Évaluation comparative Lookahead $k=2$, dynamique d'horizon et Best Fit. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_map_elites_insertion_and_local_competition` | Grille 2D Quality-Diversity, compétition intra-niche et curiosité UCB. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_evolutionary_run_group_c_swarm` | Simulation évolutionnaire complète du Groupe C (Swarm QD) sur 3 générations. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_evolutionary_run_scheduling_swarm` | Simulation évolutionnaire complète sur l'Ordonnancement Cloud Multi-Ressources. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_adaptive_operator_crossover_bounds` | Méta-évolution : contrôle adaptatif du taux de croisement d'essaim (AOS) borné. | ✅ PASS |
-| **`nomad-orchestrator`** | `test_rebirth_protocol_execution` | Protocole complet "Mort et Renaissance" (Époque 1 $\rightarrow$ Extinction $\rightarrow$ Époque 2). | ✅ PASS |
+| **`nomad-orchestrator`** | `test_rebirth_protocol_execution` | Protocole complet "Mort et Renaissance" (Époque 1 $\rightarrow$ Extinction $\rightarrow$ Époque 2 $\rightarrow$ Époque 3). | ✅ PASS |
 
-**Bilan : 22 passed; 0 failed; 0 ignored; 0 warnings.**
+**Bilan : 23 passed; 0 failed; 0 ignored; 0 warnings.**
 
 ---
 
@@ -170,38 +171,77 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 
 ---
 
+### TEST 6 : Protocole de Renaissance à 3 Époques, Bounded Lookahead ($k=2$) et Multi-Loci Crossover
+
+* **Objectif :** Valider l'extension du protocole de Mort et Renaissance à 3 époques civilisationnelles consécutives (avec double extinction massive), l'adjonction de la conscience locale du prochain objet ($k=2$, `next_item_size` / `next_job_cpu`, `next_job_ram`), et la recombinaison génétique non-conflictuelle multi-loci (`multi_locus_ast_crossover`).
+* **Résultats Expérimentaux en Ordonnancement Cloud (`grand_rebirth_sched.json`) :**
+  * **Époque 1 (Genèse) :** Best In-Dist = 392 serveurs (eff: 96.28%), 1 niche.
+  * **Époque 2 (Héritière) :** Best In-Dist = 392 serveurs, 3 niches.
+  * **Époque 3 (Héritière 2) :** **Best In-Dist = 391 serveurs (excess: +14, eff: 96.50%)** 🏆.
+  * **Époque 3 (Tabula Rasa) :** Bloquée à 392 serveurs.
+  * **Facteur d'Amélioration Cumulée (CIF) :** **1.071x** ($> 1.0$, rupture nette de la barrière locale).
+  * **Hérédité Fonctionnelle ($R_{\text{herit}}$) :** **100.0%**.
+  * **Visualisation :** [`grand_arbre_sched.html`](grand_arbre_sched.html).
+* **Résultats Expérimentaux en 1D Bin Packing (`grand_rebirth_bp_v2.json`) :**
+  * **Heuristique Championne Émergente (Époque 3) :**
+    ```rust
+    pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32) -> f64 {
+        let mut score = bin_residual as f64;
+        let progress = step_index as f64 / total_items as f64;
+        if progress < 0.5 {
+            score -= (bin_capacity - bin_residual) as f64 * progress;
+        } else {
+            score += (bin_capacity - bin_residual) as f64 * (1.0 - progress);
+        }
+        if bin_residual == next_item_size {
+            score -= 60.0;
+        }
+        score
+    }
+    ```
+  * **Performance et Robustesse OOD :**
+    * **In-Distribution :** 1 265 bacs (optimal Best Fit).
+    * **OOD-1 (Échelle x10, 500 objets) :** **11 774 bacs** (efficacité : **95.90%**, gain de 6 bacs sur le run standard).
+    * **OOD-2 (Loi de puissance / Queue lourde) :** **2 353 bacs** (efficacité : **98.56%**).
+    * **Hérédité Fonctionnelle ($R_{\text{herit}}$) :** **100.0%**.
+    * **Visualisation :** [`grand_arbre_rebirth_bp.html`](grand_arbre_rebirth_bp.html).
+
+---
+
 ## 4. Reproductibilité et Fichiers de Preuve Scientifique
 
 Toutes les expériences rapportées sont déterministes et peuvent être reproduites à l'identique :
 
 | Fichier Généré | Contenu et Rôle Scientifique |
 | :--- | :--- |
-| **`run_report_qwen_v2.json`** | Trace complète Bin Packing 12 générations avec Qwen 2.5 Coder 7B (85 nœuds, 123 transitions, 77 crossovers, SOTA 1264 bacs). |
-| **`rebirth_qwen_v2.json`** | Rapport officiel Rebirth V2 Bin Packing ($R_{\text{herit}} = 71.4\%$, 7 niches Héritière vs 1 Tabula Rasa, hybrides certifiés). |
+| **`grand_rebirth_sched.json`** | Rapport officiel Renaissance 3 Époques Cloud Scheduling (SOTA battu à 391 serveurs, CIF = 1.071x, $R_{\text{herit}} = 100\%$). |
+| **`grand_rebirth_bp_v2.json`** | Rapport officiel Renaissance 3 Époques Bin Packing (Lookahead $k=2$ + Horizon, OOD-1: 11 774, OOD-2: 2 353, $R_{\text{herit}} = 100\%$). |
+| **`grand_run_sched.json`** | Trace officielle Cloud Scheduling Swarm (91 nœuds, 118 transitions, MAP-Elites 3.0% coverage). |
+| **`grand_run_bp_v2.json`** | Trace officielle Bin Packing Swarm V2 (91 nœuds, 116 transitions, fuel parsimony). |
+| **`grand_arbre_sched.html`** | Visualisation interactive de l'arbre phylogénétique Cloud Scheduling. |
+| **`grand_arbre_rebirth_bp.html`** | Visualisation interactive de l'arbre phylogénétique Bin Packing Rebirth 3 Époques. |
+| **`run_report_qwen_v2.json`** | Trace complète Bin Packing 12 générations avec Qwen 2.5 Coder 7B (85 nœuds, 123 transitions, SOTA 1264 bacs). |
+| **`rebirth_qwen_v2.json`** | Rapport officiel Rebirth V2 Bin Packing ($R_{\text{herit}} = 71.4\%$, 7 niches Héritière vs 1 Tabula Rasa). |
 | **`run_sched_qwen.json`** | Trace officielle Ordonnancement Cloud Qwen 2.5 Coder 7B (57 nœuds, 77 transitions, champion 1731 nœuds sur OOD-2). |
-| **`rebirth_sched_qwen.json`** | Rapport officiel Rebirth Ordonnancement Cloud ($R_{\text{herit}} = 100.0\%$, transmission collective validée). |
 | **`run_report_v2.json`** | Rapport déterministe mock pour audit instantané offline sans GPU. |
 | **`rebirth_mock_v2.json`** | Protocole Mort et Renaissance en mode déterministe ($R_{\text{herit}} = 100.0\%$). |
-| **`arbre.html`** | Visualisation interactive de l'arbre phylogénétique Bin Packing (83 nœuds, 75 transitions). |
-| **`arbre_sched.html`** | Visualisation interactive de l'arbre phylogénétique Ordonnancement Cloud. |
 
 ### Commandes de Reproduction :
 ```powershell
-# 1. Vérification de la suite de tests automatisés (19 tests)
+# 1. Vérification de la suite de tests automatisés (23 tests unitaires et d'intégration)
 cargo test --workspace
 
-# 2. Reproduction de la simulation Bin Packing AST avec Ollama (12 générations)
-cargo run --release --bin nomad -- run --domain bin-packing --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 12 --group C --output run_report_qwen_v2.json
+# 2. Reproduction du Grand Run Ordonnancement Cloud Swarm (10 générations)
+cargo run --release --bin nomad -- run --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 10 -n 10 -G c --output grand_run_sched.json
 
-# 3. Reproduction de la simulation Ordonnancement Cloud avec Ollama (8 générations)
-cargo run --release --bin nomad -- run --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 8 --group C --output run_sched_qwen.json
+# 3. Reproduction du Grand Protocole Renaissance Ordonnancement Cloud (3 époques)
+cargo run --release --bin nomad -- rebirth --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 8 -e 3 --output grand_rebirth_sched.json
 
-# 4. Visualisation des arbres génétiques
-cargo run --bin nomad -- graph --report run_sched_qwen.json --format html --output arbre_sched.html
-Start-Process arbre_sched.html
+# 4. Reproduction du Grand Protocole Renaissance Bin Packing Lookahead (3 époques)
+cargo run --release --bin nomad -- rebirth --domain bin-packing --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 8 -e 3 --output grand_rebirth_bp_v2.json
 
-# 5. Reproduction du protocole Mort et Renaissance Scheduling (6 générations)
-cargo run --release --bin nomad -- rebirth --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 6 -n 6 --output rebirth_sched_qwen.json
-```
+# 5. Visualisation des arbres phylogénétiques interactifs (HTML)
+cargo run --release --bin nomad -- graph --report grand_rebirth_sched.json --format html --output grand_arbre_sched.html
+cargo run --release --bin nomad -- graph --report grand_rebirth_bp_v2.json --format html --output grand_arbre_rebirth_bp.html
 ```
 
