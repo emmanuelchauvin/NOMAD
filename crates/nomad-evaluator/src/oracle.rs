@@ -212,6 +212,18 @@ impl OracleEvaluator {
         sandbox: &dyn HeuristicSandbox,
         fuel_limit_per_call: u64,
     ) -> BenchmarkScore {
+        self.evaluate_dataset_with_lookahead(dataset, capsule, sandbox, fuel_limit_per_call, true)
+    }
+
+    /// Évalue une capsule sur un dataset avec option d'activation ou masquage du lookahead (k=2).
+    pub fn evaluate_dataset_with_lookahead(
+        &self,
+        dataset: &Dataset,
+        capsule: &SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+        lookahead: bool,
+    ) -> BenchmarkScore {
         let mut total_bins = 0usize;
         let mut total_theoretical = 0usize;
         let mut total_fuel = 0u64;
@@ -229,11 +241,12 @@ impl OracleEvaluator {
         let mut sample_prefix_waste = Vec::new();
 
         for inst in &dataset.instances {
-            let (eval, behavior, traj_metrics) = self.evaluate_single_instance(
+            let (eval, behavior, traj_metrics) = self.evaluate_single_instance_with_lookahead(
                 inst,
                 &capsule.logic_code,
                 sandbox,
                 fuel_limit_per_call,
+                lookahead,
             );
             if !eval.is_valid {
                 // Fatal penalty: Any failure disqualifies the entire run on this dataset
@@ -312,6 +325,18 @@ impl OracleEvaluator {
         sandbox: &dyn HeuristicSandbox,
         fuel_limit_per_call: u64,
     ) -> (InstanceEvaluation, BehaviorDescriptor, TrajectoryMetrics) {
+        self.evaluate_single_instance_with_lookahead(instance, logic_code, sandbox, fuel_limit_per_call, true)
+    }
+
+    /// Evaluates a single online bin packing instance with configurable lookahead.
+    pub fn evaluate_single_instance_with_lookahead(
+        &self,
+        instance: &BinPackingInstance,
+        logic_code: &str,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+        lookahead: bool,
+    ) -> (InstanceEvaluation, BehaviorDescriptor, TrajectoryMetrics) {
         let mut bin_levels: Vec<u32> = Vec::new();
         let mut mid_levels: Vec<u32> = Vec::new();
         let mid_course_step = instance.items.len() / 2;
@@ -320,7 +345,11 @@ impl OracleEvaluator {
         let mut new_bins_opened = 0usize;
 
         for (step_idx, &item) in instance.items.iter().enumerate() {
-            let next_item = instance.items.get(step_idx + 1).copied().unwrap_or(0);
+            let next_item = if lookahead {
+                instance.items.get(step_idx + 1).copied().unwrap_or(0)
+            } else {
+                0
+            };
             let res = sandbox.execute_with_lookahead(
                 logic_code,
                 item,

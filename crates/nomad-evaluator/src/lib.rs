@@ -168,4 +168,28 @@ mod tests {
         assert!(s3.total_bins <= 1265);
         assert!(s4.total_bins <= 1265);
     }
+
+    #[test]
+    fn test_best_fit_with_lookahead_baseline_and_toggle() {
+        use nomad_sandbox::DeterministicSandbox;
+        use nomad_core::SkillCapsule;
+
+        let sandbox = DeterministicSandbox::new();
+        let oracle = OracleEvaluator::new(42);
+
+        // 1. Classical Best-Fit baseline (no lookahead)
+        let bf_score = oracle.evaluate_classical_baseline("BEST_FIT", &oracle.in_distribution);
+        assert!(bf_score.is_valid);
+        assert_eq!(bf_score.total_bins, 1265);
+
+        // 2. Best-Fit with Lookahead (k=2) baseline
+        let bfla_capsule = SkillCapsule::new("BF_LA", "", "BEST_FIT_LOOKAHEAD", vec![], 0, Default::default());
+        let bfla_score = oracle.evaluate_dataset_with_lookahead(&oracle.in_distribution, &bfla_capsule, &sandbox, 50_000, true);
+        assert!(bfla_score.is_valid);
+        assert!(bfla_score.total_bins <= 1270, "Lookahead Best-Fit baseline must produce near-optimal packing");
+
+        // 3. When lookahead is disabled (lookahead: false), Best-Fit with Lookahead MUST fall back exactly to standard Best-Fit
+        let bfla_no_la_score = oracle.evaluate_dataset_with_lookahead(&oracle.in_distribution, &bfla_capsule, &sandbox, 50_000, false);
+        assert_eq!(bfla_no_la_score.total_bins, bf_score.total_bins, "When lookahead is disabled, BF_LA must produce identical bin count (1265) to standard Best-Fit");
+    }
 }

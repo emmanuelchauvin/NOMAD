@@ -13,6 +13,10 @@ fn default_anti_dead_code_epsilon() -> f64 {
     1e-4
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// Configuration for an evolutionary run according to the pre-registered protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExperimentConfig {
@@ -51,6 +55,9 @@ pub struct ExperimentConfig {
     /// Seuil epsilon de dégradation mesurable requis pour valider le Niveau 3 Anti-Dead-Code.
     #[serde(default = "default_anti_dead_code_epsilon")]
     pub anti_dead_code_epsilon: f64,
+    /// Option d'évaluation lookahead (k=2) : si faux, les données d'anticipation sont masquées (défaut: true).
+    #[serde(default = "default_true")]
+    pub lookahead: bool,
 }
 
 impl Default for ExperimentConfig {
@@ -71,6 +78,7 @@ impl Default for ExperimentConfig {
             node_capacity_ram: 128,
             cooldown_ms: 0,
             anti_dead_code_epsilon: 1e-4,
+            lookahead: true,
         }
     }
 }

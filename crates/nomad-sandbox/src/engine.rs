@@ -287,6 +287,44 @@ impl HeuristicSandbox for DeterministicSandbox {
                 Some(idx) => PackingDecision::PlaceInExisting(idx),
                 None => PackingDecision::OpenNewBin,
             }
+        } else if trimmed_code.eq_ignore_ascii_case("BEST_FIT_LOOKAHEAD")
+            || trimmed_code.contains("best_fit_lookahead")
+            || trimmed_code.contains("BestFitLookahead")
+        {
+            // Best Fit with lookahead k=2:
+            // Evaluates placing item in bin `idx`.
+            // If next_item_weight > 0 and placement leaves exact space for next item (post_residual == next_item_weight),
+            // grants strong exact-closure bonus (-1000.0) ensuring a 100% full bin.
+            // Otherwise scores purely by remaining space (Best Fit).
+            let mut best_idx = None;
+            let mut best_score = f64::MAX;
+
+            for (idx, &level) in bin_levels.iter().enumerate() {
+                fuel_consumed += 18;
+                if fuel_consumed > fuel_limit {
+                    return Err(SandboxError::FuelLimitExceeded {
+                        fuel_consumed,
+                        fuel_limit,
+                    });
+                }
+                if level + item_weight <= bin_capacity {
+                    let post_residual = bin_capacity - (level + item_weight);
+                    let bonus = if next_item_weight > 0 && post_residual == next_item_weight {
+                        1000.0
+                    } else {
+                        0.0
+                    };
+                    let score = (post_residual as f64) - bonus;
+                    if score < best_score {
+                        best_score = score;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+            match best_idx {
+                Some(idx) => PackingDecision::PlaceInExisting(idx),
+                None => PackingDecision::OpenNewBin,
+            }
         } else if trimmed_code.eq_ignore_ascii_case("WORST_FIT")
             || trimmed_code.contains("worst_fit")
             || trimmed_code.contains("WorstFit")

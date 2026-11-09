@@ -244,6 +244,18 @@ impl SchedulingOracle {
         sandbox: &dyn HeuristicSandbox,
         fuel_limit_per_call: u64,
     ) -> (InstanceEvaluation, f64, f64) {
+        self.evaluate_instance_with_lookahead(instance, capsule, sandbox, fuel_limit_per_call, true)
+    }
+
+    /// Évalue une instance unique de placement de tâches avec option de lookahead.
+    pub fn evaluate_instance_with_lookahead(
+        &self,
+        instance: &SchedulingInstance,
+        capsule: &SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+        lookahead: bool,
+    ) -> (InstanceEvaluation, f64, f64) {
         let mut node_levels: Vec<(u32, u32)> = Vec::new();
         let mut total_fuel = 0u64;
         let mut trajectory = Vec::with_capacity(instance.jobs.len());
@@ -253,9 +265,15 @@ impl SchedulingOracle {
         let mut tight_nodes_count = 0usize;
 
         for (step_index, job) in instance.jobs.iter().enumerate() {
-            let next_job = instance.jobs.get(step_index + 1);
-            let next_job_cpu = next_job.map(|j| j.cpu_req).unwrap_or(0);
-            let next_job_ram = next_job.map(|j| j.ram_req).unwrap_or(0);
+            let (next_job_cpu, next_job_ram) = if lookahead {
+                let next_job = instance.jobs.get(step_index + 1);
+                (
+                    next_job.map(|j| j.cpu_req).unwrap_or(0),
+                    next_job.map(|j| j.ram_req).unwrap_or(0),
+                )
+            } else {
+                (0, 0)
+            };
             let outcome = match sandbox.execute_scheduling_with_lookahead(
                 &capsule.logic_code,
                 job.cpu_req,
@@ -356,6 +374,18 @@ impl SchedulingOracle {
         sandbox: &dyn HeuristicSandbox,
         fuel_limit_per_call: u64,
     ) -> BenchmarkScore {
+        self.evaluate_dataset_with_lookahead(dataset, capsule, sandbox, fuel_limit_per_call, true)
+    }
+
+    /// Évalue une capsule sur un dataset de scheduling complet avec option de lookahead.
+    pub fn evaluate_dataset_with_lookahead(
+        &self,
+        dataset: &SchedulingDataset,
+        capsule: &SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+        lookahead: bool,
+    ) -> BenchmarkScore {
         let mut total_nodes = 0usize;
         let mut total_theoretical = 0usize;
         let mut total_fuel = 0u64;
@@ -365,7 +395,7 @@ impl SchedulingOracle {
         let mut sum_tight = 0.0f64;
 
         for inst in &dataset.instances {
-            let (eval, imb, tight) = self.evaluate_instance(inst, capsule, sandbox, fuel_limit_per_call);
+            let (eval, imb, tight) = self.evaluate_instance_with_lookahead(inst, capsule, sandbox, fuel_limit_per_call, lookahead);
             if !eval.is_valid {
                 return BenchmarkScore {
                     is_valid: false,

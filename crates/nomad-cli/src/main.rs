@@ -139,6 +139,10 @@ enum Commands {
         #[arg(short = 'e', long, default_value_t = 2)]
         epochs: usize,
 
+        /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        lookahead: bool,
+
         #[arg(long, value_enum, default_value_t = OperatorArg::Mock)]
         operator: OperatorArg,
 
@@ -182,6 +186,10 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         cooldown_ms: u64,
 
+        /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        lookahead: bool,
+
         #[arg(short, long, default_value = "run_report.json")]
         output: PathBuf,
     },
@@ -199,6 +207,10 @@ enum Commands {
 
         #[arg(short = 'n', long, default_value_t = 5)]
         generations: usize,
+
+        /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        lookahead: bool,
 
         #[arg(long, value_enum, default_value_t = OperatorArg::Ollama)]
         operator: OperatorArg,
@@ -788,7 +800,7 @@ fn main() -> Result<()> {
                 let oracle = OracleEvaluator::new(seed);
                 println!("--- Classical Heuristic Benchmarks (Dataset Seed: {}) ---", seed);
 
-                for name in &["FIRST_FIT", "BEST_FIT", "WORST_FIT"] {
+                for name in &["FIRST_FIT", "BEST_FIT", "BEST_FIT_LOOKAHEAD", "WORST_FIT"] {
                     let in_score = oracle.evaluate_classical_baseline(name, &oracle.in_distribution);
                     let ood1_score = oracle.evaluate_classical_baseline(name, &oracle.ood1_scale);
                     let ood2_score = oracle.evaluate_classical_baseline(name, &oracle.ood2_powerlaw);
@@ -825,6 +837,7 @@ fn main() -> Result<()> {
             pop_size,
             generations,
             epochs,
+            lookahead,
             operator,
             ollama_url,
             model,
@@ -836,6 +849,7 @@ fn main() -> Result<()> {
             config.rng_seed = seed;
             config.population_size = pop_size;
             config.max_generations = generations;
+            config.lookahead = lookahead;
 
             let oracle = OracleEvaluator::new(seed);
             let sched_oracle = SchedulingOracle::new(seed);
@@ -937,6 +951,7 @@ fn main() -> Result<()> {
             ollama_url,
             model,
             cooldown_ms,
+            lookahead,
             output,
         } => {
             let exp_group: ExperimentalGroup = group.into();
@@ -948,6 +963,7 @@ fn main() -> Result<()> {
             config.population_size = pop_size;
             config.max_generations = generations;
             config.cooldown_ms = cooldown_ms;
+            config.lookahead = lookahead;
 
             let oracle = OracleEvaluator::new(seed);
             let sched_oracle = SchedulingOracle::new(seed);
@@ -981,12 +997,20 @@ fn main() -> Result<()> {
             println!(" Seed: {} | Generations: {}", report.rng_seed, report.total_generations);
             println!("------------------------------------------------------------");
             println!(
-                " Best In-Dist Bins: {} (excess: +{}), Efficiency: {:.2}%, Fuel: {}",
+                " Best In-Dist (w/ Lookahead)  : {} bins (excess: +{}), Efficiency: {:.2}%, Fuel: {}",
                 report.best_in_distribution_score.total_bins,
                 report.best_in_distribution_score.total_excess_bins,
                 report.best_in_distribution_score.mean_efficiency * 100.0,
                 report.best_in_distribution_score.total_fuel
             );
+            if let Some(ref no_la) = report.best_score_without_lookahead {
+                println!(
+                    " Best In-Dist (w/o Lookahead) : {} bins (excess: +{}), Efficiency: {:.2}%",
+                    no_la.total_bins,
+                    no_la.total_excess_bins,
+                    no_la.mean_efficiency * 100.0
+                );
+            }
             println!(
                 " Dynamic Trajectory: tLDR = {:.4}",
                 report.best_in_distribution_score.tldr_score
@@ -1039,6 +1063,7 @@ fn main() -> Result<()> {
             runs,
             pop_size,
             generations,
+            lookahead,
             operator,
             ollama_url,
             model,
@@ -1049,6 +1074,7 @@ fn main() -> Result<()> {
             println!("============================================================");
             println!(" Running Paired Study: Group C (Swarm) vs Group D (Mutation)");
             println!(" Target Domain        : {:?}", prob_domain);
+            println!(" Lookahead (k=2)      : {}", lookahead);
             println!(" Number of Paired Runs: {}", runs);
             if cooldown_ms > 0 {
                 println!(" Thermal Cooldown: {} ms between LLM calls", cooldown_ms);
@@ -1090,6 +1116,7 @@ fn main() -> Result<()> {
                 config_d.population_size = pop_size;
                 config_d.max_generations = generations;
                 config_d.cooldown_ms = cooldown_ms;
+                config_d.lookahead = lookahead;
                 let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
                     .with_scheduling_oracle(&sched_oracle);
                 let report_d = engine_d.execute_run()?;
@@ -1105,6 +1132,7 @@ fn main() -> Result<()> {
                 config_c.population_size = pop_size;
                 config_c.max_generations = generations;
                 config_c.cooldown_ms = cooldown_ms;
+                config_c.lookahead = lookahead;
                 let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
                     .with_scheduling_oracle(&sched_oracle);
                 let report_c = engine_c.execute_run()?;
