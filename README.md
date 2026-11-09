@@ -122,14 +122,15 @@ cargo run --release --bin nomad -- compare --domain scheduling --operator mock -
 
 ## 5. Scientific Validation & Testing
 
-NOMAD is verified by an automated test suite comprising **29 unit and integration tests** and 6 acceptance protocols:
-- `cargo test --workspace` (All 29 unit & integration tests pass deterministically)
-- **Controlled Ablation Study (Group C vs Group D, 15 Generations) :** Recombinant champion `SwarmCross-g2-d93d-d9c0` certified `PassedLevel3Behavioral` achieving **14.12% fuel reduction** (Fuel: 668 216 vs 778 102) and superior Quality-Diversity coverage (9 niches, QD-Score: 8.023 vs 8 niches, 7.079) over mutation-only baseline locked at Generation 0 seed.
-- **Multi-Resource Cloud Scheduling :** SOTA record of **391 servers** ($CIF = 1.071\text{x}$, $R_{\text{herit}} = 100\%$, OOD-2: 1 731 servers).
-- **Online 1D Bin Packing :** Lookahead $k=2$ + Dynamic Horizon with **98.56% OOD-2 efficiency** and $R_{\text{herit}} = 100\%$.
-- Level 1-3 Anti-dead-code validation with surgical $C_{\text{null}}$ differential ablation.
+NOMAD is verified by an automated test suite comprising **41 unit and integration tests** and empirical acceptance protocols:
+- `cargo test --workspace` (All 41 unit & integration tests pass deterministically)
+- **Controlled Ablation Study (Group C vs Group D, 15 Generations) :** Recombinant champion `SwarmCross-g2-d93d-d9c0` verified as `PassedLevel2Computational` (computational viability confirmed; behavioral causality of graft remains exploratory), achieving **14.12% fuel reduction** (Fuel: 668 216 vs 778 102) and superior Quality-Diversity coverage (9 niches, QD-Score: 8.023 vs 8 niches, 7.079) over mutation-only baseline locked at Generation 0 seed.
+- **Multi-Resource Cloud Scheduling :** Exploratory score of **391 servers** observed on a single seed ($CIF_{\text{perf}} = 1.071\text{x}$, $R_{\text{herit}} = 100\%$, OOD-2: 1 731 servers).
+- **Online 1D Bin Packing :** Lookahead $k=2$ + Dynamic Horizon with **98.56% OOD-2 efficiency** and $R_{\text{herit}} = 100\%$. Fair comparison against `BEST_FIT_LOOKAHEAD` baseline at equal $k=2$.
+- Level 1-3 Anti-dead-code validation with surgical $C_{\text{null}}$ differential ablation (hash-verified statement neutralization, directional degradation threshold).
+- Pre-registered paired Wilcoxon signed-rank test and permutation test campaign (`nomad campaign`) for multi-seed statistical significance.
 - Adaptive Operator Selection (AOS) for dynamic Swarm crossover control.
-- MAP-Elites niche competition & replacement with adaptive coordinate projection.
+- MAP-Elites niche competition & replacement with fuel parsimony tie-breaking.
 - Cryptographic reproducibility across random seeds.
 
 See [TESTS.md](TESTS.md) for detailed experimental benchmarks and [SPECIFICATIONS.md](SPECIFICATIONS.md) for full mathematical definitions.

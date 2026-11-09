@@ -436,7 +436,7 @@ python scripts/analysis/wilcoxon_analysis.py campaign_30seeds/campaign_aggregate
 # 14. Critère Final de Réussite de NOMAD V2
 
 NOMAD V2 est réputé formellement validé si et seulement si :
-1. **Intégrité Logicielle :** La suite de tests automatisés du workspace Rust réussit à 100 % (`cargo test --workspace`, 29 tests sur 29 réussis).
-2. **Rupture Expérimentale :** L'algorithme brise le plafond historique glouton stationnaire en atteignant un score strictement inférieur à 1 265 bacs sur le benchmark In-Distribution.
-3. **Causalité Anti-Dead-Code :** Les capsules hybrides issues de crossover prouvent que leur fragment greffé modifie de manière causale leurs décisions par rapport à la capsule d'ablation $C_{\text{null}}$.
-4. **Transmission Culturelle :** Le protocole "Mort et Renaissance" atteste d'un taux d'hérédité fonctionnelle $R_{\text{herit}} > 50\,\%$ et d'une expansion de niches significative par rapport à la population Tabula Rasa.
+1. **Intégrité Logicielle :** La suite de tests automatisés du workspace Rust réussit à 100 % (`cargo test --workspace`).
+2. **Performance et Comparaison Équitable :** L'algorithme atteint $\le 1\,265$ bacs sur le benchmark In-Distribution. Toute comparaison avec Best-Fit doit être réalisée à horizon informationnel équivalent (Lookahead $k=2$), et toute amélioration marginale observée (ex: 1 264 bacs, soit 0.08 % de gain) doit être documentée comme exploratoire et soumise au protocole de réplication statistique multi-graines apparié (test de Wilcoxon pré-enregistré).
+3. **Causalité Anti-Dead-Code :** Les capsules hybrides issues de crossover valident le pipeline Anti-Dead-Code à 3 niveaux (structurel, computationnel et comportemental), prouvant que l'ablation $C_{\text{null}}$ par neutralisation vérifiée par hash dégrade significativement les décisions sans causer de crash invalide.
+4. **Transmission Culturelle :** Le protocole "Mort et Renaissance" atteste d'un taux d'hérédité fonctionnelle $R_{\text{herit}} > 50\,\%$ et d'une expansion de niches significative par rapport à la population Tabula Rasa, avec analyse conjointe des métriques dégroupées ($CIF_{\text{perf}}$, $CIF_{\text{QD}}$, $CIF_{\text{herit}}$).

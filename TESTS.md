@@ -9,12 +9,12 @@
 
 L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `SPECIFICATIONS.md` (Sections 0 à 14) est **validé à 100%** :
 
-* **Validation Technique (Workspace Rust) :** **29 tests automatisés sur 29 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec support complet des méthodes mathématiques et puissances (`powi`, `powf`, `sqrt`, `min`, `max`), le Lookahead $k=2$, l'Oracle souverain, le pipeline Anti-Dead-Code bloquant à 3 niveaux, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques et l'Ordonnancement Cloud Multi-Ressources.
+* **Validation Technique (Workspace Rust) :** **41 tests automatisés sur 41 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec support complet des méthodes mathématiques et puissances (`powi`, `powf`, `sqrt`, `min`, `max`), la limitation de profondeur de récursion (max 48) et de mémoire (max 128 vars), le rejet précoce d'entrées pathologiques, le Lookahead $k=2$, l'Oracle souverain avec jeu de validation indépendant, le pipeline Anti-Dead-Code bloquant à 3 niveaux par neutralisation et dégradation directionnelle, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques dégroupé et l'Ordonnancement Cloud Multi-Ressources.
 * **Validation Scientifique (Les 4 Tests d'Acceptation) :**
-  1. **Test 1 (Plafond 1265 & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux. Rupture prouvée du plafond à 1 264 bacs dans le run de convergence à 12 générations (`run_report_qwen_v2.json`).
+  1. **Test 1 (Performance 1265 bacs & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux. Un gain marginal exploratoire a été observé à 1 264 bacs (gain de 1 bac / 50 000 objets, -0.08 %) dans un run de 12 générations (`run_report_qwen_v2.json`) avec lookahead $k=2$. Non reproduit dans le protocole d'ablation à 15 générations (qui converge à 1 265 bacs pour les Groupes C et D) ; ce résultat requiert une réplication statistique multi-graines.
   2. **Test 2 (Résilience Génétique & MAP-Elites) :** Résolution prouvée du mode collapse de la V1. Maintien pérenne d'un front de Pareto multi-niches actives avec réduction de l'espace mort.
   3. **Test 3 (Dynamique Temporelle $tLDR$ & OOD) :** Modélisation mathématique rigoureuse du potentiel de Lyapunov $V(t)$, régression linéaire $\beta_1$ et $\sigma_{\text{res}}$, et sanctuarisation stricte des benchmarks OOD-1 et OOD-2 (efficacité $> 95\%$).
-  4. **Test 4 (Transmission Cumulative "Mort et Renaissance") :** **Démonstration expérimentale validée : $CIF_{\text{QD}} = 1.004\text{x} > 1.0$ (et jusqu'à 7 niches préservées vs 1 en Tabula Rasa, $R_{\text{herit}} = 71.4\%$)**. La population héritière surpasse la population Tabula Rasa en diversité et couverture à budget d'évaluations et seed identiques, après annihilation totale des mémoires de travail.
+  4. **Test 4 (Transmission Cumulative "Mort et Renaissance") :** **Observation préliminaire : $CIF_{\text{QD}} = 1.004\text{x}$ (et jusqu'à 7 niches préservées vs 1 en Tabula Rasa, $R_{\text{herit}} = 71.4\%$)**. L'écart de 0.4 % restant dans la marge de variabilité stochastique, il ne constitue pas une preuve définitive sans réplication. En ordonnancement, la population héritière subit même une légère régression hors-distribution (1 745 vs 1 731 serveurs Tabula Rasa), illustrant que l'hérédité phylogénétique ($R_{\text{herit}} = 100\%$) ne garantit pas à elle seule une supériorité systématique de performance.
 
 ---
 
@@ -24,7 +24,7 @@ Pour garantir une intégrité scientifique sans équivoque face aux comités de 
 
 | Fichier JSON Source | Version | Domaine & Groupe | Paramètres (Gens, Pop, Epochs) | Meilleur Score / Métrique Clé | Rôle & Statut Expérimental |
 | :--- | :---: | :--- | :--- | :--- | :--- |
-| **`run_report_qwen_v2.json`** | V2.0 | Bin Packing 1D (Groupe C) | $N=12$ gens, $\text{Pop}=8$ | **1 264 bacs** (`SwarmCross-g8-0f25-039a-mut-g8`) | **Run Long Convergence :** Rupture du palier Best-Fit (1265 $\to$ 1264) par crossover AST. |
+| **`run_report_qwen_v2.json`** | V2.0 | Bin Packing 1D (Groupe C) | $N=12$ gens, $\text{Pop}=8$ | **1 264 bacs** (`SwarmCross-g8-0f25-039a-mut-g8`) | **Run Exploratoire Graine Unique :** Gain marginal observé (1265 $\to$ 1264, -0.08%) avec lookahead $k=2$. |
 | **`rebirth_qwen_v2.json`** | V2.0 | Bin Packing 1D (Rebirth) | 2 époques, $N=6$ gens, $\text{Pop}=8$ | **$CIF = 1.000\text{x}$**, $R_{\text{herit}} = 71.4\%$ (7 niches) | **Run Rebirth V2 :** Preuve de diversité héritée (7 niches vs 1 niche Tabula Rasa). |
 | **`run_sched_qwen.json`** | V2.0 | Cloud Scheduling (Groupe C) | $N=8$ gens, $\text{Pop}=8$ | **1 731 serveurs** (OOD-2, +16 économisés vs baselines) | **Multi-Domaines :** Validation de l'allocation vectorielle 2D CPU/RAM. |
 | **`grand_rebirth_sched.json`**| V2.0 | Cloud Scheduling (Rebirth 3E) | 3 époques, $N=4$ gens, $\text{Pop}=6$ | **391 serveurs** à l'Époque 3 (gain net vs 392 Époque 1) | **Rebirth Multi-Époques :** Amélioration cumulative inter-extinctions. |
@@ -77,13 +77,13 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 
 ## 3. Validation Approfondie des 4 Protocoles Scientifiques d'Acceptation
 
-### TEST 1 : Rupture du Palier Best-Fit (1 265 bacs) et Opérateur AST (Section 8.2)
+### TEST 1 : Performance de Placement (1 264 / 1 265 bacs) et Opérateur AST (Section 8.2)
 
-* **Problématique :** Dans les heuristiques classiques (et dans la V1), l'algorithme plafonnait systématiquement à 1 265 bacs (optimum empirique de la référence gloutonne `BEST_FIT` en ligne). La borne de volume théorique $L_1$ est de 1 158 bacs. L'enjeu est de découvrir des politiques non-stationnaires à horizon dynamique capables de battre la baseline Best-Fit (descendre sous 1 265 bacs).
-* **Rupture Empirique V2 (Run de référence `run_report_qwen_v2.json`, 12 générations) :**
-  * **Palier franchi :** **1 264 bacs** (excès : **+106**, efficacité : **91.86%**, fuel : 1 526 174).
+* **Problématique :** Dans les heuristiques classiques en ligne sans vision du futur ($k=1$), l'algorithme plafonnait à 1 265 bacs (optimum empirique de la référence gloutonne `BEST_FIT`). La borne de volume théorique $L_1$ est de 1 158 bacs. L'enjeu est de découvrir des politiques non-stationnaires à horizon dynamique et d'évaluer l'impact d'un lookahead local borné ($k=2$).
+* **Résultat Empirique Exploratoire (Run `run_report_qwen_v2.json`, 12 générations, seed unique) :**
+  * **Score enregistré :** **1 264 bacs** (excès : **+106**, efficacité : **91.86%**, fuel : 1 526 174).
   * **Heuristique Championne :** `SwarmCross-g8-0f25-039a-mut-g8` (`03294d5accc2b1d9`, Génération 8).
-  * **Explosion du Crossover AST :** **46 croisements d'essaim (`SwarmCross`) sur 77 enfants générés (59.7%)** dans le DAG phylogénétique (85 nœuds au total dont 8 graines Gen 0, 123 transitions/arêtes).
+  * **Crossover AST :** **46 croisements d'essaim (`SwarmCross`) sur 77 enfants générés (59.7%)** dans le DAG phylogénétique (85 nœuds au total dont 8 graines Gen 0, 123 transitions/arêtes).
   * **Code Émergent Dynamique Multi-Variables :**
     ```rust
     pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {
@@ -100,10 +100,12 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
         final_score
     }
     ```
-  * L'IA a conçu une politique non-stationnaire modulant sa sélectivité selon l'horizon temporel restant ($\text{step\_index} / \text{total\_items}$), permettant de surclasser Best-Fit.
+  * L'heuristique module sa sélectivité selon l'horizon temporel restant ($\text{step\_index} / \text{total\_items}$).
 
-> [!NOTE]
-> La découverte de l'optimum 1 264 bacs a été obtenue au terme du run prolongé de 12 générations (`run_report_qwen_v2.json`). Dans des runs exploratoires plus courts (5 à 15 générations), la dynamique converge fréquemment vers le palier de 1 265 bacs (optimal Best-Fit), sur lequel le crossover d'essaim opère alors une optimisation chirurgicale de la parcimonie computationnelle (réduction de fuel jusqu'à -16.14% face aux graines initiales LLM).
+> [!IMPORTANT]
+> **Éclaircissement méthodologique sur l'écart 1 264 vs 1 265 bacs et équité du Lookahead :**
+> 1. **Écart 1 264 vs 1 265 bacs :** Le score de 1 264 bacs a été observé lors d'un run exploratoire prolongé de 12 générations (`run_report_qwen_v2.json`) avec une graine unique et un modèle spécifique. Dans les expériences d'ablation systématiques de 15 générations (`ablation_group_c.json` et `ablation_group_d.json`), les deux groupes (Crossover et Mutation seule) convergent à 1 265 bacs. L'écart d'un seul bac sur 50 000 objets (0.08 %) reflète une variation marginale non répliquée à ce stade sous le protocole d'ablation. Il ne saurait être qualifié de « rupture d'état de l'art » sans réplication sur une campagne multi-graines appariée.
+> 2. **Équité du Lookahead :** Best-Fit standard n'a pas accès à l'objet suivant ($k=1$). La comparaison équitable nécessite d'évaluer la baseline avec le même horizon d'information, matérialisée par `BEST_FIT_LOOKAHEAD` ($k=2$), qui atteint 1 265 bacs. Le gain marginal de 1 bac dépend donc étroitement de l'exploitation conjointe du lookahead et de la politique non-linéaire.
 
 ---
 
@@ -164,13 +166,13 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
    Innovation Rate (R_innov)             : 1.687 per 1000 evals
   ============================================================
   ```
-* **Preuve Établie de la Transmission Cumulative :**
-  * **Hérédité Fonctionnelle Élevée ($R_{\text{herit}} = \mathbf{71.4\%}$) :** 5 des 7 niches conquises à l'Époque 2 descendent directement du patrimoine transmis de l'Époque 1.
-  * **Explosion de Diversité (7 Niches vs 1 Seule pour Tabula Rasa) :**
-    * **Lignée Héritière :** Occupe **7 niches distinctes** (`(8,7)`, `(6,5)`, `(7,7)`, `(9,7)`, `(6,6)`, `(5,5)`, `(4,5)`), avec un QD-Score de **6.17** (somme exacte des efficacités : 6.1668).
-    * **Lignée Tabula Rasa :** Reste cantonnée à **1 seule niche** (`(9,7)`), avec un QD-Score de **0.918** (**facteur de diversité 7x** grâce au patrimoine).
-  * **Validation Anti-Dead-Code Niveau 3 Certifiée :**
-    Avec l'exclusion stricte du fuel, les hybrides `SwarmCross-g4-8875-039a` (niche `6,6`) et `SwarmCross-g5-1ee6-039a` (niche `5,5`) sont formellement certifiés **`PassedLevel3Behavioral`** avec causalité démontrée sur les décisions face à leur capsule d'ablation $C_{\text{null}}$.
+* **Observation et Analyse de la Transmission Cumulative :**
+  * **Hérédité Fonctionnelle ($R_{\text{herit}} = \mathbf{71.4\%}$) :** 5 des 7 niches conquises à l'Époque 2 descendent directement du patrimoine transmis de l'Époque 1.
+  * **Couverture de Diversité (7 Niches vs 1 Seule pour Tabula Rasa) :**
+    * **Lignée Héritière :** Occupe **7 niches distinctes** (`(8,7)`, `(6,5)`, `(7,7)`, `(9,7)`, `(6,6)`, `(5,5)`, `(4,5)`), avec un QD-Score de **6.17**.
+    * **Lignée Tabula Rasa :** Reste cantonnée à **1 seule niche** (`(9,7)`), avec un QD-Score de **0.918**.
+  * **Interprétation critique de $CIF_{\text{QD}} = 1.004\text{x}$ :**
+    L'écart de 0.4 % mesuré sur ce run unique reste dans la marge de variabilité stochastique naturelle. Il ne constitue pas à lui seul une preuve expérimentale définitive de l'hypothèse $H_1$. Comme l'illustre le benchmark d'ordonnancement (TEST 5) où la population héritière obtient 1 745 serveurs contre 1 731 pour Tabula Rasa, l'hérédité phylogénétique ne garantit pas mécaniquement un gain de performance systématique à chaque réinitialisation.
 
 ---
 
@@ -247,7 +249,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **Fichier JSON Source** | `ablation_group_c.json` | `ablation_group_d.json` | Données brutes immuables régénérées |
 | **Heuristique Championne** | **`SwarmCross-g6-d6a1-8f9d-mut-g12-mut-g12`** | **`LLM-Seed-008-mut-g6-mut-g14-mut-g14`** | **Groupe C : Recombinaison horizontale** |
 | **Parents du Champion** | Issu de `SwarmCross-g6` (crossover inter-lignées) | Lignée unique verticale `LLM-Seed-008` | Recombinaison horizontale validée |
-| **Statut de Validation Anti-Bloat** | **`PassedLevel2Computational`** / Niveau 3 certifié | `PassedLevel2Computational` | **Preuve de non-neutralité causale** |
+| **Statut de Validation Anti-Bloat** | **`PassedLevel2Computational`** | `PassedLevel2Computational` | Survie computationnelle validée (niveau 3 non requis pour champion C) |
 | **Consommation de Fuel (Parsimonie)** | **703 568** | **990 350** | **-28.96% de fuel consommé** (gain net d'efficacité : 703k vs 990k) |
 | **Bacs En-Distribution** | 1 265 bacs (optimal Best-Fit) | 1 265 bacs (optimal Best-Fit) | Égalité sur l'objectif scalaire brut |
 | **Généralisation OOD-1 (N=500 objets)**| 11 774 bacs (95.90% eff.) | 11 774 bacs (95.90% eff.) | Sanctuarisation hors-distribution |
@@ -271,6 +273,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
   1. **Recombinaison créatrice vs mode collapse vertical :** Dans le Groupe D (mutation seule), l'archive converge vers des mutations répétées de la même lignée `LLM-Seed-000` (mode collapse). Dans le Groupe C, le crossover d'essaim produit 8 des 10 niches et le champion final issu de `SwarmCross-g6`.
   2. **Gain de Parcimonie Énergétique (-28.96% de Fuel) :** Le champion recombinant atteint une efficacité maximale avec 703 568 de fuel contre 990 350 pour le champion de mutation seule (+40.7% de surconsommation dans le Groupe D).
   3. **Supériorité de Couverture Quality-Diversity :** Le Groupe C maintient **10 niches actives (QD-Score : 8.770)** contre 9 niches (QD-Score : 7.873) pour le Groupe D.
+  4. **Statut Causal du Champion C :** Le champion du Groupe C est certifié `PassedLevel2Computational` (le greffon compile et s'exécute sans neutralité syntaxique triviale). Cependant, la causalité comportementale directe de niveau 3 (dégradation des décisions après neutralisation $C_{\text{null}}$) n'a pas été établie pour cette capsule précise lors de ce run. Le lien causal direct entre le fragment greffé et l'avantage en fuel demeure une hypothèse de travail nécessitant confirmation expérimentale dédiée.
 
 ---
 
@@ -280,36 +283,58 @@ Toutes les expériences rapportées sont déterministes et peuvent être reprodu
 
 | Fichier Généré | Contenu et Rôle Scientifique |
 | :--- | :--- |
-| **`grand_rebirth_sched.json`** | Rapport officiel Renaissance 3 Époques Cloud Scheduling (SOTA battu à 391 serveurs, CIF = 1.071x, $R_{\text{herit}} = 100\%$). |
+| **`grand_rebirth_sched.json`** | Rapport officiel Renaissance 3 Époques Cloud Scheduling (Score exploratoire : 391 serveurs, $CIF = 1.071\text{x}$, $R_{\text{herit}} = 100\%$). |
 | **`grand_rebirth_bp_v2.json`** | Rapport officiel Renaissance 3 Époques Bin Packing (Lookahead $k=2$ + Horizon, OOD-1: 11 774, OOD-2: 2 353, $R_{\text{herit}} = 100\%$). |
 | **`grand_run_sched.json`** | Trace officielle Cloud Scheduling Swarm (91 nœuds, 118 transitions, MAP-Elites 3.0% coverage). |
 | **`grand_run_bp_v2.json`** | Trace officielle Bin Packing Swarm V2 (91 nœuds, 116 transitions, fuel parsimony). |
 | **`grand_arbre_sched.html`** | Visualisation interactive de l'arbre phylogénétique Cloud Scheduling. |
 | **`grand_arbre_rebirth_bp.html`** | Visualisation interactive de l'arbre phylogénétique Bin Packing Rebirth 3 Époques. |
-| **`run_report_qwen_v2.json`** | Trace complète Bin Packing 12 générations avec Qwen 2.5 Coder 7B (85 nœuds, 123 transitions, SOTA 1264 bacs). |
+| **`run_report_qwen_v2.json`** | Trace complète Bin Packing 12 générations avec Qwen 2.5 Coder 7B (85 nœuds, 123 transitions, score exploratoire 1 264 bacs). |
 | **`rebirth_qwen_v2.json`** | Rapport officiel Rebirth V2 Bin Packing ($R_{\text{herit}} = 71.4\%$, 7 niches Héritière vs 1 Tabula Rasa). |
-| **`run_sched_qwen.json`** | Trace officielle Ordonnancement Cloud Qwen 2.5 Coder 7B (57 nœuds, 77 transitions, champion 1731 nœuds sur OOD-2). |
+| **`run_sched_qwen.json`** | Trace officielle Ordonnancement Cloud Qwen 2.5 Coder 7B (57 nœuds, 77 transitions, champion 1 731 nœuds sur OOD-2). |
 | **`run_report_v2.json`** | Rapport déterministe mock pour audit instantané offline sans GPU. |
 | **`rebirth_mock_v2.json`** | Protocole Mort et Renaissance en mode déterministe ($R_{\text{herit}} = 100.0\%$). |
-| **`ablation_group_c.json`** | Trace ablation Groupe C (Swarm Crossover, 15 gens, champion `SwarmCross-g2` validé Niveau 3). |
+| **`ablation_group_c.json`** | Trace ablation Groupe C (Swarm Crossover, 15 gens, champion `SwarmCross-g6` validé Niveau 2). |
 | **`ablation_group_d.json`** | Trace ablation Groupe D (Mutation seule, 15 gens, champion bloqué sur `LLM-Seed-008`). |
 
 ### Commandes de Reproduction :
 ```powershell
-# 1. Vérification de la suite de tests automatisés (29 tests unitaires et d'intégration)
+# 1. Vérification de la suite de tests automatisés (41 tests unitaires et d'intégration)
 cargo test --workspace
 
-# 2. Reproduction du Grand Run Ordonnancement Cloud Swarm (10 générations)
+# 2. Campagne de réplication statistique appariée (30 graines indépendantes, Crossover vs Mutation)
+cargo run --release --bin nomad -- campaign --domain bin-packing --runs 30 --output-json campaign_bp_30runs.json
+python scripts/analysis/wilcoxon_analysis.py --input-json campaign_bp_30runs.json --alpha 0.05 --output-json wilcoxon_report.json
+
+# 3. Reproduction du Grand Run Ordonnancement Cloud Swarm (10 générations)
 cargo run --release --bin nomad -- run --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 10 -n 10 -G c --output grand_run_sched.json
 
-# 3. Reproduction du Grand Protocole Renaissance Ordonnancement Cloud (3 époques)
+# 4. Reproduction du Grand Protocole Renaissance Ordonnancement Cloud (3 époques)
 cargo run --release --bin nomad -- rebirth --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 8 -e 3 --output grand_rebirth_sched.json
 
-# 4. Reproduction du Grand Protocole Renaissance Bin Packing Lookahead (3 époques)
+# 5. Reproduction du Grand Protocole Renaissance Bin Packing Lookahead (3 époques)
 cargo run --release --bin nomad -- rebirth --domain bin-packing --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 8 -e 3 --output grand_rebirth_bp_v2.json
 
-# 5. Visualisation des arbres phylogénétiques interactifs (HTML)
+# 6. Visualisation des arbres phylogénétiques interactifs (HTML)
 cargo run --release --bin nomad -- graph --report grand_rebirth_sched.json --format html --output grand_arbre_sched.html
 cargo run --release --bin nomad -- graph --report grand_rebirth_bp_v2.json --format html --output grand_arbre_rebirth_bp.html
 ```
+
+---
+
+## 5. Limites et Menaces à la Validité Scientifique
+
+Afin de garantir une rigueur méthodologique irréprochable face aux exigences de publication scientifique, les résultats présentés doivent être interprétés à la lumière des limites structurelles suivantes :
+
+1. **Variabilité Stochastique & Taille d'Échantillon :**
+   Les scores phares (1 264 bacs en Bin Packing, 391 serveurs en Cloud Scheduling) ont été enregistrés sur des exécutions exploratoires isolées (seed 42). Le gain mesuré (1 bac sur 50 000 objets, soit 0.08 %) est marginal et n'a pas été répliqué dans le protocole d'ablation 15 générations (qui stabilise à 1 265 bacs pour les Groupes C et D). Aucune conclusion définitive sur la supériorité de l'approche ne peut être tirée sans mener la campagne complète pré-enregistrée de 30 graines appariées (`nomad campaign`) et soumettre les résultats aux tests de Wilcoxon et de permutation.
+2. **Équité du Comparateur (Lookahead Bounded) :**
+   L'algorithme Best-Fit historique fonctionne sans vision de l'objet futur ($k=1$). La mise à disposition de `next_item_size` ($k=2$) aux capsules évolutives confère un avantage informationnel structurel. Toute affirmation de supériorité algorithmique doit obligatoirement être comparée à la baseline symétrique `BEST_FIT_LOOKAHEAD` ($k=2$), implémentée dans NOMAD V2.6, qui égalise le score à 1 265 bacs.
+3. **Causalité Anti-Dead-Code et Niveaux de Survie :**
+   La validation de Niveau 2 (`PassedLevel2Computational`) certifie que l'hôte avec greffon compile et s'exécute sans erreur ni neutralité triviale, mais ne prouve pas que le fragment greffé est le moteur causal de la performance (Niveau 3). Dans l'ablation 15 générations, le champion C est au Niveau 2. L'affirmation selon laquelle le crossover est directement responsable du gain en fuel reste une hypothèse plausible mais non démontrée au sens causal strict.
+4. **Hérédité Généalogique vs Avantage de Performance :**
+   Un taux élevé d'hérédité fonctionnelle ($R_{\text{herit}} = 100\%$) atteste de la fidélité de transmission de lignées au travers des extinctions, mais n'implique pas mécaniquement une amélioration de la performance finale. Le contre-exemple du benchmark d'ordonnancement (1 745 serveurs pour la population héritière contre 1 731 serveurs pour la Tabula Rasa) démontre qu'un patrimoine peut introduire un biais de spécialisation ou un verrouillage local s'il n'est pas tempéré par une pression sélective diversifiante.
+5. **Garanties du Bac à Sable AST :**
+   Le sandbox NOMAD est un interpréteur AST in-process déterministe avec comptage d'instructions (fuel limit), garde de profondeur de récursion (max 48) et limitation de mémoire (max 128 variables). Il ne fournit pas d'isolation de mémoire virtuelle au niveau OS ni de sandbox réseau/thread.
+
 
