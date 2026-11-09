@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use nomad_core::SchedulingInputs;
-use syn::{BinOp, Expr, ExprBinary, ExprCast, ExprIf, ExprLit, ExprParen, ExprPath, ExprUnary, ItemFn, Lit, Local, Pat, PatIdent, Stmt, UnOp};
+use syn::{
+    BinOp, Expr, ExprBinary, ExprCall, ExprCast, ExprIf, ExprLit, ExprMethodCall, ExprParen,
+    ExprPath, ExprUnary, ItemFn, Lit, Local, Pat, PatIdent, Stmt, UnOp,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -339,6 +342,113 @@ impl<'a> AstInterpreter<'a> {
                 }
                 Ok(last)
             }
+            Expr::MethodCall(ExprMethodCall {
+                receiver,
+                method,
+                args,
+                ..
+            }) => {
+                let recv_val = self.eval_expr(receiver, vars, fuel, branches, mutations)?;
+                let method_name = method.to_string();
+                let mut eval_args = Vec::with_capacity(args.len());
+                for arg in args {
+                    eval_args.push(self.eval_expr(arg, vars, fuel, branches, mutations)?);
+                }
+                match method_name.as_str() {
+                    "powi" => {
+                        let exp = eval_args.first().copied().unwrap_or(1.0) as i32;
+                        let res = recv_val.powi(exp);
+                        Ok(if res.is_finite() { res } else { 0.0 })
+                    }
+                    "powf" => {
+                        let exp = eval_args.first().copied().unwrap_or(1.0);
+                        let res = recv_val.powf(exp);
+                        Ok(if res.is_finite() { res } else { 0.0 })
+                    }
+                    "sqrt" => {
+                        let res = recv_val.max(0.0).sqrt();
+                        Ok(if res.is_finite() { res } else { 0.0 })
+                    }
+                    "abs" => Ok(recv_val.abs()),
+                    "floor" => Ok(recv_val.floor()),
+                    "ceil" => Ok(recv_val.ceil()),
+                    "round" => Ok(recv_val.round()),
+                    "min" => {
+                        let other = eval_args.first().copied().unwrap_or(recv_val);
+                        Ok(recv_val.min(other))
+                    }
+                    "max" => {
+                        let other = eval_args.first().copied().unwrap_or(recv_val);
+                        Ok(recv_val.max(other))
+                    }
+                    "clamp" => {
+                        let min_val = eval_args.first().copied().unwrap_or(recv_val);
+                        let max_val = eval_args.get(1).copied().unwrap_or(recv_val);
+                        if min_val <= max_val {
+                            Ok(recv_val.clamp(min_val, max_val))
+                        } else {
+                            Ok(recv_val.clamp(max_val, min_val))
+                        }
+                    }
+                    "ln" => {
+                        let res = recv_val.max(1e-9).ln();
+                        Ok(if res.is_finite() { res } else { 0.0 })
+                    }
+                    "exp" => {
+                        let res = recv_val.clamp(-50.0, 50.0).exp();
+                        Ok(if res.is_finite() { res } else { 0.0 })
+                    }
+                    _ => Ok(recv_val),
+                }
+            }
+            Expr::Call(ExprCall { func, args, .. }) => {
+                let mut eval_args = Vec::with_capacity(args.len());
+                for arg in args {
+                    eval_args.push(self.eval_expr(arg, vars, fuel, branches, mutations)?);
+                }
+                let fn_name = if let Expr::Path(ExprPath { path, .. }) = &**func {
+                    path.segments
+                        .last()
+                        .map(|s| s.ident.to_string())
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                match fn_name.as_str() {
+                    "min" => {
+                        let a = eval_args.first().copied().unwrap_or(0.0);
+                        let b = eval_args.get(1).copied().unwrap_or(0.0);
+                        Ok(a.min(b))
+                    }
+                    "max" => {
+                        let a = eval_args.first().copied().unwrap_or(0.0);
+                        let b = eval_args.get(1).copied().unwrap_or(0.0);
+                        Ok(a.max(b))
+                    }
+                    "sqrt" => {
+                        let a = eval_args.first().copied().unwrap_or(0.0);
+                        let res = a.max(0.0).sqrt();
+                        Ok(if res.is_finite() { res } else { 0.0 })
+                    }
+                    "abs" => {
+                        let a = eval_args.first().copied().unwrap_or(0.0);
+                        Ok(a.abs())
+                    }
+                    "powi" => {
+                        let a = eval_args.first().copied().unwrap_or(0.0);
+                        let b = eval_args.get(1).copied().unwrap_or(1.0) as i32;
+                        let res = a.powi(b);
+                        Ok(if res.is_finite() { res } else { 0.0 })
+                    }
+                    "powf" => {
+                        let a = eval_args.first().copied().unwrap_or(0.0);
+                        let b = eval_args.get(1).copied().unwrap_or(1.0);
+                        let res = a.powf(b);
+                        Ok(if res.is_finite() { res } else { 0.0 })
+                    }
+                    _ => Ok(eval_args.first().copied().unwrap_or(0.0)),
+                }
+            }
             _ => Ok(0.0),
         }
     }
@@ -405,6 +515,58 @@ mod tests {
         let outcome_large = interpreter.eval(&ctx_large).unwrap();
         assert_eq!(outcome_large.score, 25.0);
         assert_eq!(outcome_large.branches_taken, 0);
+    }
+
+    #[test]
+    fn test_ast_interpreter_methods_and_powers() {
+        let code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+            next_item_size: u32,
+            post_residual: u32,
+            fitting_bins_count: usize,
+        ) -> f64 {
+            let stream_progress = (step_index as f64 / total_items as f64).powi(2);
+            let residual_ratio = post_residual as f64 / bin_capacity as f64;
+            let score = 1.0 - (1.5 * stream_progress + 0.5) * residual_ratio.powi(3);
+            let score = score * 0.95 + ((post_residual as f64 / bin_capacity as f64) as f64) * 0.05;
+            score
+        }
+        "#;
+
+        let item_fn: ItemFn = syn::parse_str(code).unwrap();
+        let interpreter = AstInterpreter::new(&item_fn, 50_000);
+
+        let ctx = ScorePolicyContext {
+            item_size: 20,
+            next_item_size: 10,
+            bin_residual: 40,
+            bin_capacity: 100,
+            step_index: 25,
+            total_items: 50,
+            open_bins_count: 5,
+            mean_residual: 30.0,
+            post_residual: 20,
+            fitting_bins_count: 3,
+        };
+
+        // stream_progress = 0.5^2 = 0.25
+        // residual_ratio = 0.2, .powi(3) = 0.008
+        // 1.5 * 0.25 + 0.5 = 0.875
+        // score_init = 1.0 - 0.875 * 0.008 = 0.993
+        // final_score = 0.993 * 0.95 + 0.2 * 0.05 = 0.94335 + 0.010 = 0.95335
+        let outcome = interpreter.eval(&ctx).unwrap();
+        assert!(
+            (outcome.score - 0.95335).abs() < 1e-4,
+            "Expected ~0.95335, got {}",
+            outcome.score
+        );
     }
 }
 

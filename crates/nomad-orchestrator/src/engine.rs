@@ -272,6 +272,7 @@ impl<'a> EvolutionEngine<'a> {
                     12,
                     seed,
                 );
+                self.budget.record_executions(12);
                 capsule = opt_cap;
                 score = opt_score;
             }
@@ -302,6 +303,11 @@ impl<'a> EvolutionEngine<'a> {
                 self.budget.record_executions(sched.in_distribution.instances.len());
                 return (capsule, score);
             }
+        }
+
+        if capsule.graft_manifest.is_some() {
+            // Record ablation probe evaluations for C_null
+            self.budget.record_executions(self.oracle.in_distribution.instances.len());
         }
 
         let _ = validate_anti_dead_code_3levels(
@@ -510,10 +516,25 @@ impl<'a> EvolutionEngine<'a> {
                             12,
                             seed,
                         );
+                        self.budget.record_executions(12);
                         child_capsule = opt_cap;
                         score = opt_score;
                     }
                     self.phylogeny.insert_capsule(&child_capsule);
+
+                    // Validation bloquante Anti-Dead-Code :
+                    // Seules les capsules valides (et pour le crossover, certifiées Niveau 3 C_null)
+                    // sont autorisées à concourir dans l'archive MAP-Elites et la génération suivante.
+                    let is_validation_passed = match &child_capsule.validation {
+                        nomad_core::ValidationStatus::PassedLevel3Behavioral => true,
+                        nomad_core::ValidationStatus::PassedLevel2Computational => !should_crossover,
+                        nomad_core::ValidationStatus::PassedLevel1Structural => !should_crossover,
+                        nomad_core::ValidationStatus::Failed(reason) => {
+                            tracing::warn!("Rejet bloquant Anti-Dead-Code de {} : {}", child_capsule.name, reason);
+                            false
+                        }
+                        nomad_core::ValidationStatus::Unvalidated => !should_crossover,
+                    };
 
                     // Record in AgentPSO lineage state
                     let host_id = child_capsule.parent_ids.first().cloned().unwrap_or_else(|| child_capsule.id.clone());
@@ -529,22 +550,26 @@ impl<'a> EvolutionEngine<'a> {
                         &host_id,
                         partner_id,
                         child_capsule.semantic_interface.clone(),
-                        is_improved,
+                        is_improved && is_validation_passed,
                     );
 
-                    // Local niche competition in MAP-Elites
-                    self.archive.insert(child_capsule.clone(), score.clone());
+                    // Local niche competition in MAP-Elites (uniquement si validation réussie)
+                    if is_validation_passed && score.is_valid {
+                        self.archive.insert(child_capsule.clone(), score.clone());
+                    }
 
                     // Adaptive Operator Selection: self-tune crossover probability based on success
                     if should_crossover {
-                        if is_improved || child_capsule.validation == nomad_core::ValidationStatus::PassedLevel3Behavioral {
+                        if is_improved && is_validation_passed {
                             self.adaptive_crossover_rate = (self.adaptive_crossover_rate + 0.02).min(0.85);
                         } else {
                             self.adaptive_crossover_rate = (self.adaptive_crossover_rate - 0.01).max(0.25);
                         }
                     }
 
-                    next_population.push(EvaluatedIndividual::new(child_capsule, score));
+                    if is_validation_passed && score.is_valid {
+                        next_population.push(EvaluatedIndividual::new(child_capsule, score));
+                    }
                 }
             }
         }

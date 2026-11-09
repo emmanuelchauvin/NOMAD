@@ -417,7 +417,7 @@ cargo run --release --bin nomad -- compare --domain scheduling --runs 5
 # 14. Critère Final de Réussite de NOMAD V2
 
 NOMAD V2 est réputé formellement validé si et seulement si :
-1. **Intégrité Logicielle :** La suite de tests automatisés du workspace Rust réussit à 100 % (`cargo test --workspace`, 27 tests sur 27 réussis).
+1. **Intégrité Logicielle :** La suite de tests automatisés du workspace Rust réussit à 100 % (`cargo test --workspace`, 28 tests sur 28 réussis).
 2. **Rupture Expérimentale :** L'algorithme brise le plafond historique glouton stationnaire en atteignant un score strictement inférieur à 1 265 bacs sur le benchmark In-Distribution.
 3. **Causalité Anti-Dead-Code :** Les capsules hybrides issues de crossover prouvent que leur fragment greffé modifie de manière causale leurs décisions par rapport à la capsule d'ablation $C_{\text{null}}$.
 4. **Transmission Culturelle :** Le protocole "Mort et Renaissance" atteste d'un taux d'hérédité fonctionnelle $R_{\text{herit}} > 50\,\%$ et d'une expansion de niches significative par rapport à la population Tabula Rasa.

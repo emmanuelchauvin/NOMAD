@@ -9,7 +9,7 @@
 
 L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `SPECIFICATIONS.md` (Sections 0 à 14) est **validé à 100%** :
 
-* **Validation Technique (Workspace Rust) :** **27 tests automatisés sur 27 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec Lookahead $k=2$, l'Oracle souverain, le pipeline Anti-Dead-Code à 3 niveaux, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques et l'Ordonnancement Cloud Multi-Ressources.
+* **Validation Technique (Workspace Rust) :** **28 tests automatisés sur 28 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec support complet des méthodes mathématiques et puissances (`powi`, `powf`, `sqrt`, `min`, `max`), le Lookahead $k=2$, l'Oracle souverain, le pipeline Anti-Dead-Code bloquant à 3 niveaux, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques et l'Ordonnancement Cloud Multi-Ressources.
 * **Validation Scientifique (Les 4 Tests d'Acceptation) :**
   1. **Test 1 (Plafond 1265 & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux. Rupture prouvée du plafond à 1 264 bacs dans le run de convergence à 12 générations (`run_report_qwen_v2.json`).
   2. **Test 2 (Résilience Génétique & MAP-Elites) :** Résolution prouvée du mode collapse de la V1. Maintien pérenne d'un front de Pareto multi-niches actives avec réduction de l'espace mort.
@@ -55,6 +55,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-sandbox`** | `test_sandbox_overflow_protection` | Protection contre les débordements de bacs et rejets immédiats des violations. | ✅ PASS |
 | **`nomad-sandbox`** | `test_sandbox_scheduling_execution` | Exécution et respect des contraintes multi-ressources (CPU/RAM) pour le Cloud. | ✅ PASS |
 | **`nomad-sandbox`** | `test_ast_interpreter_basic` | Interpréteur AST déterministe fuel-metered sous contrainte stricte de ressources. | ✅ PASS |
+| **`nomad-sandbox`** | `test_ast_interpreter_methods_and_powers` | Évaluation exacte des appels de méthodes non-linéaires (`powi`, `powf`, `sqrt`, `min`, `max`). | ✅ PASS |
 | **`nomad-evaluator`** | `test_pre_registered_datasets_determinism` | Déterminisme et intégrité des empreintes SHA-256 des jeux ID, OOD-1, OOD-2. | ✅ PASS |
 | **`nomad-evaluator`** | `test_classical_baseline_evaluation` | Évaluation des références historiques (First-Fit, Best-Fit, Worst-Fit). | ✅ PASS |
 | **`nomad-evaluator`** | `test_scheduling_datasets_and_baselines` | Oracle d'ordonnancement multi-ressources, intégrité SHA-256 et baselines vecteur. | ✅ PASS |
@@ -69,7 +70,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-orchestrator`** | `test_evolutionary_run_scheduling_swarm` | Simulation évolutionnaire complète sur l'Ordonnancement Cloud Multi-Ressources. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_rebirth_protocol_execution` | Protocole complet "Mort et Renaissance" (Époque 1 $\rightarrow$ Extinction $\rightarrow$ Époque 2 $\rightarrow$ Époque 3). | ✅ PASS |
 
-**Bilan : 27 passed; 0 failed; 0 ignored; 0 warnings.**
+**Bilan : 28 passed; 0 failed; 0 ignored; 0 warnings.**
 
 ---
 
@@ -186,12 +187,15 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
         score
     }
     ```
-  * **Surperformance Hors-Distribution OOD-2 (Profils asymétriques) :**
+  * **Comparaison Hors-Distribution OOD-2 (Profils asymétriques) :**
     * `BEST_FIT_CPU` : 1 747 nœuds (+234)
     * `FIRST_FIT_NODE` : 1 745 nœuds (+232)
-    * **NOMAD V2 Swarm :** **1 731 nœuds (+218, efficacité : 87.48%)**, soit **16 serveurs économisés**.
+    * `BALANCED_FIT` (Baseline euclidienne vectorielle) : 1 731 nœuds (+218, efficacité : 87.48%)
+    * **NOMAD V2 Swarm :** **1 731 nœuds (+218, efficacité : 87.48%)**, soit **16 serveurs économisés vs First-Fit/Best-Fit-CPU**.
+  * **Analyse scientifique :** L'essaim a redécouvert de façon autonome la politique de placement par norme quadratique $L_2$ (`cpu_norm^2 + ram_norm^2`), égalant parfaitement la baseline optimale `BALANCED_FIT` sans intervention humaine.
 * **Transmission Cumulative Rebirth (`rebirth_sched_qwen.json`) :**
-  * **Hérédité Fonctionnelle ($R_{\text{herit}}$) :** **100.0%**. 100% des motifs élites de l'époque 2 sont hérités du patrimoine transmis de l'époque 1 après extinction intégrale des mémoires d'agents.
+  * **Hérédité Généalogique ($R_{\text{herit}}$) :** **100.0%**. 100% des motifs élites de l'époque 2 descendent du patrimoine transmis de l'époque 1.
+  * **Nuance méthodologique :** Bien que l'ascendance soit 100% conservée, la performance OOD-2 de la population héritière (1 745 nœuds) est restée inférieure à la découverte de Tabula Rasa (1 731 nœuds), confirmant que $R_{\text{herit}}$ atteste de la fidélité de transmission phylogénétique mais ne garantit pas à lui seul une supériorité systématique sans pression de sélection active.
 
 ---
 
@@ -291,7 +295,7 @@ Toutes les expériences rapportées sont déterministes et peuvent être reprodu
 
 ### Commandes de Reproduction :
 ```powershell
-# 1. Vérification de la suite de tests automatisés (27 tests unitaires et d'intégration)
+# 1. Vérification de la suite de tests automatisés (28 tests unitaires et d'intégration)
 cargo test --workspace
 
 # 2. Reproduction du Grand Run Ordonnancement Cloud Swarm (10 générations)

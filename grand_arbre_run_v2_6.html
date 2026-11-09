@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOMAD Phylogeny Tree - LLM-Seed-003</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0b0f19;
+      color: #f8fafc;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #111827;
+      border-bottom: 1px solid #1f2937;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .title-group h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .meta-pills {
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .meta-pills span {
+      background: #1f2937;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #374151;
+    }
+    .meta-pills strong {
+      color: #e2e8f0;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn-group {
+      display: flex;
+      background: #1f2937;
+      border-radius: 8px;
+      padding: 2px;
+      border: 1px solid #374151;
+    }
+    button {
+      background: transparent;
+      border: none;
+      color: #f1f5f9;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s, color 0.15s;
+    }
+    button:hover {
+      background: #374151;
+      color: #38bdf8;
+    }
+    .zoom-display {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      min-width: 52px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .legend {
+      display: flex;
+      gap: 12px;
+      font-size: 0.8rem;
+      align-items: center;
+      background: #1e293b;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-root { background: #3b82f6; border: 1px solid #1d4ed8; }
+    .dot-mutation { background: #10b981; border: 1px solid #047857; }
+    .dot-crossover { background: #8b5cf6; border: 1px solid #6d28d9; }
+    
+    #viewport {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(#1e293b 1px, transparent 1px);
+      background-size: 24px 24px;
+      cursor: grab;
+      user-select: none;
+    }
+    #viewport:active {
+      cursor: grabbing;
+    }
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+    /* UNCONSTRAINED SVG RENDERING: Explicit natural dimensions ensure no squashing */
+    #canvas svg {
+      display: block;
+      user-select: none;
+    }
+    .hint {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid #334155;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+    }
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.1rem;
+      color: #38bdf8;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title-group">
+      <h1>🧬 NOMAD Phylogenetic Lineage DAG</h1>
+      <div class="meta-pills">
+        <span>Groupe : <strong>Group C (NOMAD Swarm Crossover)</strong></span>
+        <span>Seed : <strong>42</strong></span>
+        <span>Nœuds : <strong>36</strong></span>
+        <span>Transitions : <strong>44</strong></span>
+        <span>Champion : <strong>LLM-Seed-003</strong></span>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot dot-root"></div> Racine (Gen 0)</div>
+        <div class="legend-item"><div class="legend-dot dot-mutation"></div> Mutation</div>
+        <div class="legend-item"><div class="legend-dot dot-crossover"></div> Swarm Crossover</div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-dir" title="Basculer entre l'orientation de haut en bas (TD) et de gauche à droite (LR)">⇄ <span id="dir-label">Orientation : LR</span></button>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-zoom-out" title="Zoom Arrière (-)">−</button>
+        <div class="zoom-display" id="zoom-val">100%</div>
+        <button id="btn-zoom-in" title="Zoom Avant (+)">+</button>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-fit" title="Ajuster à la taille de l'écran">⛶ Ajuster</button>
+        <button id="btn-reset" title="Réinitialiser l'échelle à 100%">⟲ 1:1</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="viewport">
+    <div id="loading">Chargement et tracé du graphe génétique...</div>
+    <div id="canvas"></div>
+    <div class="hint">💡 Molette souris pour Zoomer • Cliquer-Glisser pour Déplacer l'arbre</div>
+  </div>
+
+  <script>
+    const rawMermaidTemplate = `graph TD
+    node_347f677a71c6df1c["LLM-Seed-000<br/>(Gen 0)"]:::root
+    node_50d82862186d76c5["LLM-Seed-001<br/>(Gen 0)"]:::root
+    node_89d5b150cf34beaf["LLM-Seed-002<br/>(Gen 0)"]:::root
+    node_72c15266f890003a["LLM-Seed-003<br/>(Gen 0)"]:::root
+    node_4d0ac2f41a1e7a68["LLM-Seed-004<br/>(Gen 0)"]:::root
+    node_b819724c30586932["LLM-Seed-005<br/>(Gen 0)"]:::root
+    node_92c65387475aad0c["LLM-Seed-006<br/>(Gen 0)"]:::root
+    node_003509b4b3a408bc["LLM-Seed-007<br/>(Gen 0)"]:::root
+    node_ab52fa9eb79d6ece["SwarmCross-g1-72c1-50d8<br/>(Gen 1)"]:::crossover
+    node_96dd2a31daff68a6["SwarmCross-g1-347f-72c1<br/>(Gen 1)"]:::crossover
+    node_0e6b5fe018febecf["SwarmCross-g1-50d8-72c1<br/>(Gen 1)"]:::crossover
+    node_3588692d5e5b4452["SwarmCross-g1-50d8-72c1-mut-g1<br/>(Gen 1)"]:::mutation
+    node_1183ca88d1abe6db["SwarmCross-g1-72c1-50d8<br/>(Gen 1)"]:::crossover
+    node_c1ed48287f6183c5["LLM-Seed-000-mut-g1<br/>(Gen 1)"]:::mutation
+    node_27e735baa9ea9c33["SwarmCross-g1-50d8-72c1-mut-g1<br/>(Gen 1)"]:::mutation
+    node_5c494730f0d481b7["SwarmCross-g1-50d8-72c1-mut-g1-mut-g2<br/>(Gen 2)"]:::mutation
+    node_d3ee52934dac8814["SwarmCross-g2-27e7-50d8<br/>(Gen 2)"]:::crossover
+    node_09af48732e5e5ddb["SwarmCross-g2-50d8-d3ee<br/>(Gen 2)"]:::crossover
+    node_f5db328bcd4954ed["SwarmCross-g2-72c1-d3ee<br/>(Gen 2)"]:::crossover
+    node_feef85ef3d9bdb60["LLM-Seed-000-mut-g2<br/>(Gen 2)"]:::mutation
+    node_3157893c724df022["SwarmCross-g1-50d8-72c1-mut-g1-mut-g2<br/>(Gen 2)"]:::mutation
+    node_aa54aeeb573dfeff["SwarmCross-g2-d3ee-347f<br/>(Gen 2)"]:::crossover
+    node_54919dfb1ff53ad9["SwarmCross-g3-50d8-d3ee<br/>(Gen 3)"]:::crossover
+    node_cb87a3be849442d1["SwarmCross-g3-72c1-d3ee<br/>(Gen 3)"]:::crossover
+    node_245f2b4b356e623e["SwarmCross-g3-347f-d3ee<br/>(Gen 3)"]:::crossover
+    node_ad2bfceec5770aab["SwarmCross-g1-50d8-72c1-mut-g1-mut-g3<br/>(Gen 3)"]:::mutation
+    node_3b66b51302cb6113["SwarmCross-g3-d3ee-347f<br/>(Gen 3)"]:::crossover
+    node_f6f9d5854f360314["SwarmCross-g3-50d8-72c1<br/>(Gen 3)"]:::crossover
+    node_68127edf4d565160["SwarmCross-g3-72c1-f5db<br/>(Gen 3)"]:::crossover
+    node_27e09a405c811732["LLM-Seed-000-mut-g4<br/>(Gen 4)"]:::mutation
+    node_97cdc12dc3854726["SwarmCross-g1-50d8-72c1-mut-g1-mut-g4<br/>(Gen 4)"]:::mutation
+    node_4e320a94012155e5["SwarmCross-g2-27e7-50d8-mut-g4<br/>(Gen 4)"]:::mutation
+    node_8689c1310da23e89["LLM-Seed-001-mut-g4<br/>(Gen 4)"]:::mutation
+    node_596b1954d7509737["SwarmCross-g4-72c1-d3ee<br/>(Gen 4)"]:::crossover
+    node_2f8f2f82361876e4["LLM-Seed-000-mut-g4<br/>(Gen 4)"]:::mutation
+    node_c28718e21775e84a["SwarmCross-g4-27e7-50d8<br/>(Gen 4)"]:::crossover
+    node_72c15266f890003a -->|Parent-1| node_ab52fa9eb79d6ece
+    node_50d82862186d76c5 -->|Parent-2| node_ab52fa9eb79d6ece
+    node_347f677a71c6df1c -->|Parent-1| node_96dd2a31daff68a6
+    node_72c15266f890003a -->|Parent-2| node_96dd2a31daff68a6
+    node_50d82862186d76c5 -->|Parent-1| node_0e6b5fe018febecf
+    node_72c15266f890003a -->|Parent-2| node_0e6b5fe018febecf
+    node_0e6b5fe018febecf -->|Mutation| node_3588692d5e5b4452
+    node_72c15266f890003a -->|Parent-1| node_1183ca88d1abe6db
+    node_50d82862186d76c5 -->|Parent-2| node_1183ca88d1abe6db
+    node_347f677a71c6df1c -->|Mutation| node_c1ed48287f6183c5
+    node_0e6b5fe018febecf -->|Mutation| node_27e735baa9ea9c33
+    node_27e735baa9ea9c33 -->|Mutation| node_5c494730f0d481b7
+    node_27e735baa9ea9c33 -->|Parent-1| node_d3ee52934dac8814
+    node_50d82862186d76c5 -->|Parent-2| node_d3ee52934dac8814
+    node_50d82862186d76c5 -->|Parent-1| node_09af48732e5e5ddb
+    node_d3ee52934dac8814 -->|Parent-2| node_09af48732e5e5ddb
+    node_72c15266f890003a -->|Parent-1| node_f5db328bcd4954ed
+    node_d3ee52934dac8814 -->|Parent-2| node_f5db328bcd4954ed
+    node_347f677a71c6df1c -->|Mutation| node_feef85ef3d9bdb60
+    node_27e735baa9ea9c33 -->|Mutation| node_3157893c724df022
+    node_d3ee52934dac8814 -->|Parent-1| node_aa54aeeb573dfeff
+    node_347f677a71c6df1c -->|Parent-2| node_aa54aeeb573dfeff
+    node_50d82862186d76c5 -->|Parent-1| node_54919dfb1ff53ad9
+    node_d3ee52934dac8814 -->|Parent-2| node_54919dfb1ff53ad9
+    node_72c15266f890003a -->|Parent-1| node_cb87a3be849442d1
+    node_d3ee52934dac8814 -->|Parent-2| node_cb87a3be849442d1
+    node_347f677a71c6df1c -->|Parent-1| node_245f2b4b356e623e
+    node_d3ee52934dac8814 -->|Parent-2| node_245f2b4b356e623e
+    node_27e735baa9ea9c33 -->|Mutation| node_ad2bfceec5770aab
+    node_d3ee52934dac8814 -->|Parent-1| node_3b66b51302cb6113
+    node_347f677a71c6df1c -->|Parent-2| node_3b66b51302cb6113
+    node_50d82862186d76c5 -->|Parent-1| node_f6f9d5854f360314
+    node_72c15266f890003a -->|Parent-2| node_f6f9d5854f360314
+    node_72c15266f890003a -->|Parent-1| node_68127edf4d565160
+    node_f5db328bcd4954ed -->|Parent-2| node_68127edf4d565160
+    node_347f677a71c6df1c -->|Mutation| node_27e09a405c811732
+    node_27e735baa9ea9c33 -->|Mutation| node_97cdc12dc3854726
+    node_d3ee52934dac8814 -->|Mutation| node_4e320a94012155e5
+    node_50d82862186d76c5 -->|Mutation| node_8689c1310da23e89
+    node_72c15266f890003a -->|Parent-1| node_596b1954d7509737
+    node_d3ee52934dac8814 -->|Parent-2| node_596b1954d7509737
+    node_347f677a71c6df1c -->|Mutation| node_2f8f2f82361876e4
+    node_27e735baa9ea9c33 -->|Parent-1| node_c28718e21775e84a
+    node_50d82862186d76c5 -->|Parent-2| node_c28718e21775e84a
+    classDef root fill:#1e40af,stroke:#3b82f6,stroke-width:2px,color:#fff
+    classDef mutation fill:#065f46,stroke:#10b981,stroke-width:2px,color:#fff
+    classDef crossover fill:#5b21b6,stroke:#8b5cf6,stroke-width:2px,color:#fff
+`;
+    let currentDirection = "LR"; // Default to Left-to-Right for optimal phylogenetic tree readability
+
+    let scale = 1.0;
+    let panX = 40;
+    let panY = 40;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('canvas');
+    const loading = document.getElementById('loading');
+    const zoomVal = document.getElementById('zoom-val');
+    const dirLabel = document.getElementById('dir-label');
+
+    function updateTransform() {
+      canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+      zoomVal.textContent = `${Math.round(scale * 100)}%`;
+    }
+
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      isDragging = true;
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+      const newScale = Math.min(Math.max(scale * zoomFactor, 0.05), 8.0);
+
+      panX = mouseX - (mouseX - panX) * (newScale / scale);
+      panY = mouseY - (mouseY - panY) * (newScale / scale);
+      scale = newScale;
+
+      updateTransform();
+    }, { passive: false });
+
+    document.getElementById('btn-zoom-in').addEventListener('click', () => {
+      const rect = viewport.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const newScale = Math.min(scale * 1.25, 8.0);
+      panX = centerX - (centerX - panX) * (newScale / scale);
+      panY = centerY - (centerY - panY) * (newScale / scale);
+      scale = newScale;
+      updateTransform();
+    });
+
+    document.getElementById('btn-zoom-out').addEventListener('click', () => {
+      const rect = viewport.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const newScale = Math.max(scale / 1.25, 0.05);
+      panX = centerX - (centerX - panX) * (newScale / scale);
+      panY = centerY - (centerY - panY) * (newScale / scale);
+      scale = newScale;
+      updateTransform();
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      scale = 1.0;
+      panX = 60;
+      panY = 60;
+      updateTransform();
+    });
+
+    function fitGraph() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      
+      const vb = svg.viewBox ? svg.viewBox.baseVal : null;
+      const naturalWidth = (vb && vb.width > 0) ? vb.width : (parseFloat(svg.getAttribute('width')) || 2000);
+      const naturalHeight = (vb && vb.height > 0) ? vb.height : (parseFloat(svg.getAttribute('height')) || 1500);
+
+      const vRect = viewport.getBoundingClientRect();
+      const pad = 60;
+      const availW = Math.max(vRect.width - pad * 2, 200);
+      const availH = Math.max(vRect.height - pad * 2, 200);
+
+      const scaleX = availW / naturalWidth;
+      const scaleY = availH / naturalHeight;
+      scale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.05), 1.0);
+
+      panX = Math.round((vRect.width - naturalWidth * scale) / 2);
+      panY = Math.round((vRect.height - naturalHeight * scale) / 2);
+      updateTransform();
+    }
+
+    document.getElementById('btn-fit').addEventListener('click', fitGraph);
+
+    document.getElementById('btn-dir').addEventListener('click', () => {
+      currentDirection = (currentDirection === "LR") ? "TD" : "LR";
+      dirLabel.textContent = `Orientation : ${currentDirection}`;
+      renderGraph();
+    });
+
+    async function renderGraph() {
+      loading.style.display = 'flex';
+      let code = rawMermaidTemplate;
+      if (currentDirection === "LR") {
+        code = code.replace(/^graph TD/m, 'graph LR');
+      } else {
+        code = code.replace(/^graph LR/m, 'graph TD');
+      }
+
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'dark',
+          securityLevel: 'loose',
+          flowchart: {
+            curve: 'basis',
+            nodeSpacing: 45,
+            rankSpacing: 60,
+            useMaxWidth: false,
+            htmlLabels: true
+          }
+        });
+        
+        canvas.innerHTML = '';
+        const id = 'svg-' + Date.now();
+        const { svg } = await mermaid.render(id, code);
+        canvas.innerHTML = svg;
+
+        // Force SVG to keep its exact unconstrained natural layout dimensions
+        const svgEl = canvas.querySelector('svg');
+        if (svgEl) {
+          const vb = svgEl.viewBox ? svgEl.viewBox.baseVal : null;
+          const naturalW = (vb && vb.width > 0) ? vb.width : (parseFloat(svgEl.getAttribute('width')) || 2500);
+          const naturalH = (vb && vb.height > 0) ? vb.height : (parseFloat(svgEl.getAttribute('height')) || 2000);
+
+          svgEl.removeAttribute('style');
+          svgEl.setAttribute('width', naturalW);
+          svgEl.setAttribute('height', naturalH);
+          svgEl.style.width = naturalW + 'px';
+          svgEl.style.height = naturalH + 'px';
+          svgEl.style.maxWidth = 'none';
+          svgEl.style.display = 'block';
+        }
+
+        loading.style.display = 'none';
+        fitGraph();
+      } catch (err) {
+        loading.textContent = 'Erreur lors du rendu du graphe: ' + err.message;
+        console.error(err);
+      }
+    }
+
+    // Initial render
+    renderGraph();
+  </script>
+</body>
+</html>
