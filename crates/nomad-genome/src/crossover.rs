@@ -5,13 +5,9 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use thiserror::Error;
 
-use nomad_core::{
-    GraftManifest, PolicyKind, SkillCapsule, ValidationStatus,
-};
+use nomad_core::{GraftManifest, PolicyKind, SkillCapsule, ValidationStatus};
 
-use crate::ast::{
-    compute_structural_fingerprint, normalize_source, parse_heuristic_fn, AstError,
-};
+use crate::ast::{compute_structural_fingerprint, normalize_source, parse_heuristic_fn, AstError};
 use crate::unit::{collect_dependencies, extract_logical_units, LogicalUnit};
 
 #[derive(Debug, Error)]
@@ -65,11 +61,7 @@ pub fn deterministic_ast_crossover(
     }
 
     // Determine insertion locus: right before the final return/expression statement
-    let locus_idx = if stmts.len() > 1 {
-        stmts.len() - 1
-    } else {
-        0
-    };
+    let locus_idx = if stmts.len() > 1 { stmts.len() - 1 } else { 0 };
 
     let mut stmt_to_insert = chosen_unit.stmt.clone();
 
@@ -97,7 +89,7 @@ pub fn deterministic_ast_crossover(
                     // Vérifier si la variable est lue dans la suite du code hôte
                     let downstream_deps: Vec<String> = stmts[locus_idx..]
                         .iter()
-                        .flat_map(|s| collect_dependencies(s))
+                        .flat_map(collect_dependencies)
                         .collect();
                     if already_defined || !downstream_deps.contains(&var_name) {
                         // Modulation causale directe du score avec le fragment donneur
@@ -158,7 +150,10 @@ pub fn deterministic_ast_crossover(
     );
 
     let mut metadata = HashMap::new();
-    metadata.insert("crossover_type".to_string(), "ast_deterministic".to_string());
+    metadata.insert(
+        "crossover_type".to_string(),
+        "ast_deterministic".to_string(),
+    );
     metadata.insert("host_id".to_string(), host.id.0.clone());
     metadata.insert("donor_id".to_string(), donor.id.0.clone());
     metadata.insert("graft_id".to_string(), graft_id);
@@ -258,7 +253,7 @@ pub fn multi_locus_ast_crossover(
     if let syn::Stmt::Local(local) = &unit2.stmt {
         if let syn::Pat::Ident(pat_ident) = &local.pat {
             let var_name = pat_ident.ident.to_string();
-            let already_defined = stmts.iter().any(|s| {
+            let _already_defined = stmts.iter().any(|s| {
                 if let syn::Stmt::Local(l) = s {
                     if let syn::Pat::Ident(p) = &l.pat {
                         return p.ident == var_name;
@@ -274,7 +269,7 @@ pub fn multi_locus_ast_crossover(
                         // Croisement par Branchement de Régime (Regime Dispatch Crossover)
                         // Assignation conditionnelle par shadowing pour compatibilité stricte rustc
                         if host.logic_code.contains("score_node") {
-                            if (seed / 2) % 2 == 0 {
+                            if (seed / 2).is_multiple_of(2) {
                                 stmt2 = syn::parse_quote! {
                                     let score = if (step_index as f64 / total_jobs.max(1) as f64) >= 0.5 {
                                         (#init_expr) as f64
@@ -291,24 +286,22 @@ pub fn multi_locus_ast_crossover(
                                     };
                                 };
                             }
+                        } else if (seed / 2).is_multiple_of(2) {
+                            stmt2 = syn::parse_quote! {
+                                let score = if (step_index as f64 / total_items.max(1) as f64) >= 0.5 {
+                                    (#init_expr) as f64
+                                } else {
+                                    score
+                                };
+                            };
                         } else {
-                            if (seed / 2) % 2 == 0 {
-                                stmt2 = syn::parse_quote! {
-                                    let score = if (step_index as f64 / total_items.max(1) as f64) >= 0.5 {
-                                        (#init_expr) as f64
-                                    } else {
-                                        score
-                                    };
+                            stmt2 = syn::parse_quote! {
+                                let score = if (bin_residual as f64) >= mean_residual {
+                                    (#init_expr) as f64
+                                } else {
+                                    score
                                 };
-                            } else {
-                                stmt2 = syn::parse_quote! {
-                                    let score = if (bin_residual as f64) >= mean_residual {
-                                        (#init_expr) as f64
-                                    } else {
-                                        score
-                                    };
-                                };
-                            }
+                            };
                         }
                     } else {
                         // Combinaison convexe déterministe standard par Shadowing
@@ -316,10 +309,6 @@ pub fn multi_locus_ast_crossover(
                             let score = score * 0.70 + ((#init_expr) as f64) * 0.30;
                         };
                     }
-                } else if already_defined {
-                    stmt2 = syn::parse_quote! {
-                        let score = score * 0.95 + ((#init_expr) as f64) * 0.05;
-                    };
                 } else {
                     stmt2 = syn::parse_quote! {
                         let score = score * 0.95 + ((#init_expr) as f64) * 0.05;
@@ -354,7 +343,10 @@ pub fn multi_locus_ast_crossover(
     graft_hasher.update(donor.id.0.as_bytes());
     graft_hasher.update(fragment_hash.as_bytes());
     graft_hasher.update(seed.to_le_bytes());
-    let graft_id = format!("multi-graft-{}", &hex::encode(graft_hasher.finalize())[..12]);
+    let graft_id = format!(
+        "multi-graft-{}",
+        &hex::encode(graft_hasher.finalize())[..12]
+    );
 
     let manifest = GraftManifest {
         graft_id: graft_id.clone(),
@@ -380,7 +372,11 @@ pub fn multi_locus_ast_crossover(
     metadata.insert("crossover_type".to_string(), "multi_locus_ast".to_string());
     metadata.insert(
         "crossover_mode".to_string(),
-        if use_regime_dispatch { "regime_dispatch".to_string() } else { "convex_combination".to_string() },
+        if use_regime_dispatch {
+            "regime_dispatch".to_string()
+        } else {
+            "convex_combination".to_string()
+        },
     );
     metadata.insert("host_id".to_string(), host.id.0.clone());
     metadata.insert("donor_id".to_string(), donor.id.0.clone());
@@ -473,14 +469,16 @@ mod tests {
             None,
         );
 
-        let (child, manifest) = deterministic_ast_crossover(&host, &donor, 42, 2)
-            .expect("Crossover should succeed");
+        let (child, manifest) =
+            deterministic_ast_crossover(&host, &donor, 42, 2).expect("Crossover should succeed");
 
         assert_eq!(child.parent_ids.len(), 2);
         assert!(child.is_crossover());
         assert_eq!(manifest.donor_capsule, donor.id);
         assert_eq!(manifest.host_capsule, host.id);
-        assert!(child.logic_code.contains("bin_residual < 10") || child.logic_code.contains("score"));
+        assert!(
+            child.logic_code.contains("bin_residual < 10") || child.logic_code.contains("score")
+        );
         assert!(child.ast_fingerprint.is_some());
     }
 
@@ -514,11 +512,17 @@ mod tests {
         assert!(child.is_crossover());
         assert!(manifest.host_locus.starts_with("multi_loci_"));
         assert!(child.metadata.get("crossover_type").unwrap() == "multi_locus_ast");
-        assert_eq!(child.metadata.get("crossover_mode").unwrap(), "regime_dispatch");
+        assert_eq!(
+            child.metadata.get("crossover_mode").unwrap(),
+            "regime_dispatch"
+        );
 
         // Test convex combination mode with even seed
         let (child_convex, _) = multi_locus_ast_crossover(&host, &donor, 100, 2)
             .expect("Multi-locus convex crossover should succeed");
-        assert_eq!(child_convex.metadata.get("crossover_mode").unwrap(), "convex_combination");
+        assert_eq!(
+            child_convex.metadata.get("crossover_mode").unwrap(),
+            "convex_combination"
+        );
     }
 }

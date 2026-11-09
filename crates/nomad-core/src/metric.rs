@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
 use crate::capsule::SkillCapsule;
 use crate::types::BehaviorDescriptor;
+use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 
 /// ============================================================================
 /// InstanceEvaluation : Évaluation Détaillée d'une Instance Unique
@@ -195,4 +195,3 @@ impl EvaluatedIndividual {
         }
     }
 }
-

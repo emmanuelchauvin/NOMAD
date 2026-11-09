@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use nomad_core::{
-    BehaviorDescriptor, BenchmarkScore, SkillCapsule, StructuralFingerprint,
-};
+use nomad_core::{BehaviorDescriptor, BenchmarkScore, SkillCapsule, StructuralFingerprint};
 
 /// ============================================================================
 /// ArchiveEntry : Représentant Élite d'une Niche Comportementale
@@ -193,7 +191,8 @@ impl MapElitesArchive {
 
         for (k, entry) in &self.grid {
             let q = entry.fitness.mean_efficiency;
-            let ucb = q + self.ucb_exploration_factor * (total_ln / (entry.times_sampled + 1) as f64).sqrt();
+            let ucb = q + self.ucb_exploration_factor
+                * (total_ln / (entry.times_sampled + 1) as f64).sqrt();
 
             let jitter: f64 = rng.gen_range(-1e-6..1e-6);
             if ucb + jitter > best_ucb {
@@ -233,7 +232,9 @@ impl MapElitesArchive {
                 if c.id == host.id {
                     return None;
                 }
-                if let (Some(h1), Some(h2)) = (host_hash, c.ast_fingerprint.as_ref().map(|f| &f.ast_hash)) {
+                if let (Some(h1), Some(h2)) =
+                    (host_hash, c.ast_fingerprint.as_ref().map(|f| &f.ast_hash))
+                {
                     if h1 == h2 {
                         return None;
                     }
@@ -249,7 +250,10 @@ impl MapElitesArchive {
             if entry.capsule.id == host.id {
                 continue;
             }
-            if let (Some(h1), Some(h2)) = (host_hash, entry.structural_fingerprint.as_ref().map(|f| &f.ast_hash)) {
+            if let (Some(h1), Some(h2)) = (
+                host_hash,
+                entry.structural_fingerprint.as_ref().map(|f| &f.ast_hash),
+            ) {
                 if h1 == h2 {
                     continue;
                 }
@@ -258,14 +262,17 @@ impl MapElitesArchive {
             let q_b = entry.fitness.mean_efficiency;
 
             // Complementarity: difference in dead space behavior and new bin opening
-            let dead_space_diff = (host_score.behavior.dead_space_ratio - entry.behavior.dead_space_ratio).abs();
-            let bin_ratio_diff = (host_score.behavior.new_bin_ratio - entry.behavior.new_bin_ratio).abs();
+            let dead_space_diff =
+                (host_score.behavior.dead_space_ratio - entry.behavior.dead_space_ratio).abs();
+            let bin_ratio_diff =
+                (host_score.behavior.new_bin_ratio - entry.behavior.new_bin_ratio).abs();
             let c_complement = dead_space_diff + bin_ratio_diff;
 
             // Structural distance: difference in AST statement and branch counts
             let d_ast = match (&host.ast_fingerprint, &entry.structural_fingerprint) {
                 (Some(fp_a), Some(fp_b)) => {
-                    let diff_stmts = (fp_a.statement_count as f64 - fp_b.statement_count as f64).abs();
+                    let diff_stmts =
+                        (fp_a.statement_count as f64 - fp_b.statement_count as f64).abs();
                     let diff_branches = (fp_a.branch_count as f64 - fp_b.branch_count as f64).abs();
                     (diff_stmts + diff_branches) / 10.0
                 }
@@ -286,10 +293,7 @@ impl MapElitesArchive {
 
     /// Computes the Quality-Diversity score: sum of fitness across all occupied niches.
     pub fn qd_score(&self) -> f64 {
-        self.grid
-            .values()
-            .map(|e| e.fitness.mean_efficiency)
-            .sum()
+        self.grid.values().map(|e| e.fitness.mean_efficiency).sum()
     }
 
     /// Ratio of occupied niches over total grid capacity.
@@ -305,9 +309,7 @@ impl MapElitesArchive {
 
     /// Returns the global best elite capsule across all niches.
     pub fn best_elite(&self) -> Option<&ArchiveEntry> {
-        self.grid
-            .values()
-            .min_by(|a, b| a.fitness.cmp(&b.fitness))
+        self.grid.values().min_by(|a, b| a.fitness.cmp(&b.fitness))
     }
 
     /// Returns all current niche elites.
@@ -399,7 +401,8 @@ mod tests {
         assert!(archive.insert(cap_base.clone(), score_base.clone()));
 
         // Candidate 1: Higher tLDR with equal bins replaces incumbent even with higher fuel
-        let cap_higher_tldr = SkillCapsule::new("HigherTLDR", "Desc", "code", vec![], 2, HashMap::new());
+        let cap_higher_tldr =
+            SkillCapsule::new("HigherTLDR", "Desc", "code", vec![], 2, HashMap::new());
         let mut score_higher_tldr = score_base.clone();
         score_higher_tldr.tldr_score = 0.85;
         score_higher_tldr.total_fuel = 150_000;
@@ -414,11 +417,20 @@ mod tests {
         assert_eq!(archive.best_elite().unwrap().capsule.id, cap_higher_tldr.id);
 
         // Candidate 3: Lower generation (Gen 0 seed) with identical bins and tLDR, but lower fuel WINS (strict parsimony)
-        let cap_parsimonious = SkillCapsule::new("ParsimoniousSeed", "Desc", "code", vec![], 0, HashMap::new());
+        let cap_parsimonious = SkillCapsule::new(
+            "ParsimoniousSeed",
+            "Desc",
+            "code",
+            vec![],
+            0,
+            HashMap::new(),
+        );
         let mut score_parsimonious = score_higher_tldr.clone();
         score_parsimonious.total_fuel = 60_000;
         assert!(archive.insert(cap_parsimonious.clone(), score_parsimonious.clone()));
-        assert_eq!(archive.best_elite().unwrap().capsule.id, cap_parsimonious.id);
+        assert_eq!(
+            archive.best_elite().unwrap().capsule.id,
+            cap_parsimonious.id
+        );
     }
 }
-

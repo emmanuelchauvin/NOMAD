@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::types::{ExperimentalGroup, ProblemDomain};
+use serde::{Deserialize, Serialize};
 
 fn default_node_cpu() -> u32 {
     32
@@ -107,4 +107,3 @@ impl BudgetTracker {
         self.executions_consumed += count;
     }
 }
-

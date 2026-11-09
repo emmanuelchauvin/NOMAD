@@ -1,13 +1,13 @@
 //! NOMAD Orchestrator: Multi-agent lifecycle, budget accounting, and evolutionary swarm reproduction.
 
-pub mod error;
 pub mod engine;
+pub mod error;
 pub mod map_elites;
 pub mod pso;
 pub mod rebirth;
 
-pub use error::*;
 pub use engine::*;
+pub use error::*;
 pub use map_elites::*;
 pub use pso::*;
 pub use rebirth::*;
@@ -42,7 +42,10 @@ mod tests {
         assert!(report.total_lineage_nodes >= 6);
         assert!(report.best_ood1_score.is_valid);
         assert!(report.best_ood2_score.is_valid);
-        assert!(report.generations_history.iter().all(|r| r.crossover_rate >= 0.20 && r.crossover_rate <= 0.85));
+        assert!(report
+            .generations_history
+            .iter()
+            .all(|r| r.crossover_rate >= 0.20 && r.crossover_rate <= 0.85));
     }
 
     #[test]
@@ -76,7 +79,9 @@ mod tests {
 
         let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator)
             .with_scheduling_oracle(&sched_oracle);
-        let report = engine.execute_run().expect("Scheduling run execution should succeed");
+        let report = engine
+            .execute_run()
+            .expect("Scheduling run execution should succeed");
 
         assert_eq!(report.group, ExperimentalGroup::GroupC);
         assert_eq!(report.total_generations, 3);
@@ -85,7 +90,10 @@ mod tests {
         assert!(report.best_in_distribution_score.mean_efficiency > 0.70);
         assert!(report.best_ood1_score.is_valid);
         assert!(report.best_ood2_score.is_valid);
-        assert!(report.generations_history.iter().all(|r| r.crossover_rate >= 0.20 && r.crossover_rate <= 0.85));
+        assert!(report
+            .generations_history
+            .iter()
+            .all(|r| r.crossover_rate >= 0.20 && r.crossover_rate <= 0.85));
     }
 
     #[test]
@@ -112,17 +120,26 @@ mod tests {
                     crossover_count += 1;
                     let p1 = &parents[0];
                     let p2 = &parents[1];
-                    assert_ne!(p1, p2, "Self-crossover detected! Parent 1 must not equal Parent 2");
+                    assert_ne!(
+                        p1, p2,
+                        "Self-crossover detected! Parent 1 must not equal Parent 2"
+                    );
 
                     let n1 = report.phylogeny.find_node(p1);
                     let n2 = report.phylogeny.find_node(p2);
                     if let (Some(n1), Some(n2)) = (n1, n2) {
-                        assert_ne!(n1.content_hash, n2.content_hash, "Parents have identical content/AST hash!");
+                        assert_ne!(
+                            n1.content_hash, n2.content_hash,
+                            "Parents have identical content/AST hash!"
+                        );
                     }
                 }
             }
         }
-        assert!(crossover_count > 0, "At least one crossover should have occurred in Group C");
+        assert!(
+            crossover_count > 0,
+            "At least one crossover should have occurred in Group C"
+        );
     }
 
     #[test]
@@ -155,8 +172,15 @@ mod tests {
         let _ood1 = oracle.evaluate_ood1(&report.best_capsule, &sandbox, 100_000);
         let _ood2 = oracle.evaluate_ood2(&report.best_capsule, &sandbox, 100_000);
 
-        assert_eq!(engine.archive.grid.len(), initial_archive_count, "Archive must not be contaminated by validation/OOD evaluations");
-        assert_eq!(engine.budget.executions_consumed, initial_exec_budget, "Selection budget must not be contaminated by validation/OOD evaluations");
+        assert_eq!(
+            engine.archive.grid.len(),
+            initial_archive_count,
+            "Archive must not be contaminated by validation/OOD evaluations"
+        );
+        assert_eq!(
+            engine.budget.executions_consumed, initial_exec_budget,
+            "Selection budget must not be contaminated by validation/OOD evaluations"
+        );
     }
 
     #[test]
@@ -187,8 +211,20 @@ mod tests {
         // Verification of experimental symmetry
         assert!(report_d.best_in_distribution_score.is_valid);
         assert!(report_c.best_in_distribution_score.is_valid);
-        assert!(report_d.generations_history.iter().all(|r| r.crossover_rate == 0.0), "Group D must have strictly 0 crossover rate");
-        assert!(report_c.generations_history.iter().all(|r| r.crossover_rate >= 0.20), "Group C must maintain active crossover rate");
+        assert!(
+            report_d
+                .generations_history
+                .iter()
+                .all(|r| r.crossover_rate == 0.0),
+            "Group D must have strictly 0 crossover rate"
+        );
+        assert!(
+            report_c
+                .generations_history
+                .iter()
+                .all(|r| r.crossover_rate >= 0.20),
+            "Group C must maintain active crossover rate"
+        );
         assert_eq!(report_d.total_generations, 2);
         assert_eq!(report_c.total_generations, 2);
     }

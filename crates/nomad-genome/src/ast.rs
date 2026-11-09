@@ -198,4 +198,3 @@ mod tests {
         assert!(!fingerprint.ast_hash.is_empty());
     }
 }
-

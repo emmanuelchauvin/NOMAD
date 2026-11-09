@@ -57,18 +57,13 @@ pub enum SchedulingDecision {
 /// ProblemDomain : Domaine Combinatoire Traité par NOMAD
 /// ============================================================================
 /// Spécifie la nature du problème d'optimisation abordé par les organismes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum ProblemDomain {
     /// 1D Online Bin Packing canonique (minimisation de bacs).
+    #[default]
     BinPacking1D,
     /// Multi-Resource Cloud Job Scheduling (CPU / RAM multi-dimensionnel).
     MultiResourceScheduling,
-}
-
-impl Default for ProblemDomain {
-    fn default() -> Self {
-        Self::BinPacking1D
-    }
 }
 
 impl ProblemDomain {
@@ -123,20 +118,15 @@ impl fmt::Display for ExperimentalGroup {
 /// PolicyKind : Nature de l'Interface de Politique
 /// ============================================================================
 /// Type de représentation de politique régissant le code d'une compétence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum PolicyKind {
     /// ScorePolicy V2 canonique : fonction `score_bin(...) -> f64` manipulable par AST.
+    #[default]
     ScorePolicy,
     /// StrategyPolicy : politique avec état interne pour décisions complexes (extensions futures).
     StrategyPolicy,
     /// LegacyFormula V1 : formule textuelle paramétrique rétrocompatible (`SCORE: alpha=...`).
     LegacyFormula,
-}
-
-impl Default for PolicyKind {
-    fn default() -> Self {
-        Self::ScorePolicy
-    }
 }
 
 /// ============================================================================
@@ -211,9 +201,10 @@ pub struct SchedulingInputs {
 /// ============================================================================
 /// Statut du protocole de validation à 3 niveaux garantissant qu'un fragment greffé
 /// n'est ni du code mort, ni une altération inopérante (Section 4.8).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ValidationStatus {
     /// Non encore validé.
+    #[default]
     Unvalidated,
     /// Niveau 1 validé : présence et intégrité structurelle du fragment dans l'AST.
     PassedLevel1Structural,
@@ -237,13 +228,10 @@ impl ValidationStatus {
 
     /// Indique si la capsule a validé au moins le Niveau 2 (survie computationnelle effective).
     pub fn is_passed_at_least_level2(&self) -> bool {
-        matches!(self, Self::PassedLevel2Computational | Self::PassedLevel3Behavioral)
-    }
-}
-
-impl Default for ValidationStatus {
-    fn default() -> Self {
-        Self::Unvalidated
+        matches!(
+            self,
+            Self::PassedLevel2Computational | Self::PassedLevel3Behavioral
+        )
     }
 }
 
@@ -316,20 +304,15 @@ pub struct BehaviorDescriptor {
 /// ============================================================================
 /// Décision d'ajustement dynamique de trajectoire proposée par la boucle de rétroaction
 /// d'AgentPSO après évaluation d'un croisement ou d'une mutation (Section 5.4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MomentumAction {
     /// Poursuivre dans la direction sémantique actuelle (gain observé).
+    #[default]
     ContinueDirection,
     /// Pivoter vers une nouvelle direction (stagnation ou régression constatée).
     Pivot,
     /// Combiner plusieurs mécanismes découverts dans des niches complémentaires.
     Combine,
-}
-
-impl Default for MomentumAction {
-    fn default() -> Self {
-        Self::ContinueDirection
-    }
 }
 
 /// ============================================================================
@@ -371,5 +354,3 @@ pub struct LineageEvolutionState {
     /// Journal textuel des étapes majeures d'évolution de la lignée.
     pub evolution_history: Vec<String>,
 }
-
-

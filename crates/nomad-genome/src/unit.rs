@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use syn::visit::Visit;
 use syn::{Expr, Ident, ItemFn, Local, Stmt};
 
@@ -88,18 +88,12 @@ pub fn extract_logical_units(item_fn: &ItemFn) -> Vec<LogicalUnit> {
 
     for stmt in &item_fn.block.stmts {
         let (kind, should_extract) = match stmt {
-            Stmt::Local(Local { init: Some(_), .. }) => {
-                (LogicalUnitKind::LocalBinding, true)
-            }
-            Stmt::Expr(Expr::If(_), _) => {
-                (LogicalUnitKind::ConditionalBranch, true)
-            }
+            Stmt::Local(Local { init: Some(_), .. }) => (LogicalUnitKind::LocalBinding, true),
+            Stmt::Expr(Expr::If(_), _) => (LogicalUnitKind::ConditionalBranch, true),
             Stmt::Expr(Expr::Binary(_) | Expr::Assign(_), _) => {
                 (LogicalUnitKind::PenaltyOrBonus, true)
             }
-            Stmt::Expr(Expr::Block(_), _) => {
-                (LogicalUnitKind::GeneralBlock, true)
-            }
+            Stmt::Expr(Expr::Block(_), _) => (LogicalUnitKind::GeneralBlock, true),
             _ => (LogicalUnitKind::GeneralBlock, false),
         };
 
@@ -159,14 +153,17 @@ mod tests {
 
         assert!(units.len() >= 3);
         // Should find local binding
-        assert!(units.iter().any(|u| u.kind == LogicalUnitKind::LocalBinding));
+        assert!(units
+            .iter()
+            .any(|u| u.kind == LogicalUnitKind::LocalBinding));
         // Should find the conditional branches
         let conditionals: Vec<_> = units
             .iter()
             .filter(|u| u.kind == LogicalUnitKind::ConditionalBranch)
             .collect();
         assert_eq!(conditionals.len(), 2);
-        assert!(conditionals[0].dependencies.contains(&"bin_residual".to_string()));
+        assert!(conditionals[0]
+            .dependencies
+            .contains(&"bin_residual".to_string()));
     }
 }
-

@@ -1,16 +1,16 @@
 //! NOMAD Evaluator: Independent Oracle and test instances for Bin Packing Online 1D.
 
-pub mod dataset;
-pub mod oracle;
 pub mod anti_dead_code;
-pub mod scheduling;
+pub mod dataset;
 pub mod optimizer;
+pub mod oracle;
+pub mod scheduling;
 
-pub use dataset::*;
-pub use oracle::*;
 pub use anti_dead_code::*;
-pub use scheduling::*;
+pub use dataset::*;
 pub use optimizer::*;
+pub use oracle::*;
+pub use scheduling::*;
 
 #[cfg(test)]
 mod tests {
@@ -58,11 +58,13 @@ mod tests {
         assert_eq!(oracle.in_distribution.instances.len(), 50);
 
         // Baseline evaluations
-        let ff_score = oracle.evaluate_classical_baseline("FIRST_FIT_NODE", &oracle.in_distribution, &sandbox);
+        let ff_score =
+            oracle.evaluate_classical_baseline("FIRST_FIT_NODE", &oracle.in_distribution, &sandbox);
         assert!(ff_score.is_valid);
         assert_eq!(ff_score.solved_instances, 50);
 
-        let bal_score = oracle.evaluate_classical_baseline("BALANCED_FIT", &oracle.in_distribution, &sandbox);
+        let bal_score =
+            oracle.evaluate_classical_baseline("BALANCED_FIT", &oracle.in_distribution, &sandbox);
         assert!(bal_score.is_valid);
         assert_eq!(bal_score.solved_instances, 50);
         assert!(bal_score.total_bins >= bal_score.total_theoretical_min_bins);
@@ -73,12 +75,19 @@ mod tests {
 
     #[test]
     fn test_lookahead_bin_packing_combinations() {
-        use nomad_sandbox::DeterministicSandbox;
         use nomad_core::SkillCapsule;
+        use nomad_sandbox::DeterministicSandbox;
         let sandbox = DeterministicSandbox::new();
         let oracle = OracleEvaluator::new(42);
 
-        let bf_capsule = SkillCapsule::new("BF", "", "BEST_FIT", vec![], 0, std::collections::HashMap::new());
+        let bf_capsule = SkillCapsule::new(
+            "BF",
+            "",
+            "BEST_FIT",
+            vec![],
+            0,
+            std::collections::HashMap::new(),
+        );
         let bf_score = oracle.evaluate_in_distribution(&bf_capsule, &sandbox, 50_000);
         println!(">>> BEST FIT In-Dist: {} bins", bf_score.total_bins);
 
@@ -90,7 +99,11 @@ mod tests {
             }
             score
         }"#;
-        let s1 = oracle.evaluate_in_distribution(&SkillCapsule::new("C1", "", c1, vec![], 0, Default::default()), &sandbox, 50_000);
+        let s1 = oracle.evaluate_in_distribution(
+            &SkillCapsule::new("C1", "", c1, vec![], 0, Default::default()),
+            &sandbox,
+            50_000,
+        );
         println!(">>> Best Fit + Exact Closure: {} bins", s1.total_bins);
 
         // Test 2: Best Fit + Horizon Dynamic
@@ -105,7 +118,11 @@ mod tests {
             }
             score
         }"#;
-        let s2 = oracle.evaluate_in_distribution(&SkillCapsule::new("C2", "", c2, vec![], 0, Default::default()), &sandbox, 50_000);
+        let s2 = oracle.evaluate_in_distribution(
+            &SkillCapsule::new("C2", "", c2, vec![], 0, Default::default()),
+            &sandbox,
+            50_000,
+        );
         println!(">>> Best Fit + Horizon: {} bins", s2.total_bins);
 
         // Test 3: The 1264 Champion from run_report_qwen_v2.json
@@ -132,7 +149,11 @@ mod tests {
             let horizon_multiplier = (total_items - step_index) as f64 / total_items as f64;
             penalized_score * (1.0 + horizon_multiplier)
         }"#;
-        let s3 = oracle.evaluate_in_distribution(&SkillCapsule::new("C3", "", c3, vec![], 0, Default::default()), &sandbox, 50_000);
+        let s3 = oracle.evaluate_in_distribution(
+            &SkillCapsule::new("C3", "", c3, vec![], 0, Default::default()),
+            &sandbox,
+            50_000,
+        );
         println!(">>> 1264 Champion from v2: {} bins", s3.total_bins);
 
         // Test 4: The 1264 Champion WITH lookahead pairing bonus
@@ -163,8 +184,15 @@ mod tests {
             let horizon_multiplier = (total_items - step_index) as f64 / total_items as f64;
             penalized_score * (1.0 + horizon_multiplier)
         }"#;
-        let s4 = oracle.evaluate_in_distribution(&SkillCapsule::new("C4", "", c4, vec![], 0, Default::default()), &sandbox, 50_000);
-        println!(">>> 1264 Champion with lookahead bonus: {} bins", s4.total_bins);
+        let s4 = oracle.evaluate_in_distribution(
+            &SkillCapsule::new("C4", "", c4, vec![], 0, Default::default()),
+            &sandbox,
+            50_000,
+        );
+        println!(
+            ">>> 1264 Champion with lookahead bonus: {} bins",
+            s4.total_bins
+        );
         assert!(s3.total_bins <= 1265);
         // Corrected expectation: with compound assignment `-=` faithfully executed by the AST interpreter
         // (rather than silently dropped as a no-op in prior versions), this specific bonus yields 1266 bins.
@@ -173,8 +201,8 @@ mod tests {
 
     #[test]
     fn test_best_fit_with_lookahead_baseline_and_toggle() {
-        use nomad_sandbox::DeterministicSandbox;
         use nomad_core::SkillCapsule;
+        use nomad_sandbox::DeterministicSandbox;
 
         let sandbox = DeterministicSandbox::new();
         let oracle = OracleEvaluator::new(42);
@@ -185,13 +213,35 @@ mod tests {
         assert_eq!(bf_score.total_bins, 1265);
 
         // 2. Best-Fit with Lookahead (k=2) baseline
-        let bfla_capsule = SkillCapsule::new("BF_LA", "", "BEST_FIT_LOOKAHEAD", vec![], 0, Default::default());
-        let bfla_score = oracle.evaluate_dataset_with_lookahead(&oracle.in_distribution, &bfla_capsule, &sandbox, 50_000, true);
+        let bfla_capsule = SkillCapsule::new(
+            "BF_LA",
+            "",
+            "BEST_FIT_LOOKAHEAD",
+            vec![],
+            0,
+            Default::default(),
+        );
+        let bfla_score = oracle.evaluate_dataset_with_lookahead(
+            &oracle.in_distribution,
+            &bfla_capsule,
+            &sandbox,
+            50_000,
+            true,
+        );
         assert!(bfla_score.is_valid);
-        assert!(bfla_score.total_bins <= 1270, "Lookahead Best-Fit baseline must produce near-optimal packing");
+        assert!(
+            bfla_score.total_bins <= 1270,
+            "Lookahead Best-Fit baseline must produce near-optimal packing"
+        );
 
         // 3. When lookahead is disabled (lookahead: false), Best-Fit with Lookahead MUST fall back exactly to standard Best-Fit
-        let bfla_no_la_score = oracle.evaluate_dataset_with_lookahead(&oracle.in_distribution, &bfla_capsule, &sandbox, 50_000, false);
+        let bfla_no_la_score = oracle.evaluate_dataset_with_lookahead(
+            &oracle.in_distribution,
+            &bfla_capsule,
+            &sandbox,
+            50_000,
+            false,
+        );
         assert_eq!(bfla_no_la_score.total_bins, bf_score.total_bins, "When lookahead is disabled, BF_LA must produce identical bin count (1265) to standard Best-Fit");
     }
 }

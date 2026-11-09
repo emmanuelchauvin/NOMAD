@@ -13,7 +13,9 @@ pub enum AntiDeadCodeError {
     MissingManifest(String),
     #[error("Failed to parse child AST: {0}")]
     ParseFailed(String),
-    #[error("Grafted fragment {0} was not found in child AST (Niveau 1 Survie Structurelle Échouée)")]
+    #[error(
+        "Grafted fragment {0} was not found in child AST (Niveau 1 Survie Structurelle Échouée)"
+    )]
     FragmentNotFound(String),
     #[error("Grafted fragment was neutralized, dead-store, or made no-op")]
     FragmentNeutralized,
@@ -51,9 +53,7 @@ fn collect_read_dependencies(stmt: &Stmt) -> Vec<String> {
                 Vec::new()
             }
         }
-        Stmt::Expr(Expr::Assign(assign), _) => {
-            collect_expr_dependencies(&assign.right)
-        }
+        Stmt::Expr(Expr::Assign(assign), _) => collect_expr_dependencies(&assign.right),
         _ => collect_dependencies(stmt),
     }
 }
@@ -147,7 +147,8 @@ pub fn compute_liveness(item_fn: &ItemFn) -> Vec<bool> {
 /// déclarée plus haut sans qu'elle ait été lue entre-temps (variable shadowing inutile).
 pub fn detect_unproductive_shadowing(item_fn: &ItemFn) -> Option<String> {
     let stmts = &item_fn.block.stmts;
-    let mut declared_vars: std::collections::HashMap<String, (usize, bool)> = std::collections::HashMap::new();
+    let mut declared_vars: std::collections::HashMap<String, (usize, bool)> =
+        std::collections::HashMap::new();
 
     for (idx, stmt) in stmts.iter().enumerate() {
         // Collecter les variables lues par cette instruction (en excluant les définitions de variables)
@@ -199,15 +200,19 @@ pub fn verify_level1_structural_survival(
     // 1. Vérification de la présence structurelle du fragment
     let fragment_found = if manifest.grafted_fragment_hash.contains(':') {
         let parts: Vec<&str> = manifest.grafted_fragment_hash.split(':').collect();
-        parts.len() == 2 && parts.iter().all(|h| {
-            units.iter().any(|u| u.hash == *h || u.code_repr.contains(&h[..8]))
-                || capsule.logic_code.contains(&h[..8])
-        })
+        parts.len() == 2
+            && parts.iter().all(|h| {
+                units
+                    .iter()
+                    .any(|u| u.hash == *h || u.code_repr.contains(&h[..8]))
+                    || capsule.logic_code.contains(&h[..8])
+            })
     } else {
         units.iter().any(|u| {
             u.hash == manifest.grafted_fragment_hash
                 || u.code_repr.contains(&manifest.grafted_fragment_hash[..8])
-                || (!manifest.grafted_fragment_hash.is_empty() && capsule.logic_code.contains(&u.code_repr))
+                || (!manifest.grafted_fragment_hash.is_empty()
+                    && capsule.logic_code.contains(&u.code_repr))
         })
     };
 
@@ -229,7 +234,9 @@ pub fn verify_level1_structural_survival(
         let parts: Vec<&str> = loci_str.split('_').collect();
         if parts.len() == 2 {
             if let (Ok(idx1), Ok(idx2)) = (parts[0].parse::<usize>(), parts[1].parse::<usize>()) {
-                if (idx1 < liveness.len() && !liveness[idx1]) || (idx2 < liveness.len() && !liveness[idx2]) {
+                if (idx1 < liveness.len() && !liveness[idx1])
+                    || (idx2 < liveness.len() && !liveness[idx2])
+                {
                     return Err(AntiDeadCodeError::FragmentNeutralized);
                 }
             }
@@ -287,15 +294,33 @@ mod tests {
         "#;
 
         let host = SkillCapsule::new_v2(
-            "Host", "Interface", host_code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, None,
+            "Host",
+            "Interface",
+            host_code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            None,
         );
 
         let donor = SkillCapsule::new_v2(
-            "Donor", "Interface", donor_code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, None,
+            "Donor",
+            "Interface",
+            donor_code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            None,
         );
 
         let (child, _manifest) = deterministic_ast_crossover(&host, &donor, 42, 2).unwrap();
@@ -327,8 +352,16 @@ mod tests {
         assert_eq!(detected, Some("horizon_factor".to_string()));
 
         let capsule = SkillCapsule::new_v2(
-            "Shadowed", "Interface", shadowed_code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
+            "Shadowed",
+            "Interface",
+            shadowed_code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
             ValidationStatus::Unvalidated,
             Some(GraftManifest {
                 graft_id: "graft-1".to_string(),
@@ -344,7 +377,8 @@ mod tests {
         );
 
         let res = verify_level1_structural_survival(&capsule);
-        assert!(matches!(res, Err(AntiDeadCodeError::UnproductiveShadowing(v)) if v == "horizon_factor"));
+        assert!(
+            matches!(res, Err(AntiDeadCodeError::UnproductiveShadowing(v)) if v == "horizon_factor")
+        );
     }
 }
-

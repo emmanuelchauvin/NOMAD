@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use nomad_core::{CapsuleId, LineageEvolutionState, MomentumAction, SemanticVelocity};
 
@@ -88,7 +88,10 @@ impl LineageManager {
             source_ast_selector: "donor.block.stmts[conditional_unit]".to_string(),
             target_insertion_locus: "host.block.stmts[pre_return]".to_string(),
             expected_behavioral_shift: intent,
-            regression_risks: vec!["potential edge case overflow".to_string(), "redundant penalty".to_string()],
+            regression_risks: vec![
+                "potential edge case overflow".to_string(),
+                "redundant penalty".to_string(),
+            ],
             momentum_action: action,
         };
 
@@ -108,4 +111,3 @@ impl LineageManager {
         self.lineages.get(id)
     }
 }
-

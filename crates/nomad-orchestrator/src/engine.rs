@@ -145,7 +145,10 @@ impl<'a> EvolutionEngine<'a> {
     pub fn execute_run(&mut self) -> Result<ExperimentRunReport, OrchestratorError> {
         info!(
             "Starting NOMAD Experiment: Group={:?}, Seed={}, Pop={}, MaxGens={}",
-            self.config.group, self.config.rng_seed, self.config.population_size, self.config.max_generations
+            self.config.group,
+            self.config.rng_seed,
+            self.config.population_size,
+            self.config.max_generations
         );
 
         let mut rng = ChaCha8Rng::seed_from_u64(self.config.rng_seed);
@@ -166,7 +169,8 @@ impl<'a> EvolutionEngine<'a> {
             }
 
             // Sort population: lowest bins, then lowest fuel
-            current_population.sort_by(|a, b| a.in_distribution_score.cmp(&b.in_distribution_score));
+            current_population
+                .sort_by(|a, b| a.in_distribution_score.cmp(&b.in_distribution_score));
 
             for (rank, ind) in current_population.iter_mut().enumerate() {
                 ind.rank = rank + 1;
@@ -198,7 +202,11 @@ impl<'a> EvolutionEngine<'a> {
                 qd_score,
                 archive_coverage,
                 occupied_niches,
-                crossover_rate: if self.config.group == nomad_core::ExperimentalGroup::GroupD { 0.0 } else { self.adaptive_crossover_rate },
+                crossover_rate: if self.config.group == nomad_core::ExperimentalGroup::GroupD {
+                    0.0
+                } else {
+                    self.adaptive_crossover_rate
+                },
             };
             generation_records.push(record);
 
@@ -207,33 +215,81 @@ impl<'a> EvolutionEngine<'a> {
             }
 
             // 2. Selection & Reproduction based on Group Strategy
-            current_population = self.produce_next_generation(&current_population, gen, &mut rng)?;
+            current_population =
+                self.produce_next_generation(&current_population, gen, &mut rng)?;
         }
 
         let best_ind = best_overall.unwrap_or_else(|| current_population[0].clone());
 
         // 3. Independent In-Distribution Validation & Out-Of-Distribution Evaluation of the Best Heuristic
         // Note: Neither validation nor OOD evaluations affect selection, MAP-Elites, or the search budget.
-        info!("Evaluating winning capsule {} on validation and OOD benchmarks...", best_ind.capsule.id);
-        let (score_no_lookahead, val_score, ood1_score, ood2_score) = if self.config.domain == ProblemDomain::MultiResourceScheduling {
-            if let Some(sched) = self.scheduling_oracle {
-                (
-                    Some(sched.evaluate_dataset_with_lookahead(&sched.in_distribution, &best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call, false)),
-                    Some(sched.evaluate_validation(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call)),
-                    sched.evaluate_dataset(&sched.ood1_scale, &best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
-                    sched.evaluate_dataset(&sched.ood2_skewed, &best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
-                )
+        info!(
+            "Evaluating winning capsule {} on validation and OOD benchmarks...",
+            best_ind.capsule.id
+        );
+        let (score_no_lookahead, val_score, ood1_score, ood2_score) =
+            if self.config.domain == ProblemDomain::MultiResourceScheduling {
+                if let Some(sched) = self.scheduling_oracle {
+                    (
+                        Some(sched.evaluate_dataset_with_lookahead(
+                            &sched.in_distribution,
+                            &best_ind.capsule,
+                            self.sandbox,
+                            self.config.fuel_limit_per_call,
+                            false,
+                        )),
+                        Some(sched.evaluate_validation(
+                            &best_ind.capsule,
+                            self.sandbox,
+                            self.config.fuel_limit_per_call,
+                        )),
+                        sched.evaluate_dataset(
+                            &sched.ood1_scale,
+                            &best_ind.capsule,
+                            self.sandbox,
+                            self.config.fuel_limit_per_call,
+                        ),
+                        sched.evaluate_dataset(
+                            &sched.ood2_skewed,
+                            &best_ind.capsule,
+                            self.sandbox,
+                            self.config.fuel_limit_per_call,
+                        ),
+                    )
+                } else {
+                    (
+                        None,
+                        None,
+                        BenchmarkScore::fatal_penalty(50),
+                        BenchmarkScore::fatal_penalty(50),
+                    )
+                }
             } else {
-                (None, None, BenchmarkScore::fatal_penalty(50), BenchmarkScore::fatal_penalty(50))
-            }
-        } else {
-            (
-                Some(self.oracle.evaluate_dataset_with_lookahead(&self.oracle.in_distribution, &best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call, false)),
-                Some(self.oracle.evaluate_validation(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call)),
-                self.oracle.evaluate_ood1(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
-                self.oracle.evaluate_ood2(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
-            )
-        };
+                (
+                    Some(self.oracle.evaluate_dataset_with_lookahead(
+                        &self.oracle.in_distribution,
+                        &best_ind.capsule,
+                        self.sandbox,
+                        self.config.fuel_limit_per_call,
+                        false,
+                    )),
+                    Some(self.oracle.evaluate_validation(
+                        &best_ind.capsule,
+                        self.sandbox,
+                        self.config.fuel_limit_per_call,
+                    )),
+                    self.oracle.evaluate_ood1(
+                        &best_ind.capsule,
+                        self.sandbox,
+                        self.config.fuel_limit_per_call,
+                    ),
+                    self.oracle.evaluate_ood2(
+                        &best_ind.capsule,
+                        self.sandbox,
+                        self.config.fuel_limit_per_call,
+                    ),
+                )
+            };
 
         Ok(ExperimentRunReport {
             group: self.config.group,
@@ -274,7 +330,10 @@ impl<'a> EvolutionEngine<'a> {
             self.throttle_cooldown();
 
             let (mut capsule, mut score) = self.evaluate_and_validate(capsule);
-            if self.config.domain == ProblemDomain::BinPacking1D && score.is_valid && score.total_bins <= 1266 {
+            if self.config.domain == ProblemDomain::BinPacking1D
+                && score.is_valid
+                && score.total_bins <= 1266
+            {
                 let (opt_cap, opt_score) = nomad_evaluator::optimize_capsule_constants(
                     &capsule,
                     self.oracle,
@@ -297,7 +356,10 @@ impl<'a> EvolutionEngine<'a> {
     }
 
     /// Evaluates a candidate capsule and runs the full 3-level Anti-Dead-Code verification pipeline.
-    fn evaluate_and_validate(&mut self, mut capsule: SkillCapsule) -> (SkillCapsule, BenchmarkScore) {
+    fn evaluate_and_validate(
+        &mut self,
+        mut capsule: SkillCapsule,
+    ) -> (SkillCapsule, BenchmarkScore) {
         if self.config.domain == ProblemDomain::MultiResourceScheduling {
             if let Some(sched) = self.scheduling_oracle {
                 let _ = sched.validate_anti_dead_code_scheduling(
@@ -312,14 +374,16 @@ impl<'a> EvolutionEngine<'a> {
                     self.config.fuel_limit_per_call,
                     self.config.lookahead,
                 );
-                self.budget.record_executions(sched.in_distribution.instances.len());
+                self.budget
+                    .record_executions(sched.in_distribution.instances.len());
                 return (capsule, score);
             }
         }
 
         if capsule.graft_manifest.is_some() {
             // Record ablation probe evaluations for C_null
-            self.budget.record_executions(self.oracle.in_distribution.instances.len());
+            self.budget
+                .record_executions(self.oracle.in_distribution.instances.len());
         }
 
         let _ = validate_anti_dead_code_3levels(
@@ -337,7 +401,8 @@ impl<'a> EvolutionEngine<'a> {
             self.config.fuel_limit_per_call,
             self.config.lookahead,
         );
-        self.budget.record_executions(self.oracle.in_distribution.instances.len());
+        self.budget
+            .record_executions(self.oracle.in_distribution.instances.len());
         (capsule, score)
     }
 
@@ -375,7 +440,9 @@ impl<'a> EvolutionEngine<'a> {
             ExperimentalGroup::GroupB => {
                 // Group B: Independent parallel agents without horizontal transmission
                 for ind in current_pop {
-                    if next_population.len() >= pop_size || !self.budget.can_invoke_llm(&self.config) {
+                    if next_population.len() >= pop_size
+                        || !self.budget.can_invoke_llm(&self.config)
+                    {
                         break;
                     }
                     let seed = rand::Rng::gen(rng);
@@ -395,12 +462,23 @@ impl<'a> EvolutionEngine<'a> {
 
             ExperimentalGroup::GroupD => {
                 // Group D: Evolutionary selection with MAP-Elites niche selection, MUTATION ONLY
-                let elite = self.archive.best_elite().map(|e| e.capsule.clone()).unwrap_or_else(|| current_pop[0].capsule.clone());
-                let elite_score = self.archive.best_elite().map(|e| e.fitness.clone()).unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
+                let elite = self
+                    .archive
+                    .best_elite()
+                    .map(|e| e.capsule.clone())
+                    .unwrap_or_else(|| current_pop[0].capsule.clone());
+                let elite_score = self
+                    .archive
+                    .best_elite()
+                    .map(|e| e.fitness.clone())
+                    .unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
                 next_population.push(EvaluatedIndividual::new(elite, elite_score));
 
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
-                    let parent = self.archive.select_parent_ucb(rng).unwrap_or_else(|| current_pop[0].capsule.clone());
+                    let parent = self
+                        .archive
+                        .select_parent_ucb(rng)
+                        .unwrap_or_else(|| current_pop[0].capsule.clone());
                     let seed = rand::Rng::gen(rng);
 
                     let (mutated, _) = self
@@ -421,25 +499,37 @@ impl<'a> EvolutionEngine<'a> {
             ExperimentalGroup::GroupC => {
                 // Group C (NOMAD V2 Swarm): Quality-Diversity MAP-Elites + AgentPSO Swarm Crossover
                 if let Some(elite) = self.archive.best_elite() {
-                    next_population.push(EvaluatedIndividual::new(elite.capsule.clone(), elite.fitness.clone()));
+                    next_population.push(EvaluatedIndividual::new(
+                        elite.capsule.clone(),
+                        elite.fitness.clone(),
+                    ));
                 } else {
                     next_population.push(current_pop[0].clone());
                 }
 
                 // Anti-Inbreeding : plafond d'utilisation d'un même parent ancestral à max 30% des croisements
-                let mut ancestral_usage_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                let mut ancestral_usage_counts: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
                 let max_ancestral_usage = ((pop_size as f64) * 0.30).ceil().max(1.0) as usize;
 
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
                     let seed = rand::Rng::gen(rng);
-                    let should_crossover = rand::Rng::gen_bool(rng, self.adaptive_crossover_rate) && (self.archive.occupied_niches_count() >= 2 || current_pop.len() >= 2 || self.cultural_archive.is_some());
+                    let should_crossover = rand::Rng::gen_bool(rng, self.adaptive_crossover_rate)
+                        && (self.archive.occupied_niches_count() >= 2
+                            || current_pop.len() >= 2
+                            || self.cultural_archive.is_some());
 
                     let (child_capsule, _) = if should_crossover {
                         // 1. Quality-Diversity Parent A Selection via UCB curiosity
-                        let parent_a = self.archive.select_parent_ucb(rng)
+                        let parent_a = self
+                            .archive
+                            .select_parent_ucb(rng)
                             .unwrap_or_else(|| current_pop[0].capsule.clone());
 
-                        let parent_a_score = self.archive.grid.values()
+                        let parent_a_score = self
+                            .archive
+                            .grid
+                            .values()
                             .find(|e| e.capsule.id == parent_a.id)
                             .map(|e| e.fitness.clone())
                             .unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
@@ -451,10 +541,21 @@ impl<'a> EvolutionEngine<'a> {
                         let mut chosen_b = None;
                         if let Some(ref mut cultural) = self.cultural_archive {
                             if rand::Rng::gen_bool(rng, 0.40) {
-                                if let Some(cand) = cultural.select_complementary_partner(&parent_a, &parent_a_score, rng) {
-                                    let cand_hash = cand.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
-                                    let usage = ancestral_usage_counts.get(&cand.id.0).copied().unwrap_or(0);
-                                    if usage < max_ancestral_usage && cand.id != parent_a.id && parent_a_hash != cand_hash {
+                                if let Some(cand) = cultural.select_complementary_partner(
+                                    &parent_a,
+                                    &parent_a_score,
+                                    rng,
+                                ) {
+                                    let cand_hash =
+                                        cand.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                                    let usage = ancestral_usage_counts
+                                        .get(&cand.id.0)
+                                        .copied()
+                                        .unwrap_or(0);
+                                    if usage < max_ancestral_usage
+                                        && cand.id != parent_a.id
+                                        && parent_a_hash != cand_hash
+                                    {
                                         chosen_b = Some(cand);
                                     }
                                 }
@@ -463,10 +564,18 @@ impl<'a> EvolutionEngine<'a> {
 
                         // Option B : Recherche dans l'archive MAP-Elites active
                         if chosen_b.is_none() && self.archive.occupied_niches_count() >= 2 {
-                            if let Some(cand) = self.archive.select_complementary_partner(&parent_a, &parent_a_score, rng) {
+                            if let Some(cand) = self.archive.select_complementary_partner(
+                                &parent_a,
+                                &parent_a_score,
+                                rng,
+                            ) {
                                 let cand_hash = cand.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
-                                let usage = ancestral_usage_counts.get(&cand.id.0).copied().unwrap_or(0);
-                                if usage < max_ancestral_usage && cand.id != parent_a.id && parent_a_hash != cand_hash {
+                                let usage =
+                                    ancestral_usage_counts.get(&cand.id.0).copied().unwrap_or(0);
+                                if usage < max_ancestral_usage
+                                    && cand.id != parent_a.id
+                                    && parent_a_hash != cand_hash
+                                {
                                     chosen_b = Some(cand);
                                 }
                             }
@@ -475,9 +584,16 @@ impl<'a> EvolutionEngine<'a> {
                         // Option C : Recherche dans la population courante avec garantie de dissemblance
                         if chosen_b.is_none() {
                             for ind in current_pop {
-                                let ind_hash = ind.capsule.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
-                                let usage = ancestral_usage_counts.get(&ind.capsule.id.0).copied().unwrap_or(0);
-                                if usage < max_ancestral_usage && ind.capsule.id != parent_a.id && parent_a_hash != ind_hash {
+                                let ind_hash =
+                                    ind.capsule.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                                let usage = ancestral_usage_counts
+                                    .get(&ind.capsule.id.0)
+                                    .copied()
+                                    .unwrap_or(0);
+                                if usage < max_ancestral_usage
+                                    && ind.capsule.id != parent_a.id
+                                    && parent_a_hash != ind_hash
+                                {
                                     chosen_b = Some(ind.capsule.clone());
                                     break;
                                 }
@@ -487,17 +603,26 @@ impl<'a> EvolutionEngine<'a> {
                         // 3. Application du croisement avec INTERDICTION ABSOLUE D'AUTO-CROISEMENT
                         match chosen_b {
                             Some(parent_b) => {
-                                let p_b_hash = parent_b.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
-                                if parent_a.id == parent_b.id || (parent_a_hash.is_some() && parent_a_hash == p_b_hash) {
+                                let p_b_hash =
+                                    parent_b.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                                if parent_a.id == parent_b.id
+                                    || (parent_a_hash.is_some() && parent_a_hash == p_b_hash)
+                                {
                                     // Biais d'auto-croisement détecté : repli immédiat sur la mutation pure
                                     self.operator
                                         .mutate(&parent_a, next_gen_idx, seed)
-                                        .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
+                                        .map_err(|e| {
+                                            OrchestratorError::OperatorError(e.to_string())
+                                        })?
                                 } else {
-                                    *ancestral_usage_counts.entry(parent_b.id.0.clone()).or_insert(0) += 1;
+                                    *ancestral_usage_counts
+                                        .entry(parent_b.id.0.clone())
+                                        .or_insert(0) += 1;
                                     self.operator
                                         .crossover(&parent_a, &parent_b, next_gen_idx, seed)
-                                        .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
+                                        .map_err(|e| {
+                                            OrchestratorError::OperatorError(e.to_string())
+                                        })?
                                 }
                             }
                             None => {
@@ -509,7 +634,9 @@ impl<'a> EvolutionEngine<'a> {
                         }
                     } else {
                         // Mutation from a UCB-selected parent
-                        let parent = self.archive.select_parent_ucb(rng)
+                        let parent = self
+                            .archive
+                            .select_parent_ucb(rng)
                             .unwrap_or_else(|| current_pop[0].capsule.clone());
 
                         self.operator
@@ -521,7 +648,10 @@ impl<'a> EvolutionEngine<'a> {
                     self.throttle_cooldown();
 
                     let (mut child_capsule, mut score) = self.evaluate_and_validate(child_capsule);
-                    if self.config.domain == ProblemDomain::BinPacking1D && score.is_valid && score.total_bins <= 1266 {
+                    if self.config.domain == ProblemDomain::BinPacking1D
+                        && score.is_valid
+                        && score.total_bins <= 1266
+                    {
                         let (opt_cap, opt_score) = nomad_evaluator::optimize_capsule_constants(
                             &child_capsule,
                             self.oracle,
@@ -541,25 +671,43 @@ impl<'a> EvolutionEngine<'a> {
                     // sont autorisées à concourir dans l'archive MAP-Elites et la génération suivante.
                     let is_validation_passed = match &child_capsule.validation {
                         nomad_core::ValidationStatus::PassedLevel3Behavioral => true,
-                        nomad_core::ValidationStatus::PassedLevel2Computational => !should_crossover,
+                        nomad_core::ValidationStatus::PassedLevel2Computational => {
+                            !should_crossover
+                        }
                         nomad_core::ValidationStatus::PassedLevel1Structural => !should_crossover,
                         nomad_core::ValidationStatus::NotEvaluable(reason) => {
-                            tracing::warn!("Rejet bloquant Anti-Dead-Code (Non Évaluable) de {} : {}", child_capsule.name, reason);
+                            tracing::warn!(
+                                "Rejet bloquant Anti-Dead-Code (Non Évaluable) de {} : {}",
+                                child_capsule.name,
+                                reason
+                            );
                             false
                         }
                         nomad_core::ValidationStatus::GraftHarmful(reason) => {
-                            tracing::warn!("Rejet bloquant Anti-Dead-Code (Greffe Nocive) de {} : {}", child_capsule.name, reason);
+                            tracing::warn!(
+                                "Rejet bloquant Anti-Dead-Code (Greffe Nocive) de {} : {}",
+                                child_capsule.name,
+                                reason
+                            );
                             false
                         }
                         nomad_core::ValidationStatus::Failed(reason) => {
-                            tracing::warn!("Rejet bloquant Anti-Dead-Code de {} : {}", child_capsule.name, reason);
+                            tracing::warn!(
+                                "Rejet bloquant Anti-Dead-Code de {} : {}",
+                                child_capsule.name,
+                                reason
+                            );
                             false
                         }
                         nomad_core::ValidationStatus::Unvalidated => !should_crossover,
                     };
 
                     // Record in AgentPSO lineage state
-                    let host_id = child_capsule.parent_ids.first().cloned().unwrap_or_else(|| child_capsule.id.clone());
+                    let host_id = child_capsule
+                        .parent_ids
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| child_capsule.id.clone());
                     let partner_id = child_capsule.parent_ids.get(1).cloned();
                     let is_improved = if let Some(elite) = self.archive.best_elite() {
                         score < elite.fitness
@@ -583,9 +731,11 @@ impl<'a> EvolutionEngine<'a> {
                     // Adaptive Operator Selection: self-tune crossover probability based on success
                     if should_crossover {
                         if is_improved && is_validation_passed {
-                            self.adaptive_crossover_rate = (self.adaptive_crossover_rate + 0.02).min(0.85);
+                            self.adaptive_crossover_rate =
+                                (self.adaptive_crossover_rate + 0.02).min(0.85);
                         } else {
-                            self.adaptive_crossover_rate = (self.adaptive_crossover_rate - 0.01).max(0.25);
+                            self.adaptive_crossover_rate =
+                                (self.adaptive_crossover_rate - 0.01).max(0.25);
                         }
                     }
 
@@ -604,4 +754,3 @@ impl<'a> EvolutionEngine<'a> {
         Ok(next_population)
     }
 }
-

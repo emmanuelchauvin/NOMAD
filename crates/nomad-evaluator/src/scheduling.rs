@@ -4,13 +4,13 @@ use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::anti_dead_code::create_ablation_capsule_res;
 use nomad_core::{
     BehaviorDescriptor, BenchmarkScore, InstanceEvaluation, SchedulingDecision, SkillCapsule,
     ValidationStatus,
 };
 use nomad_genome::verify_level1_structural_survival;
 use nomad_sandbox::HeuristicSandbox;
-use crate::anti_dead_code::create_ablation_capsule_res;
 
 /// ============================================================================
 /// JobRequest : Requête de Tâche de Calcul Multi-Ressources
@@ -94,7 +94,7 @@ impl SchedulingDataset {
     /// Pre-registered In-Distribution Validation Dataset :
     /// 50 instances de 50 tâches hétérogènes (seed dérivée distincte).
     pub fn generate_validation(seed: u64) -> Self {
-        let mut rng = ChaCha8Rng::seed_from_u64(seed ^ 0x5A11_DA71_0E_u64);
+        let mut rng = ChaCha8Rng::seed_from_u64(seed ^ 0x005A_11DA_710E_u64);
         let mut instances = Vec::with_capacity(50);
 
         for inst_idx in 0..50 {
@@ -198,8 +198,8 @@ impl SchedulingDataset {
         for inst in instances {
             hasher.update(inst.name.as_bytes());
             for job in &inst.jobs {
-                hasher.update(&job.cpu_req.to_le_bytes());
-                hasher.update(&job.ram_req.to_le_bytes());
+                hasher.update(job.cpu_req.to_le_bytes());
+                hasher.update(job.ram_req.to_le_bytes());
             }
         }
         hex::encode(hasher.finalize())
@@ -395,7 +395,13 @@ impl SchedulingOracle {
         let mut sum_tight = 0.0f64;
 
         for inst in &dataset.instances {
-            let (eval, imb, tight) = self.evaluate_instance_with_lookahead(inst, capsule, sandbox, fuel_limit_per_call, lookahead);
+            let (eval, imb, tight) = self.evaluate_instance_with_lookahead(
+                inst,
+                capsule,
+                sandbox,
+                fuel_limit_per_call,
+                lookahead,
+            );
             if !eval.is_valid {
                 return BenchmarkScore {
                     is_valid: false,
@@ -494,7 +500,8 @@ impl SchedulingOracle {
         let c_null_capsule = match create_ablation_capsule_res(child) {
             Ok(c) => c,
             Err(e) => {
-                let status = ValidationStatus::NotEvaluable(format!("Scheduling ablation failed: {}", e));
+                let status =
+                    ValidationStatus::NotEvaluable(format!("Scheduling ablation failed: {}", e));
                 child.validation = status.clone();
                 return Ok(status);
             }
@@ -507,7 +514,8 @@ impl SchedulingOracle {
 
         for inst in self.in_distribution.instances.iter().take(5) {
             let (eval_c, _, _) = self.evaluate_instance(inst, child, sandbox, fuel_limit);
-            let (eval_null, _, _) = self.evaluate_instance(inst, &c_null_capsule, sandbox, fuel_limit);
+            let (eval_null, _, _) =
+                self.evaluate_instance(inst, &c_null_capsule, sandbox, fuel_limit);
 
             if !eval_null.is_valid {
                 let status = ValidationStatus::NotEvaluable(
@@ -520,7 +528,8 @@ impl SchedulingOracle {
             orig_nodes_total += eval_c.bins_used;
             null_nodes_total += eval_null.bins_used;
 
-            if eval_c.bins_used != eval_null.bins_used || eval_c.trajectory != eval_null.trajectory {
+            if eval_c.bins_used != eval_null.bins_used || eval_c.trajectory != eval_null.trajectory
+            {
                 divergent_decisions += 1;
             }
         }

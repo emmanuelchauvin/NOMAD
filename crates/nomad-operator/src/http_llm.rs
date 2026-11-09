@@ -1,18 +1,21 @@
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufReader, Read};
-use std::path::Path;
-use std::time::Duration;
 use chrono::Utc;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, Read};
+use std::path::Path;
+use std::time::Duration;
 
-use nomad_core::{PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus};
-use nomad_genome::{compute_structural_fingerprint, deterministic_ast_crossover, multi_locus_ast_crossover, parse_heuristic_fn, parse_score_bin};
 use crate::meta::ReproducibilityAudit;
 use crate::operator::{OperatorError, SkillOperator};
+use nomad_core::{PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus};
+use nomad_genome::{
+    compute_structural_fingerprint, deterministic_ast_crossover, multi_locus_ast_crossover,
+    parse_heuristic_fn, parse_score_bin,
+};
 
 /// Calculates the SHA-256 cryptographic hash of a local model weight file (e.g., GGUF format).
 pub fn compute_file_sha256(path: impl AsRef<Path>) -> Result<String, std::io::Error> {
@@ -118,7 +121,12 @@ impl HttpLlamaOperator {
         self
     }
 
-    fn call_inference(&self, system_prompt: &str, user_prompt: &str, seed: u64) -> Result<String, OperatorError> {
+    fn call_inference(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        seed: u64,
+    ) -> Result<String, OperatorError> {
         let request_body = ChatCompletionRequest {
             model: &self.model_name,
             messages: vec![
@@ -145,15 +153,22 @@ impl HttpLlamaOperator {
                 .send_json(&request_body)
             {
                 Ok(resp) => {
-                    let response: ChatCompletionResponse = resp
-                        .into_json()
-                        .map_err(|e| OperatorError::InferenceError(format!("Failed to parse JSON response: {}", e)))?;
+                    let response: ChatCompletionResponse = resp.into_json().map_err(|e| {
+                        OperatorError::InferenceError(format!(
+                            "Failed to parse JSON response: {}",
+                            e
+                        ))
+                    })?;
 
                     let raw_text = response
                         .choices
                         .first()
                         .map(|c| c.message.content.clone())
-                        .ok_or_else(|| OperatorError::InferenceError("Empty choices returned by LLM".to_string()))?;
+                        .ok_or_else(|| {
+                            OperatorError::InferenceError(
+                                "Empty choices returned by LLM".to_string(),
+                            )
+                        })?;
 
                     return Ok(raw_text);
                 }
@@ -201,7 +216,11 @@ impl HttpLlamaOperator {
     }
 
     /// Converts raw LLM output or classical primitives into validated Rust AST `score_bin` function.
-    fn normalize_to_ast_score_bin(code: &str, seed: u64, fallback_variant: usize) -> (String, syn::ItemFn) {
+    fn normalize_to_ast_score_bin(
+        code: &str,
+        seed: u64,
+        fallback_variant: usize,
+    ) -> (String, syn::ItemFn) {
         let trimmed = code.trim();
         // 1. Try parsing directly if contains score_bin
         if trimmed.contains("score_bin") {
@@ -223,18 +242,27 @@ impl HttpLlamaOperator {
         }
 
         // 3. Map legacy parameter format: SCORE: alpha=... beta=... dead_space_penalty=...
-        if trimmed.contains("alpha") || trimmed.contains("SCORE:") || trimmed.contains("dead_space_penalty") {
+        if trimmed.contains("alpha")
+            || trimmed.contains("SCORE:")
+            || trimmed.contains("dead_space_penalty")
+        {
             let mut alpha = 1.0f64;
             let mut penalty = 95.0f64;
             let mut bonus = 50.0f64;
 
             for part in trimmed.split_whitespace() {
                 if let Some(val) = part.strip_prefix("alpha=") {
-                    if let Ok(v) = val.parse::<f64>() { alpha = v; }
+                    if let Ok(v) = val.parse::<f64>() {
+                        alpha = v;
+                    }
                 } else if let Some(val) = part.strip_prefix("dead_space_penalty=") {
-                    if let Ok(v) = val.parse::<f64>() { penalty = v; }
+                    if let Ok(v) = val.parse::<f64>() {
+                        penalty = v;
+                    }
                 } else if let Some(val) = part.strip_prefix("exact_fit_bonus=") {
-                    if let Ok(v) = val.parse::<f64>() { bonus = v; }
+                    if let Ok(v) = val.parse::<f64>() {
+                        bonus = v;
+                    }
                 }
             }
 
@@ -266,7 +294,11 @@ impl HttpLlamaOperator {
     }
 
     /// Converts raw LLM output or classical primitives into validated Rust AST `score_node` function.
-    fn normalize_to_ast_score_node(code: &str, seed: u64, fallback_variant: usize) -> (String, syn::ItemFn) {
+    fn normalize_to_ast_score_node(
+        code: &str,
+        seed: u64,
+        fallback_variant: usize,
+    ) -> (String, syn::ItemFn) {
         let trimmed = code.trim();
         // 1. Try parsing directly if contains score_node
         if trimmed.contains("score_node") {
@@ -322,7 +354,8 @@ impl SkillOperator for HttpLlamaOperator {
         index: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let (system_prompt, user_prompt) = if self.domain == ProblemDomain::MultiResourceScheduling {
+        let (system_prompt, user_prompt) = if self.domain == ProblemDomain::MultiResourceScheduling
+        {
             (
                 "You are an expert algorithmic scientist specializing in multi-resource cloud job scheduling heuristics in Rust.\n\
 Nodes have CPU capacity C_cpu=32 and RAM capacity C_ram=128. Jobs arrive sequentially with (cpu, ram) demands. Your goal is to minimize total nodes used and prevent multi-dimensional resource stranding.\n\
@@ -435,7 +468,8 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block wit
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let is_sched = parent.logic_code.contains("score_node") || self.domain == ProblemDomain::MultiResourceScheduling;
+        let is_sched = parent.logic_code.contains("score_node")
+            || self.domain == ProblemDomain::MultiResourceScheduling;
         let (system_prompt, user_prompt) = if is_sched {
             (
                 "You are an evolutionary code optimizer for Multi-Resource Cloud Job Scheduling heuristics in Rust.\n\
@@ -519,18 +553,27 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let name = format!("SwarmCross-g{}-{}-{}", generation, &parent_a.id.0[..4], &parent_b.id.0[..4]);
-        let desc = format!("Horizontal Swarm Crossover of [{}] and [{}]", parent_a.name, parent_b.name);
+        let name = format!(
+            "SwarmCross-g{}-{}-{}",
+            generation,
+            &parent_a.id.0[..4],
+            &parent_b.id.0[..4]
+        );
+        let desc = format!(
+            "Horizontal Swarm Crossover of [{}] and [{}]",
+            parent_a.name, parent_b.name
+        );
 
         let mut metadata = HashMap::new();
         metadata.insert("operator".to_string(), "HttpLlamaOperator".to_string());
         metadata.insert("parent_a".to_string(), parent_a.id.to_string());
         metadata.insert("parent_b".to_string(), parent_b.id.to_string());
 
-        let is_sched = parent_a.logic_code.contains("score_node") || self.domain == ProblemDomain::MultiResourceScheduling;
+        let is_sched = parent_a.logic_code.contains("score_node")
+            || self.domain == ProblemDomain::MultiResourceScheduling;
 
         // Attempt deterministic multi-loci or single-locus AST crossover first
-        let ast_res = if seed % 2 == 0 {
+        let ast_res = if seed.is_multiple_of(2) {
             multi_locus_ast_crossover(parent_a, parent_b, seed, generation)
                 .or_else(|_| deterministic_ast_crossover(parent_a, parent_b, seed, generation))
         } else {
@@ -551,7 +594,10 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
                 seed,
                 temperature: 0.0,
                 top_p: 1.0,
-                full_prompt: format!("Deterministic AST crossover between {} and {}", parent_a.id, parent_b.id),
+                full_prompt: format!(
+                    "Deterministic AST crossover between {} and {}",
+                    parent_a.id, parent_b.id
+                ),
                 raw_response: child.logic_code.clone(),
                 timestamp: Utc::now(),
             };
@@ -628,25 +674,36 @@ mod tests {
 
         // Test bin packing normalization
         let raw_bin = "```rust\npub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}\n```";
-        let (code_bin, _fn_bin) = HttpLlamaOperator::normalize_to_ast_score_bin(&HttpLlamaOperator::extract_code_block(raw_bin), 42, 0);
+        let (code_bin, _fn_bin) = HttpLlamaOperator::normalize_to_ast_score_bin(
+            &HttpLlamaOperator::extract_code_block(raw_bin),
+            42,
+            0,
+        );
         assert!(code_bin.contains("score_bin"));
 
         // Test scheduling normalization
-        let op_sched = HttpLlamaOperator::default().with_domain(ProblemDomain::MultiResourceScheduling);
+        let op_sched =
+            HttpLlamaOperator::default().with_domain(ProblemDomain::MultiResourceScheduling);
         assert_eq!(op_sched.domain, ProblemDomain::MultiResourceScheduling);
 
         let raw_sched = "```rust\npub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let mut score = node_residual_cpu as f64 + node_residual_ram as f64;\n    score\n}\n```";
-        let (code_sched, _fn_sched) = HttpLlamaOperator::normalize_to_ast_score_node(&HttpLlamaOperator::extract_code_block(raw_sched), 42, 0);
+        let (code_sched, _fn_sched) = HttpLlamaOperator::normalize_to_ast_score_node(
+            &HttpLlamaOperator::extract_code_block(raw_sched),
+            42,
+            0,
+        );
         assert!(code_sched.contains("score_node"));
 
         // Test fallback templates (Rule 0: verify all 4 variants parse cleanly without expert lookahead injection)
         for variant in 0..4 {
-            let (code_fallback_bin, _) = HttpLlamaOperator::normalize_to_ast_score_bin("invalid code", 42, variant);
+            let (code_fallback_bin, _) =
+                HttpLlamaOperator::normalize_to_ast_score_bin("invalid code", 42, variant);
             assert!(code_fallback_bin.contains("score_bin"));
             assert!(!code_fallback_bin.contains("next_item_size =="));
             assert!(!code_fallback_bin.contains("fitting_bins_count =="));
 
-            let (code_fallback_sched, _) = HttpLlamaOperator::normalize_to_ast_score_node("invalid code", 42, variant);
+            let (code_fallback_sched, _) =
+                HttpLlamaOperator::normalize_to_ast_score_node("invalid code", 42, variant);
             assert!(code_fallback_sched.contains("score_node"));
             assert!(!code_fallback_sched.contains("imbalance *"));
             assert!(!code_fallback_sched.contains("horizon *"));

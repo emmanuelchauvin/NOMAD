@@ -1,14 +1,14 @@
 //! NOMAD Core: Foundation structures, types, capsules, and metrics for the DARWIN.RS architecture.
 
-pub mod types;
 pub mod capsule;
-pub mod metric;
 pub mod config;
+pub mod metric;
+pub mod types;
 
-pub use types::*;
 pub use capsule::*;
-pub use metric::*;
 pub use config::*;
+pub use metric::*;
+pub use types::*;
 
 #[cfg(test)]
 mod tests {

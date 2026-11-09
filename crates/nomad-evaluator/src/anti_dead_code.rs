@@ -1,6 +1,4 @@
-use nomad_core::{
-    BenchmarkScore, PolicyKind, SkillCapsule, ValidationStatus,
-};
+use nomad_core::{BenchmarkScore, PolicyKind, SkillCapsule, ValidationStatus};
 use nomad_genome::{parse_score_bin, verify_level1_structural_survival};
 use nomad_sandbox::HeuristicSandbox;
 use sha2::{Digest, Sha256};
@@ -39,7 +37,10 @@ pub enum AblationError {
 /// Supprime les replis aveugles par indice et neutralise les définitions de variables
 /// avec des valeurs neutres documentées afin d'éviter tout plantage de C_null.
 pub fn create_ablation_capsule_res(capsule: &SkillCapsule) -> Result<SkillCapsule, AblationError> {
-    let manifest = capsule.graft_manifest.as_ref().ok_or(AblationError::NoManifest)?;
+    let manifest = capsule
+        .graft_manifest
+        .as_ref()
+        .ok_or(AblationError::NoManifest)?;
     let mut null_fn = parse_score_bin(&capsule.logic_code)
         .map_err(|e| AblationError::ParseFailed(e.to_string()))?;
 
@@ -93,11 +94,15 @@ pub fn create_ablation_capsule_res(capsule: &SkillCapsule) -> Result<SkillCapsul
                 if null_fn.block.stmts.len() > 1 && idx < null_fn.block.stmts.len() - 1 {
                     null_fn.block.stmts.remove(idx);
                 } else {
-                    null_fn.block.stmts[idx] = syn::parse_quote!({ let _ = (); });
+                    null_fn.block.stmts[idx] = syn::parse_quote!({
+                        let _ = ();
+                    });
                 }
             }
             _ => {
-                null_fn.block.stmts[idx] = syn::parse_quote!({ let _ = (); });
+                null_fn.block.stmts[idx] = syn::parse_quote!({
+                    let _ = ();
+                });
             }
         }
     }
@@ -162,7 +167,8 @@ pub fn validate_anti_dead_code_3levels(
     } else {
         // Seeds & mutations: verify AST syntax and non-emptiness
         if let Err(e) = parse_score_bin(&capsule.logic_code) {
-            let status = ValidationStatus::Failed(format!("Level 1 Structural Parse Failure: {}", e));
+            let status =
+                ValidationStatus::Failed(format!("Level 1 Structural Parse Failure: {}", e));
             capsule.validation = status.clone();
             return Err(AntiDeadCodeEvalError::Level1Failed(e.to_string()));
         }
@@ -170,15 +176,13 @@ pub fn validate_anti_dead_code_3levels(
     capsule.validation = ValidationStatus::PassedLevel1Structural;
 
     // 2. Level 2: Computational verification on probe dataset
-    let score_original: BenchmarkScore = oracle.evaluate_dataset(
-        probes_dataset,
-        capsule,
-        sandbox,
-        fuel_limit,
-    );
+    let score_original: BenchmarkScore =
+        oracle.evaluate_dataset(probes_dataset, capsule, sandbox, fuel_limit);
 
     if !score_original.is_valid || score_original.total_fuel == 0 {
-        let status = ValidationStatus::Failed("Level 2 Computational Failure: invalid or zero fuel".to_string());
+        let status = ValidationStatus::Failed(
+            "Level 2 Computational Failure: invalid or zero fuel".to_string(),
+        );
         capsule.validation = status;
         return Err(AntiDeadCodeEvalError::Level2ZeroExecutions);
     }
@@ -198,12 +202,8 @@ pub fn validate_anti_dead_code_3levels(
         }
     };
 
-    let score_null: BenchmarkScore = oracle.evaluate_dataset(
-        probes_dataset,
-        &c_null,
-        sandbox,
-        fuel_limit,
-    );
+    let score_null: BenchmarkScore =
+        oracle.evaluate_dataset(probes_dataset, &c_null, sandbox, fuel_limit);
 
     // Rejeter les C_null invalides : une erreur d'exécution n'est JAMAIS une preuve causale
     if !score_null.is_valid {
@@ -220,18 +220,10 @@ pub fn validate_anti_dead_code_3levels(
     let mut divergent_instances_count = 0usize;
 
     for inst in &probes_dataset.instances {
-        let (eval_orig, _, _) = oracle.evaluate_single_instance(
-            inst,
-            &capsule.logic_code,
-            sandbox,
-            fuel_limit,
-        );
-        let (eval_null, _, _) = oracle.evaluate_single_instance(
-            inst,
-            &c_null.logic_code,
-            sandbox,
-            fuel_limit,
-        );
+        let (eval_orig, _, _) =
+            oracle.evaluate_single_instance(inst, &capsule.logic_code, sandbox, fuel_limit);
+        let (eval_null, _, _) =
+            oracle.evaluate_single_instance(inst, &c_null.logic_code, sandbox, fuel_limit);
 
         if !eval_null.is_valid {
             let status = ValidationStatus::NotEvaluable(
@@ -241,7 +233,9 @@ pub fn validate_anti_dead_code_3levels(
             return Ok(status);
         }
 
-        if eval_orig.bins_used != eval_null.bins_used || eval_orig.trajectory != eval_null.trajectory {
+        if eval_orig.bins_used != eval_null.bins_used
+            || eval_orig.trajectory != eval_null.trajectory
+        {
             divergent_instances_count += 1;
         }
 
@@ -266,7 +260,10 @@ pub fn validate_anti_dead_code_3levels(
     );
     capsule.metadata.insert(
         "ablation_bins_diff".to_string(),
-        format!("{:+}", score_null.total_bins as i64 - score_original.total_bins as i64),
+        format!(
+            "{:+}",
+            score_null.total_bins as i64 - score_original.total_bins as i64
+        ),
     );
 
     // Test directionnel avec seuil epsilon (défaut documenté 1e-4)
@@ -290,7 +287,9 @@ pub fn validate_anti_dead_code_3levels(
         // Si l'ablation améliore la performance, la greffe était nocive !
         let status = ValidationStatus::GraftHarmful(format!(
             "Ablation improved performance (null bins: {}, orig bins: {}, eff diff: {:.4})",
-            score_null.total_bins, score_original.total_bins, score_null.mean_efficiency - score_original.mean_efficiency
+            score_null.total_bins,
+            score_original.total_bins,
+            score_null.mean_efficiency - score_original.mean_efficiency
         ));
         capsule.validation = status.clone();
         Ok(status)
@@ -350,15 +349,33 @@ mod tests {
         "#;
 
         let host = SkillCapsule::new_v2(
-            "Host", "Interface", host_code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, None,
+            "Host",
+            "Interface",
+            host_code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            None,
         );
 
         let donor = SkillCapsule::new_v2(
-            "Donor", "Interface", donor_code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, None,
+            "Donor",
+            "Interface",
+            donor_code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            None,
         );
 
         let (mut child, _manifest) = deterministic_ast_crossover(&host, &donor, 42, 2).unwrap();
@@ -420,15 +437,33 @@ mod tests {
         "#;
 
         let host = SkillCapsule::new_v2(
-            "Host", "Interface", host_code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, None,
+            "Host",
+            "Interface",
+            host_code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            None,
         );
 
         let donor = SkillCapsule::new_v2(
-            "Donor", "Interface", donor_code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, None,
+            "Donor",
+            "Interface",
+            donor_code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            None,
         );
 
         let (mut child, _manifest) = multi_locus_ast_crossover(&host, &donor, 42, 2).unwrap();
@@ -452,7 +487,10 @@ mod tests {
 
         // Ensure C_null was successfully created and not None!
         let c_null = create_ablation_capsule(&child);
-        assert!(c_null.is_some(), "create_ablation_capsule must succeed on multi-loci child");
+        assert!(
+            c_null.is_some(),
+            "create_ablation_capsule must succeed on multi-loci child"
+        );
     }
 
     #[test]
@@ -468,7 +506,8 @@ mod tests {
             donor_capsule: nomad_core::CapsuleId("donor".to_string()),
             host_capsule: nomad_core::CapsuleId("host".to_string()),
             donor_ast_hash: "none".to_string(),
-            grafted_fragment_hash: "deadbeef00000000000000000000000000000000000000000000000000000000".to_string(),
+            grafted_fragment_hash:
+                "deadbeef00000000000000000000000000000000000000000000000000000000".to_string(),
             host_locus: "body_stmt_index_1".to_string(),
             dependency_hash: "none".to_string(),
             repair_version: None,
@@ -476,9 +515,18 @@ mod tests {
         };
 
         let mut capsule = SkillCapsule::new_v2(
-            "MismatchCapsule", "Desc", code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, Some(manifest),
+            "MismatchCapsule",
+            "Desc",
+            code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            Some(manifest),
         );
 
         let err = create_ablation_capsule_res(&capsule).unwrap_err();
@@ -487,7 +535,14 @@ mod tests {
         let oracle = OracleEvaluator::new(42);
         let sandbox = DeterministicSandbox::new();
         // Since hash is absent, Level 1 rejects it properly
-        assert!(validate_anti_dead_code_3levels(&mut capsule, &oracle, &sandbox, &oracle.in_distribution, 50_000).is_err());
+        assert!(validate_anti_dead_code_3levels(
+            &mut capsule,
+            &oracle,
+            &sandbox,
+            &oracle.in_distribution,
+            50_000
+        )
+        .is_err());
     }
 
     #[test]
@@ -519,14 +574,30 @@ mod tests {
         };
 
         let mut capsule = SkillCapsule::new_v2(
-            "IntronCapsule", "Desc", code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, Some(manifest),
+            "IntronCapsule",
+            "Desc",
+            code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            Some(manifest),
         );
 
         let oracle = OracleEvaluator::new(42);
         let sandbox = DeterministicSandbox::new();
-        let status = validate_anti_dead_code_3levels(&mut capsule, &oracle, &sandbox, &oracle.in_distribution, 50_000).unwrap();
+        let status = validate_anti_dead_code_3levels(
+            &mut capsule,
+            &oracle,
+            &sandbox,
+            &oracle.in_distribution,
+            50_000,
+        )
+        .unwrap();
         // Since neutral_intron removal produces 0 decision divergence, it must pass Level 2, not Level 3!
         assert_eq!(status, ValidationStatus::PassedLevel2Computational);
     }
@@ -559,14 +630,30 @@ mod tests {
         };
 
         let mut capsule = SkillCapsule::new_v2(
-            "HarmfulCapsule", "Desc", code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, Some(manifest),
+            "HarmfulCapsule",
+            "Desc",
+            code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            Some(manifest),
         );
 
         let oracle = OracleEvaluator::new(42);
         let sandbox = DeterministicSandbox::new();
-        let status = validate_anti_dead_code_3levels(&mut capsule, &oracle, &sandbox, &oracle.in_distribution, 50_000).unwrap();
+        let status = validate_anti_dead_code_3levels(
+            &mut capsule,
+            &oracle,
+            &sandbox,
+            &oracle.in_distribution,
+            50_000,
+        )
+        .unwrap();
         // Since ablation restores Best-Fit (fewer bins), the graft was harmful -> GraftHarmful!
         assert!(matches!(status, ValidationStatus::GraftHarmful(_)));
     }
@@ -598,18 +685,32 @@ mod tests {
         };
 
         let mut capsule = SkillCapsule::new_v2(
-            "CrashCapsule", "Desc", code, vec![], 1, HashMap::new(),
-            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
-            ValidationStatus::Unvalidated, Some(manifest),
+            "CrashCapsule",
+            "Desc",
+            code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            Some(manifest),
         );
 
         let invalid_dataset = Dataset::new("Empty", vec![]);
         let oracle = OracleEvaluator::new(42);
         let sandbox = DeterministicSandbox::new();
-        let status = validate_anti_dead_code_3levels(&mut capsule, &oracle, &sandbox, &invalid_dataset, 50_000);
+        let status = validate_anti_dead_code_3levels(
+            &mut capsule,
+            &oracle,
+            &sandbox,
+            &invalid_dataset,
+            50_000,
+        );
         if let Ok(st) = status {
             assert_ne!(st, ValidationStatus::PassedLevel3Behavioral);
         }
     }
 }
-

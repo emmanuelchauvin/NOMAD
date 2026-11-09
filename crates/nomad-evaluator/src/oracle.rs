@@ -1,9 +1,9 @@
+use crate::dataset::{BinPackingInstance, Dataset};
 use nomad_core::{
     BehaviorDescriptor, BenchmarkScore, InstanceEvaluation, PackingDecision, SkillCapsule,
     TrajectoryMetrics,
 };
 use nomad_sandbox::{DeterministicSandbox, HeuristicSandbox};
-use crate::dataset::{BinPackingInstance, Dataset};
 
 /// ============================================================================
 /// compute_trajectory_tldr : Algorithme Mathématique du tLDR (Sections 6.4 & 6.5)
@@ -291,9 +291,21 @@ impl OracleEvaluator {
             dead_space_ratio: sum_dead_space_ratio / n,
         };
 
-        let mean_tldr = if solved_instances > 0 { sum_tldr / n } else { 0.0 };
-        let mean_beta1 = if solved_instances > 0 { sum_beta1 / n } else { 0.0 };
-        let mean_sigma_res = if solved_instances > 0 { sum_sigma_res / n } else { 0.0 };
+        let mean_tldr = if solved_instances > 0 {
+            sum_tldr / n
+        } else {
+            0.0
+        };
+        let mean_beta1 = if solved_instances > 0 {
+            sum_beta1 / n
+        } else {
+            0.0
+        };
+        let mean_sigma_res = if solved_instances > 0 {
+            sum_sigma_res / n
+        } else {
+            0.0
+        };
 
         let trajectory_metrics = TrajectoryMetrics {
             beta1_slope: mean_beta1,
@@ -325,7 +337,13 @@ impl OracleEvaluator {
         sandbox: &dyn HeuristicSandbox,
         fuel_limit_per_call: u64,
     ) -> (InstanceEvaluation, BehaviorDescriptor, TrajectoryMetrics) {
-        self.evaluate_single_instance_with_lookahead(instance, logic_code, sandbox, fuel_limit_per_call, true)
+        self.evaluate_single_instance_with_lookahead(
+            instance,
+            logic_code,
+            sandbox,
+            fuel_limit_per_call,
+            true,
+        )
     }
 
     /// Evaluates a single online bin packing instance with configurable lookahead.
@@ -376,7 +394,7 @@ impl OracleEvaluator {
                                         fuel_consumed: total_fuel,
                                         error_message: Some(format!(
                                             "Invalid bin index {} for {} open bins",
-                                             idx,
+                                            idx,
                                             bin_levels.len()
                                         )),
                                         tldr_score: 0.0,
@@ -481,7 +499,7 @@ impl OracleEvaluator {
             .iter()
             .filter(|&&lvl| {
                 let rem = instance.capacity - lvl;
-                rem >= 1 && rem <= 15
+                (1..=15).contains(&rem)
             })
             .count();
 
@@ -531,4 +549,3 @@ impl OracleEvaluator {
         self.evaluate_dataset(dataset, &capsule, &sandbox, 100_000)
     }
 }
-

@@ -18,7 +18,7 @@ impl BinPackingInstance {
         let name = name.into();
         let total_weight: u64 = items.iter().map(|&w| w as u64).sum();
         let cap = capacity as u64;
-        let theoretical_min_bins = ((total_weight + cap - 1) / cap) as usize;
+        let theoretical_min_bins = total_weight.div_ceil(cap) as usize;
 
         let mut hasher = Sha256::new();
         hasher.update(name.as_bytes());
@@ -86,7 +86,7 @@ impl Dataset {
     /// 50 instances, N=50 items, Uniform distribution U(10, 80), capacity C=100.
     /// Uses distinct derived seed (seed ^ 0x5A11_DA71_0E) to prevent data leakage.
     pub fn generate_validation(seed: u64) -> Self {
-        let mut rng = ChaCha8Rng::seed_from_u64(seed ^ 0x5A11_DA71_0E_u64);
+        let mut rng = ChaCha8Rng::seed_from_u64(seed ^ 0x005A_11DA_710E_u64);
         let mut instances = Vec::with_capacity(50);
         let capacity = 100u32;
 
@@ -134,8 +134,7 @@ impl Dataset {
                     // Power-law distribution: P(x) ~ x^(-gamma) with gamma = 1.5
                     let u: f64 = rng.gen_range(0.001..1.0);
                     let val = 5.0 / u.powf(0.5);
-                    let clamped = (val as u32).clamp(5, 95);
-                    clamped
+                    (val as u32).clamp(5, 95)
                 })
                 .collect();
             instances.push(BinPackingInstance::new(
@@ -164,7 +163,10 @@ mod tests {
         // Ensure distinct cryptographic signatures
         assert_ne!(train_ds.dataset_hash, val_ds.dataset_hash);
         // Ensure instances are distinct
-        assert_ne!(train_ds.instances[0].instance_hash, val_ds.instances[0].instance_hash);
+        assert_ne!(
+            train_ds.instances[0].instance_hash,
+            val_ds.instances[0].instance_hash
+        );
         assert_eq!(val_ds.name, "NOMAD_IN_DISTRIBUTION_VALIDATION_N50_50INST");
     }
 }

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use nomad_core::SchedulingInputs;
+use std::collections::HashMap;
 use syn::{
     BinOp, Expr, ExprBinary, ExprCall, ExprCast, ExprIf, ExprLit, ExprMethodCall, ExprParen,
     ExprPath, ExprUnary, ItemFn, Lit, Local, Pat, PatIdent, Stmt, UnOp,
@@ -196,7 +196,9 @@ impl<'a> AstInterpreter<'a> {
     pub fn eval(&self, ctx: &ScorePolicyContext) -> Result<AstEvalOutcome, EvalError> {
         // Validation stricte des entrées pour rejeter les cas pathologiques
         if ctx.bin_capacity == 0 {
-            return Err(EvalError::InvalidInput("bin_capacity must be > 0".to_string()));
+            return Err(EvalError::InvalidInput(
+                "bin_capacity must be > 0".to_string(),
+            ));
         }
         if ctx.item_size == 0 {
             return Err(EvalError::InvalidInput("item_size must be > 0".to_string()));
@@ -223,7 +225,10 @@ impl<'a> AstInterpreter<'a> {
         vars.insert("open_bins_count".to_string(), ctx.open_bins_count as f64);
         vars.insert("mean_residual".to_string(), ctx.mean_residual);
         vars.insert("post_residual".to_string(), ctx.post_residual as f64);
-        vars.insert("fitting_bins_count".to_string(), ctx.fitting_bins_count as f64);
+        vars.insert(
+            "fitting_bins_count".to_string(),
+            ctx.fitting_bins_count as f64,
+        );
 
         self.eval_with_vars(vars, ctx.post_residual as f64)
     }
@@ -259,13 +264,28 @@ impl<'a> AstInterpreter<'a> {
         vars.insert("job_ram".to_string(), ctx.job_ram as f64);
         vars.insert("next_job_cpu".to_string(), ctx.next_job_cpu as f64);
         vars.insert("next_job_ram".to_string(), ctx.next_job_ram as f64);
-        vars.insert("node_residual_cpu".to_string(), ctx.node_residual_cpu as f64);
-        vars.insert("node_residual_ram".to_string(), ctx.node_residual_ram as f64);
-        vars.insert("node_capacity_cpu".to_string(), ctx.node_capacity_cpu as f64);
-        vars.insert("node_capacity_ram".to_string(), ctx.node_capacity_ram as f64);
+        vars.insert(
+            "node_residual_cpu".to_string(),
+            ctx.node_residual_cpu as f64,
+        );
+        vars.insert(
+            "node_residual_ram".to_string(),
+            ctx.node_residual_ram as f64,
+        );
+        vars.insert(
+            "node_capacity_cpu".to_string(),
+            ctx.node_capacity_cpu as f64,
+        );
+        vars.insert(
+            "node_capacity_ram".to_string(),
+            ctx.node_capacity_ram as f64,
+        );
         vars.insert("step_index".to_string(), ctx.step_index as f64);
         vars.insert("total_jobs".to_string(), ctx.total_jobs as f64);
-        vars.insert("active_nodes_count".to_string(), ctx.active_nodes_count as f64);
+        vars.insert(
+            "active_nodes_count".to_string(),
+            ctx.active_nodes_count as f64,
+        );
         vars.insert("mean_cpu_residual".to_string(), ctx.mean_cpu_residual);
         vars.insert("mean_ram_residual".to_string(), ctx.mean_ram_residual);
 
@@ -303,7 +323,10 @@ impl<'a> AstInterpreter<'a> {
                     .base10_parse::<f64>()
                     .map_err(|e| EvalError::ParseError(e.to_string())),
                 Lit::Bool(b) => Ok(if b.value { 1.0 } else { 0.0 }),
-                _ => Err(EvalError::UnsupportedExpr(format!("Unsupported literal: {:?}", lit))),
+                _ => Err(EvalError::UnsupportedExpr(format!(
+                    "Unsupported literal: {:?}",
+                    lit
+                ))),
             },
             Expr::Path(ExprPath { path, .. }) => {
                 if let Some(ident) = path.get_ident() {
@@ -333,7 +356,10 @@ impl<'a> AstInterpreter<'a> {
                 match op {
                     UnOp::Neg(_) => Ok(-val),
                     UnOp::Not(_) => Ok(if val == 0.0 { 1.0 } else { 0.0 }),
-                    _ => Err(EvalError::UnsupportedExpr(format!("Unsupported unary operator: {:?}", op))),
+                    _ => Err(EvalError::UnsupportedExpr(format!(
+                        "Unsupported unary operator: {:?}",
+                        op
+                    ))),
                 }
             }
             Expr::Binary(ExprBinary {
@@ -414,7 +440,10 @@ impl<'a> AstInterpreter<'a> {
                             Ok(r)
                         }
                     }
-                    _ => Err(EvalError::UnsupportedExpr(format!("Unsupported binary operator: {:?}", op))),
+                    _ => Err(EvalError::UnsupportedExpr(format!(
+                        "Unsupported binary operator: {:?}",
+                        op
+                    ))),
                 }
             }
             Expr::If(ExprIf {
@@ -456,7 +485,8 @@ impl<'a> AstInterpreter<'a> {
                                 vars.insert(ident, v);
                             }
                             Stmt::Expr(e, _) => {
-                                last_val = self.eval_expr(e, vars, fuel, branches, mutations, depth + 1)?;
+                                last_val =
+                                    self.eval_expr(e, vars, fuel, branches, mutations, depth + 1)?;
                             }
                             _ => {}
                         }
@@ -469,7 +499,8 @@ impl<'a> AstInterpreter<'a> {
                 }
             }
             Expr::Assign(assign) => {
-                let r = self.eval_expr(&assign.right, vars, fuel, branches, mutations, depth + 1)?;
+                let r =
+                    self.eval_expr(&assign.right, vars, fuel, branches, mutations, depth + 1)?;
                 if let Expr::Path(ExprPath { path, .. }) = &*assign.left {
                     if let Some(ident) = path.get_ident() {
                         let name = ident.to_string();
@@ -508,11 +539,19 @@ impl<'a> AstInterpreter<'a> {
                         args.len()
                     )));
                 }
-                let recv_val = self.eval_expr(receiver, vars, fuel, branches, mutations, depth + 1)?;
+                let recv_val =
+                    self.eval_expr(receiver, vars, fuel, branches, mutations, depth + 1)?;
                 let method_name = method.to_string();
                 let mut eval_args = Vec::with_capacity(args.len());
                 for arg in args {
-                    eval_args.push(self.eval_expr(arg, vars, fuel, branches, mutations, depth + 1)?);
+                    eval_args.push(self.eval_expr(
+                        arg,
+                        vars,
+                        fuel,
+                        branches,
+                        mutations,
+                        depth + 1,
+                    )?);
                 }
                 match method_name.as_str() {
                     "powi" => {
@@ -573,7 +612,14 @@ impl<'a> AstInterpreter<'a> {
                 }
                 let mut eval_args = Vec::with_capacity(args.len());
                 for arg in args {
-                    eval_args.push(self.eval_expr(arg, vars, fuel, branches, mutations, depth + 1)?);
+                    eval_args.push(self.eval_expr(
+                        arg,
+                        vars,
+                        fuel,
+                        branches,
+                        mutations,
+                        depth + 1,
+                    )?);
                 }
                 let fn_name = if let Expr::Path(ExprPath { path, .. }) = &**func {
                     path.segments
@@ -745,7 +791,10 @@ mod tests {
         for _ in 0..55 {
             expr_str = format!("({} + 1.0)", expr_str);
         }
-        let code = format!("pub fn score_bin() -> f64 {{ let score = {}; score }}", expr_str);
+        let code = format!(
+            "pub fn score_bin() -> f64 {{ let score = {}; score }}",
+            expr_str
+        );
         let item_fn: ItemFn = syn::parse_str(&code).unwrap();
 
         let interpreter = AstInterpreter::new(&item_fn, 50_000);
@@ -765,7 +814,10 @@ mod tests {
         let result = interpreter.eval(&ctx);
         assert!(matches!(
             result,
-            Err(EvalError::RecursionLimitExceeded { current: _, max: 48 })
+            Err(EvalError::RecursionLimitExceeded {
+                current: _,
+                max: 48
+            })
         ));
     }
 
@@ -776,7 +828,10 @@ mod tests {
         for i in 0..135 {
             decls.push_str(&format!("let v{} = {} as f64;\n", i, i));
         }
-        let code = format!("pub fn score_bin() -> f64 {{\n{} let score = 1.0;\n score }}", decls);
+        let code = format!(
+            "pub fn score_bin() -> f64 {{\n{} let score = 1.0;\n score }}",
+            decls
+        );
         let item_fn: ItemFn = syn::parse_str(&code).unwrap();
 
         let interpreter = AstInterpreter::new(&item_fn, 50_000);

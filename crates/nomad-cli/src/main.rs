@@ -1,8 +1,10 @@
+#![allow(clippy::field_reassign_with_default)]
+
+use anyhow::Result;
+use clap::{Parser, Subcommand, ValueEnum};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use anyhow::Result;
-use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use nomad_core::{ExperimentConfig, ExperimentalGroup, ProblemDomain};
@@ -91,7 +93,12 @@ enum Commands {
     /// Export or visualize the phylogenetic DAG from a run report file.
     Graph {
         /// Path to the JSON run report file produced by `nomad run --output <file>`.
-        #[arg(short, long, visible_alias = "report", default_value = "run_report.json")]
+        #[arg(
+            short,
+            long,
+            visible_alias = "report",
+            default_value = "run_report.json"
+        )]
         input: PathBuf,
 
         /// Format for visualization: mermaid, dot, or html.
@@ -287,7 +294,9 @@ fn main() -> Result<()> {
             println!();
             println!("Target Domain : Online 1D Bin Packing (C = 100)");
             println!("Lineage Graph : Directed Acyclic Graph (DAG) with full ancestry tracking.");
-            println!("Reproduction  : Mutation + Swarm Crossover (Group C) vs Mutation only (Group D).");
+            println!(
+                "Reproduction  : Mutation + Swarm Crossover (Group C) vs Mutation only (Group D)."
+            );
             println!("Oracle        : Independent, strict gas & validity constraints.");
             println!("============================================================");
         }
@@ -306,15 +315,27 @@ fn main() -> Result<()> {
                     serde_json::from_str::<nomad_orchestrator::RebirthExperimentReport>(&content)
                         .map(|r| r.epoch3_heritage.unwrap_or(r.epoch2_heritage))
                 })
-                .map_err(|e| anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e))?;
+                .map_err(|e| {
+                    anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e)
+                })?;
 
             println!("============================================================");
             println!(" MAP-Elites Archive Inspection : {}", report.group.name());
-            println!(" Total Niches Defined : {} x {}", report.archive.dim_x, report.archive.dim_y);
-            println!(" Active Occupied Niches: {} ({:.1}% Coverage)", report.archive.occupied_niches_count(), report.archive.coverage() * 100.0);
+            println!(
+                " Total Niches Defined : {} x {}",
+                report.archive.dim_x, report.archive.dim_y
+            );
+            println!(
+                " Active Occupied Niches: {} ({:.1}% Coverage)",
+                report.archive.occupied_niches_count(),
+                report.archive.coverage() * 100.0
+            );
             println!(" QD-Score : {:.3}", report.archive.qd_score());
             println!("------------------------------------------------------------");
-            println!("{:<10} {:<14} {:<14} {:<12} {:<18} {}", "Niche", "DeadSpace/Imb", "NewBin/ResVar", "UnitsUsed", "Capsule ID", "Name");
+            println!(
+                "{:<10} {:<14} {:<14} {:<12} {:<18} Name",
+                "Niche", "DeadSpace/Imb", "NewBin/ResVar", "UnitsUsed", "Capsule ID"
+            );
             println!("------------------------------------------------------------");
 
             let mut entries: Vec<_> = report.archive.grid.values().collect();
@@ -351,7 +372,9 @@ fn main() -> Result<()> {
                     serde_json::from_str::<nomad_orchestrator::RebirthExperimentReport>(&content)
                         .map(|r| r.epoch3_heritage.unwrap_or(r.epoch2_heritage))
                 })
-                .map_err(|e| anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e))?;
+                .map_err(|e| {
+                    anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e)
+                })?;
 
             if report.phylogeny.node_count() == 0 {
                 eprintln!(
@@ -777,7 +800,10 @@ fn main() -> Result<()> {
                 let ood1 = SchedulingDataset::generate_ood_scale(seed);
                 let ood2 = SchedulingDataset::generate_ood_skewed(seed);
 
-                println!("--- Pre-Registered Multi-Resource Scheduling Datasets (Seed: {}) ---", seed);
+                println!(
+                    "--- Pre-Registered Multi-Resource Scheduling Datasets (Seed: {}) ---",
+                    seed
+                );
                 println!("In-Distribution (50 instances, N=50 jobs,  Node: 32C/128G) :");
                 println!("  SHA-256: {}", in_dist.dataset_hash);
                 println!("OOD-1 Scale     (50 instances, N=300 jobs, Node: 32C/128G) :");
@@ -803,12 +829,32 @@ fn main() -> Result<()> {
             let sandbox = DeterministicSandbox::new();
             if domain == DomainArg::Scheduling {
                 let sched_oracle = SchedulingOracle::new(seed);
-                println!("--- Multi-Resource Scheduling Baselines (Dataset Seed: {}) ---", seed);
+                println!(
+                    "--- Multi-Resource Scheduling Baselines (Dataset Seed: {}) ---",
+                    seed
+                );
 
-                for name in &["FIRST_FIT_NODE", "BEST_FIT_CPU", "BEST_FIT_RAM", "BALANCED_FIT"] {
-                    let in_score = sched_oracle.evaluate_classical_baseline(name, &sched_oracle.in_distribution, &sandbox);
-                    let ood1_score = sched_oracle.evaluate_classical_baseline(name, &sched_oracle.ood1_scale, &sandbox);
-                    let ood2_score = sched_oracle.evaluate_classical_baseline(name, &sched_oracle.ood2_skewed, &sandbox);
+                for name in &[
+                    "FIRST_FIT_NODE",
+                    "BEST_FIT_CPU",
+                    "BEST_FIT_RAM",
+                    "BALANCED_FIT",
+                ] {
+                    let in_score = sched_oracle.evaluate_classical_baseline(
+                        name,
+                        &sched_oracle.in_distribution,
+                        &sandbox,
+                    );
+                    let ood1_score = sched_oracle.evaluate_classical_baseline(
+                        name,
+                        &sched_oracle.ood1_scale,
+                        &sandbox,
+                    );
+                    let ood2_score = sched_oracle.evaluate_classical_baseline(
+                        name,
+                        &sched_oracle.ood2_skewed,
+                        &sandbox,
+                    );
 
                     println!("\n[Heuristic: {}]", name);
                     println!(
@@ -835,12 +881,17 @@ fn main() -> Result<()> {
                 }
             } else {
                 let oracle = OracleEvaluator::new(seed);
-                println!("--- Classical Heuristic Benchmarks (Dataset Seed: {}) ---", seed);
+                println!(
+                    "--- Classical Heuristic Benchmarks (Dataset Seed: {}) ---",
+                    seed
+                );
 
                 for name in &["FIRST_FIT", "BEST_FIT", "BEST_FIT_LOOKAHEAD", "WORST_FIT"] {
-                    let in_score = oracle.evaluate_classical_baseline(name, &oracle.in_distribution);
+                    let in_score =
+                        oracle.evaluate_classical_baseline(name, &oracle.in_distribution);
                     let ood1_score = oracle.evaluate_classical_baseline(name, &oracle.ood1_scale);
-                    let ood2_score = oracle.evaluate_classical_baseline(name, &oracle.ood2_powerlaw);
+                    let ood2_score =
+                        oracle.evaluate_classical_baseline(name, &oracle.ood2_powerlaw);
 
                     println!("\n[Heuristic: {}]", name);
                     println!(
@@ -925,8 +976,15 @@ fn main() -> Result<()> {
             println!("============================================================");
             println!(
                 " Époque 1 (Genèse)     : Best Bins: {} (eff: {:.2}%), Niches: {}",
-                rebirth_report.epoch1_genesis.best_in_distribution_score.total_bins,
-                rebirth_report.epoch1_genesis.best_in_distribution_score.mean_efficiency * 100.0,
+                rebirth_report
+                    .epoch1_genesis
+                    .best_in_distribution_score
+                    .total_bins,
+                rebirth_report
+                    .epoch1_genesis
+                    .best_in_distribution_score
+                    .mean_efficiency
+                    * 100.0,
                 rebirth_report.heritage.distinct_niches_count
             );
             println!(
@@ -937,15 +995,35 @@ fn main() -> Result<()> {
             println!("------------------------------------------------------------");
             println!(
                 " Époque 2 (Héritière)  : Best Bins: {} (excess: +{}), Eff: {:.2}%",
-                rebirth_report.epoch2_heritage.best_in_distribution_score.total_bins,
-                rebirth_report.epoch2_heritage.best_in_distribution_score.total_excess_bins,
-                rebirth_report.epoch2_heritage.best_in_distribution_score.mean_efficiency * 100.0
+                rebirth_report
+                    .epoch2_heritage
+                    .best_in_distribution_score
+                    .total_bins,
+                rebirth_report
+                    .epoch2_heritage
+                    .best_in_distribution_score
+                    .total_excess_bins,
+                rebirth_report
+                    .epoch2_heritage
+                    .best_in_distribution_score
+                    .mean_efficiency
+                    * 100.0
             );
             println!(
                 " Époque 2 (Tabula Rasa): Best Bins: {} (excess: +{}), Eff: {:.2}%",
-                rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.total_bins,
-                rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.total_excess_bins,
-                rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.mean_efficiency * 100.0
+                rebirth_report
+                    .epoch2_tabula_rasa
+                    .best_in_distribution_score
+                    .total_bins,
+                rebirth_report
+                    .epoch2_tabula_rasa
+                    .best_in_distribution_score
+                    .total_excess_bins,
+                rebirth_report
+                    .epoch2_tabula_rasa
+                    .best_in_distribution_score
+                    .mean_efficiency
+                    * 100.0
             );
             if let Some(ref ep3) = rebirth_report.epoch3_heritage {
                 println!(
@@ -959,7 +1037,9 @@ fn main() -> Result<()> {
             if let Some(cif_p) = rebirth_report.cumulative_metrics.cif_performance {
                 println!(" CIF Performance (Excess ratio)       : {:.3}x", cif_p);
             } else {
-                println!(" CIF Performance (Excess ratio)       : Undefined (Zero excess achieved)");
+                println!(
+                    " CIF Performance (Excess ratio)       : Undefined (Zero excess achieved)"
+                );
             }
             println!(
                 " CIF Quality-Diversity (QD ratio)     : {:.3}x",
@@ -967,7 +1047,10 @@ fn main() -> Result<()> {
             );
             println!(
                 " Functional Heritability Rate (R_herit): {:.1}%",
-                rebirth_report.cumulative_metrics.functional_heritability_rate * 100.0
+                rebirth_report
+                    .cumulative_metrics
+                    .functional_heritability_rate
+                    * 100.0
             );
             println!(
                 " Innovation Rate (R_innov)             : {:.3} per 1000 evals",
@@ -977,23 +1060,47 @@ fn main() -> Result<()> {
             println!(" Budget Breakdown (Executions consumed):");
             println!(
                 "  - Époque 1 (Genèse)                  : {} execs, {} LLM calls",
-                rebirth_report.budget_breakdown.budget_patrimony_epoch1.executions_consumed,
-                rebirth_report.budget_breakdown.budget_patrimony_epoch1.llm_calls_consumed
+                rebirth_report
+                    .budget_breakdown
+                    .budget_patrimony_epoch1
+                    .executions_consumed,
+                rebirth_report
+                    .budget_breakdown
+                    .budget_patrimony_epoch1
+                    .llm_calls_consumed
             );
             println!(
                 "  - Réévaluation du Patrimoine Hérité  : {} execs, {} LLM calls",
-                rebirth_report.budget_breakdown.budget_reevaluation_heritage.executions_consumed,
-                rebirth_report.budget_breakdown.budget_reevaluation_heritage.llm_calls_consumed
+                rebirth_report
+                    .budget_breakdown
+                    .budget_reevaluation_heritage
+                    .executions_consumed,
+                rebirth_report
+                    .budget_breakdown
+                    .budget_reevaluation_heritage
+                    .llm_calls_consumed
             );
             println!(
                 "  - Recherche Lignée Héritière         : {} execs, {} LLM calls",
-                rebirth_report.budget_breakdown.budget_search_heritage.executions_consumed,
-                rebirth_report.budget_breakdown.budget_search_heritage.llm_calls_consumed
+                rebirth_report
+                    .budget_breakdown
+                    .budget_search_heritage
+                    .executions_consumed,
+                rebirth_report
+                    .budget_breakdown
+                    .budget_search_heritage
+                    .llm_calls_consumed
             );
             println!(
                 "  - Recherche Lignée Tabula Rasa       : {} execs, {} LLM calls",
-                rebirth_report.budget_breakdown.budget_search_tabula_rasa.executions_consumed,
-                rebirth_report.budget_breakdown.budget_search_tabula_rasa.llm_calls_consumed
+                rebirth_report
+                    .budget_breakdown
+                    .budget_search_tabula_rasa
+                    .executions_consumed,
+                rebirth_report
+                    .budget_breakdown
+                    .budget_search_tabula_rasa
+                    .llm_calls_consumed
             );
             println!("------------------------------------------------------------");
             println!(" Marginal Epoch Analysis:");
@@ -1066,7 +1173,10 @@ fn main() -> Result<()> {
 
             println!("\n============================================================");
             println!(" Run Completed: {}", report.group.name());
-            println!(" Seed: {} | Generations: {}", report.rng_seed, report.total_generations);
+            println!(
+                " Seed: {} | Generations: {}",
+                report.rng_seed, report.total_generations
+            );
             println!("------------------------------------------------------------");
             println!(
                 " Best In-Dist (w/ Lookahead)  : {} bins (excess: +{}), Efficiency: {:.2}%, Fuel: {}",
@@ -1119,7 +1229,10 @@ fn main() -> Result<()> {
                 report.best_ood2_score.total_excess_bins,
                 report.best_ood2_score.mean_efficiency * 100.0
             );
-            println!(" Lineage Nodes    : {}, Transitions: {}", report.total_lineage_nodes, report.total_lineage_edges);
+            println!(
+                " Lineage Nodes    : {}, Transitions: {}",
+                report.total_lineage_nodes, report.total_lineage_edges
+            );
             println!(" Best Heuristic   : {}", report.best_capsule.name);
             println!(" Logic Code       : {}", report.best_capsule.logic_code);
             println!("============================================================");
@@ -1189,8 +1302,9 @@ fn main() -> Result<()> {
                 config_d.max_generations = generations;
                 config_d.cooldown_ms = cooldown_ms;
                 config_d.lookahead = lookahead;
-                let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
-                    .with_scheduling_oracle(&sched_oracle);
+                let mut engine_d =
+                    EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
+                        .with_scheduling_oracle(&sched_oracle);
                 let report_d = engine_d.execute_run()?;
 
                 // GPU breathing pause between Group D and Group C
@@ -1205,8 +1319,9 @@ fn main() -> Result<()> {
                 config_c.max_generations = generations;
                 config_c.cooldown_ms = cooldown_ms;
                 config_c.lookahead = lookahead;
-                let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
-                    .with_scheduling_oracle(&sched_oracle);
+                let mut engine_c =
+                    EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
+                        .with_scheduling_oracle(&sched_oracle);
                 let report_c = engine_c.execute_run()?;
 
                 println!(
@@ -1296,8 +1411,9 @@ fn main() -> Result<()> {
                 config_d.cooldown_ms = cooldown_ms;
                 config_d.lookahead = lookahead;
 
-                let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
-                    .with_scheduling_oracle(&sched_oracle);
+                let mut engine_d =
+                    EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
+                        .with_scheduling_oracle(&sched_oracle);
                 let report_d = engine_d.execute_run()?;
 
                 let d_file = output_dir.join(format!("run_seed_{:04}_group_d.json", seed));
@@ -1318,8 +1434,9 @@ fn main() -> Result<()> {
                 config_c.cooldown_ms = cooldown_ms;
                 config_c.lookahead = lookahead;
 
-                let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
-                    .with_scheduling_oracle(&sched_oracle);
+                let mut engine_c =
+                    EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
+                        .with_scheduling_oracle(&sched_oracle);
                 let report_c = engine_c.execute_run()?;
 
                 let c_file = output_dir.join(format!("run_seed_{:04}_group_c.json", seed));
@@ -1333,7 +1450,8 @@ fn main() -> Result<()> {
                     seeds,
                     report_d.best_in_distribution_score.total_bins,
                     report_c.best_in_distribution_score.total_bins,
-                    (report_c.best_in_distribution_score.total_bins as i64) - (report_d.best_in_distribution_score.total_bins as i64)
+                    (report_c.best_in_distribution_score.total_bins as i64)
+                        - (report_d.best_in_distribution_score.total_bins as i64)
                 );
 
                 aggregate_pairs.push((report_c, report_d));
@@ -1345,8 +1463,15 @@ fn main() -> Result<()> {
             }
 
             println!("============================================================");
-            println!(" Campaign Complete: {} paired runs saved in {}", seeds, output_dir.display());
-            println!(" Aggregate data file: {}", output_dir.join("campaign_aggregate.json").display());
+            println!(
+                " Campaign Complete: {} paired runs saved in {}",
+                seeds,
+                output_dir.display()
+            );
+            println!(
+                " Aggregate data file: {}",
+                output_dir.join("campaign_aggregate.json").display()
+            );
             println!(" To analyze with statistical significance and Holm correction:");
             println!("   python scripts/analysis/wilcoxon_analysis.py {}/campaign_aggregate.json --output-json {}/stats.json --output-csv {}/stats.csv",
                 output_dir.display(), output_dir.display(), output_dir.display());

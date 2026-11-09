@@ -56,7 +56,9 @@ impl VisitMut for NumericLiteralMutator {
                     if self.target_is_float && self.current_float_idx == self.target_idx {
                         if let Ok(val) = lf.base10_parse::<f64>() {
                             let new_val = val * self.float_multiplier;
-                            if let Ok(new_lit) = syn::parse_str::<LitFloat>(&format!("{:.3}", new_val)) {
+                            if let Ok(new_lit) =
+                                syn::parse_str::<LitFloat>(&format!("{:.3}", new_val))
+                            {
                                 *lf = new_lit;
                             }
                         }
@@ -68,7 +70,8 @@ impl VisitMut for NumericLiteralMutator {
                         if val > 1 {
                             if !self.target_is_float && self.current_int_idx == self.target_idx {
                                 let new_val = (val + self.int_offset).max(1);
-                                if let Ok(new_lit) = syn::parse_str::<LitInt>(&new_val.to_string()) {
+                                if let Ok(new_lit) = syn::parse_str::<LitInt>(&new_val.to_string())
+                                {
                                     *li = new_lit;
                                 }
                             }
@@ -258,7 +261,8 @@ mod tests {
             None,
         );
 
-        let (optimized, score) = optimize_capsule_constants(&capsule, &oracle, &sandbox, 50_000, 10, 42);
+        let (optimized, score) =
+            optimize_capsule_constants(&capsule, &oracle, &sandbox, 50_000, 10, 42);
         assert!(score.is_valid);
         assert!(score.total_bins > 0);
         assert!(!optimized.logic_code.is_empty());
@@ -268,4 +272,3 @@ mod tests {
         }
     }
 }
-

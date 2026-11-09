@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet, VecDeque};
 use chrono::{DateTime, Utc};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 
 use nomad_core::{CapsuleId, SkillCapsule};
@@ -205,7 +205,10 @@ impl PhylogenyGraph {
 
     /// Exports the graph in Graphviz DOT format for visual inspection of lineages.
     pub fn to_dot(&self) -> String {
-        format!("{:?}", Dot::with_config(&self.graph, &[Config::EdgeNoLabel]))
+        format!(
+            "{:?}",
+            Dot::with_config(&self.graph, &[Config::EdgeNoLabel])
+        )
     }
 
     /// Exports the graph in Mermaid flowchart syntax (`graph TD`) for markdown visualization.
@@ -222,7 +225,7 @@ impl PhylogenyGraph {
             } else {
                 ":::mutation"
             };
-            let safe_name = node.name.replace('"', "").replace('<', "").replace('>', "");
+            let safe_name = node.name.replace(['"', '<', '>'], "");
             mermaid.push_str(&format!(
                 "    {}[\"{}<br/>(Gen {})\"]{}\n",
                 clean_id, safe_name, node.generation, style_suffix
@@ -249,11 +252,16 @@ impl PhylogenyGraph {
             }
         }
 
-        mermaid.push_str("    classDef root fill:#1e40af,stroke:#3b82f6,stroke-width:2px,color:#fff\n");
-        mermaid.push_str("    classDef mutation fill:#065f46,stroke:#10b981,stroke-width:2px,color:#fff\n");
-        mermaid.push_str("    classDef crossover fill:#5b21b6,stroke:#8b5cf6,stroke-width:2px,color:#fff\n");
+        mermaid.push_str(
+            "    classDef root fill:#1e40af,stroke:#3b82f6,stroke-width:2px,color:#fff\n",
+        );
+        mermaid.push_str(
+            "    classDef mutation fill:#065f46,stroke:#10b981,stroke-width:2px,color:#fff\n",
+        );
+        mermaid.push_str(
+            "    classDef crossover fill:#5b21b6,stroke:#8b5cf6,stroke-width:2px,color:#fff\n",
+        );
 
         mermaid
     }
 }
-
