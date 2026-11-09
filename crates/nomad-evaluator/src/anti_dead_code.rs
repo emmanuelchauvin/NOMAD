@@ -34,6 +34,49 @@ pub fn create_ablation_capsule(capsule: &SkillCapsule) -> Option<SkillCapsule> {
     let stmts = &mut null_fn.block.stmts;
     let mut removed = false;
 
+    // 0. Multi-loci surgical removal:
+    if let Some(loci_str) = manifest.host_locus.strip_prefix("multi_loci_") {
+        let parts: Vec<&str> = loci_str.split('_').collect();
+        if parts.len() == 2 {
+            if let (Ok(idx1), Ok(idx2)) = (parts[0].parse::<usize>(), parts[1].parse::<usize>()) {
+                let max_idx = idx1.max(idx2);
+                let min_idx = idx1.min(idx2);
+                // Supprimer d'abord l'index le plus élevé pour ne pas décaler l'index inférieur
+                if max_idx < stmts.len() && stmts.len() > 2 {
+                    stmts.remove(max_idx);
+                    if min_idx < stmts.len() {
+                        stmts.remove(min_idx);
+                        removed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // 0b. Multi-loci hash matching fallback (format hash1:hash2)
+    if !removed && manifest.grafted_fragment_hash.contains(':') {
+        let hashes: Vec<&str> = manifest.grafted_fragment_hash.split(':').collect();
+        if hashes.len() == 2 {
+            let mut to_remove = Vec::new();
+            for (i, stmt) in stmts.iter().enumerate() {
+                let code_repr = quote::quote!(#stmt).to_string();
+                let mut hasher = Sha256::new();
+                hasher.update(code_repr.as_bytes());
+                let h = hex::encode(hasher.finalize());
+                if h == hashes[0] || h == hashes[1] {
+                    to_remove.push(i);
+                }
+            }
+            to_remove.sort_unstable();
+            for &idx in to_remove.iter().rev() {
+                if idx < stmts.len() && stmts.len() > 1 {
+                    stmts.remove(idx);
+                    removed = true;
+                }
+            }
+        }
+    }
+
     // 1. Surgical removal: try exact removal at host_locus index if it matches the grafted hash
     if let Some(idx_str) = manifest.host_locus.strip_prefix("body_stmt_index_") {
         if let Ok(idx) = idx_str.parse::<usize>() {
@@ -264,6 +307,80 @@ mod tests {
             status,
             ValidationStatus::PassedLevel2Computational | ValidationStatus::PassedLevel3Behavioral
         ));
+    }
+
+    #[test]
+    fn test_multi_locus_anti_dead_code_validation() {
+        use nomad_genome::multi_locus_ast_crossover;
+
+        let host_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let mut score = bin_residual as f64;
+            score
+        }
+        "#;
+
+        let donor_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let mut score = bin_residual as f64;
+            let bonus = 10.0;
+            if bin_residual < 10 {
+                score = score + 50.0;
+            }
+            score
+        }
+        "#;
+
+        let host = SkillCapsule::new_v2(
+            "Host", "Interface", host_code, vec![], 1, HashMap::new(),
+            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
+            ValidationStatus::Unvalidated, None,
+        );
+
+        let donor = SkillCapsule::new_v2(
+            "Donor", "Interface", donor_code, vec![], 1, HashMap::new(),
+            "ScorePolicyV1", PolicyKind::ScorePolicy, None, vec![],
+            ValidationStatus::Unvalidated, None,
+        );
+
+        let (mut child, _manifest) = multi_locus_ast_crossover(&host, &donor, 42, 2).unwrap();
+
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+
+        let status = validate_anti_dead_code_3levels(
+            &mut child,
+            &oracle,
+            &sandbox,
+            &oracle.in_distribution,
+            50_000,
+        )
+        .expect("Multi-locus should pass validation");
+
+        assert!(matches!(
+            status,
+            ValidationStatus::PassedLevel2Computational | ValidationStatus::PassedLevel3Behavioral
+        ));
+
+        // Ensure C_null was successfully created and not None!
+        let c_null = create_ablation_capsule(&child);
+        assert!(c_null.is_some(), "create_ablation_capsule must succeed on multi-loci child");
     }
 }
 

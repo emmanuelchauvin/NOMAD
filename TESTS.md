@@ -9,7 +9,7 @@
 
 L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `SPECIFICATIONS.md` (Sections 0 à 14) est **validé à 100%** :
 
-* **Validation Technique (Workspace Rust) :** **28 tests automatisés sur 28 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec support complet des méthodes mathématiques et puissances (`powi`, `powf`, `sqrt`, `min`, `max`), le Lookahead $k=2$, l'Oracle souverain, le pipeline Anti-Dead-Code bloquant à 3 niveaux, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques et l'Ordonnancement Cloud Multi-Ressources.
+* **Validation Technique (Workspace Rust) :** **29 tests automatisés sur 29 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec support complet des méthodes mathématiques et puissances (`powi`, `powf`, `sqrt`, `min`, `max`), le Lookahead $k=2$, l'Oracle souverain, le pipeline Anti-Dead-Code bloquant à 3 niveaux, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques et l'Ordonnancement Cloud Multi-Ressources.
 * **Validation Scientifique (Les 4 Tests d'Acceptation) :**
   1. **Test 1 (Plafond 1265 & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux. Rupture prouvée du plafond à 1 264 bacs dans le run de convergence à 12 générations (`run_report_qwen_v2.json`).
   2. **Test 2 (Résilience Génétique & MAP-Elites) :** Résolution prouvée du mode collapse de la V1. Maintien pérenne d'un front de Pareto multi-niches actives avec réduction de l'espace mort.
@@ -60,6 +60,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-evaluator`** | `test_classical_baseline_evaluation` | Évaluation des références historiques (First-Fit, Best-Fit, Worst-Fit). | ✅ PASS |
 | **`nomad-evaluator`** | `test_scheduling_datasets_and_baselines` | Oracle d'ordonnancement multi-ressources, intégrité SHA-256 et baselines vecteur. | ✅ PASS |
 | **`nomad-evaluator`** | `test_anti_dead_code_validation_pipeline` | Pipeline complet à 3 niveaux : structurel, computationnel et ablation $C_{\text{null}}$. | ✅ PASS |
+| **`nomad-evaluator`** | `test_multi_locus_anti_dead_code_validation` | Validation Anti-Dead-Code Niveau 3 sur crossover multi-loci (`multi_loci_X_Y` et hashes composés). | ✅ PASS |
 | **`nomad-evaluator`** | `test_lookahead_bin_packing_combinations` | Évaluation comparative Lookahead $k=2$, dynamique d'horizon et Best Fit. | ✅ PASS |
 | **`nomad-evaluator`** | `test_optimize_capsule_constants_execution` | Optimisation continue locale des constantes AST par Nelder-Mead/Grid. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_map_elites_insertion_and_local_competition` | Grille 2D Quality-Diversity, compétition intra-niche et curiosité UCB. | ✅ PASS |
@@ -70,7 +71,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-orchestrator`** | `test_evolutionary_run_scheduling_swarm` | Simulation évolutionnaire complète sur l'Ordonnancement Cloud Multi-Ressources. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_rebirth_protocol_execution` | Protocole complet "Mort et Renaissance" (Époque 1 $\rightarrow$ Extinction $\rightarrow$ Époque 2 $\rightarrow$ Époque 3). | ✅ PASS |
 
-**Bilan : 28 passed; 0 failed; 0 ignored; 0 warnings.**
+**Bilan : 29 passed; 0 failed; 0 ignored; 0 warnings.**
 
 ---
 

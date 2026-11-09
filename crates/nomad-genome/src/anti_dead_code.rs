@@ -197,11 +197,19 @@ pub fn verify_level1_structural_survival(
     let units = extract_logical_units(&item_fn);
 
     // 1. Vérification de la présence structurelle du fragment
-    let fragment_found = units.iter().any(|u| {
-        u.hash == manifest.grafted_fragment_hash
-            || u.code_repr.contains(&manifest.grafted_fragment_hash[..8])
-            || (!manifest.grafted_fragment_hash.is_empty() && capsule.logic_code.contains(&u.code_repr))
-    });
+    let fragment_found = if manifest.grafted_fragment_hash.contains(':') {
+        let parts: Vec<&str> = manifest.grafted_fragment_hash.split(':').collect();
+        parts.len() == 2 && parts.iter().all(|h| {
+            units.iter().any(|u| u.hash == *h || u.code_repr.contains(&h[..8]))
+                || capsule.logic_code.contains(&h[..8])
+        })
+    } else {
+        units.iter().any(|u| {
+            u.hash == manifest.grafted_fragment_hash
+                || u.code_repr.contains(&manifest.grafted_fragment_hash[..8])
+                || (!manifest.grafted_fragment_hash.is_empty() && capsule.logic_code.contains(&u.code_repr))
+        })
+    };
 
     if !fragment_found {
         return Err(AntiDeadCodeError::FragmentNotFound(
@@ -209,12 +217,21 @@ pub fn verify_level1_structural_survival(
         ));
     }
 
-    // 2. Passe de liveness : vérifier que l'instruction insérée au locus n'est pas un dead store
+    // 2. Passe de liveness : vérifier que les instructions insérées aux locus ne sont pas des dead stores
     let liveness = compute_liveness(&item_fn);
     if let Some(idx_str) = manifest.host_locus.strip_prefix("body_stmt_index_") {
         if let Ok(idx) = idx_str.parse::<usize>() {
             if idx < liveness.len() && !liveness[idx] {
                 return Err(AntiDeadCodeError::FragmentNeutralized);
+            }
+        }
+    } else if let Some(loci_str) = manifest.host_locus.strip_prefix("multi_loci_") {
+        let parts: Vec<&str> = loci_str.split('_').collect();
+        if parts.len() == 2 {
+            if let (Ok(idx1), Ok(idx2)) = (parts[0].parse::<usize>(), parts[1].parse::<usize>()) {
+                if (idx1 < liveness.len() && !liveness[idx1]) || (idx2 < liveness.len() && !liveness[idx2]) {
+                    return Err(AntiDeadCodeError::FragmentNeutralized);
+                }
             }
         }
     }

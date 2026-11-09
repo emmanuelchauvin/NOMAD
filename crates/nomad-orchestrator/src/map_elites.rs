@@ -84,15 +84,18 @@ impl MapElitesArchive {
         let x = (norm_x * self.dim_x as f64).floor() as usize;
 
         // Axe Y : Entropie de Shannon composite mi/fin de parcours (ou Imbalance en scheduling)
-        // Si residual_variance <= 3.0 : Bin Packing avec entropie de Shannon composite [0.20, 1.80]
-        let norm_y = if b.residual_variance <= 3.0 && b.residual_variance > 0.0 {
-            ((b.residual_variance - 0.20) / 1.60).clamp(0.0, 0.999)
-        } else if b.residual_variance <= 40.0 && b.residual_variance > 0.0 {
-            (b.residual_variance / 30.0).clamp(0.0, 0.999)
-        } else if b.residual_variance > 40.0 {
-            ((b.residual_variance - 40.0) / 160.0).clamp(0.0, 0.999)
+        // Normalisation continue et monotone évitant les collisions de métriques et discontinuités de seuils
+        let norm_y = if b.residual_variance > 0.0 {
+            if b.residual_variance <= 2.5 {
+                // Bin Packing : Entropie de Shannon composite canonique [0.20, 2.00]
+                ((b.residual_variance - 0.20) / 1.80).clamp(0.0, 0.999)
+            } else {
+                // Scheduling : Déséquilibre CPU/RAM normalisé continu [2.5, 40.0]
+                ((b.residual_variance - 2.5) / 37.5).clamp(0.0, 0.999)
+            }
         } else {
-            ((b.new_bin_ratio - 0.45) / 0.15).clamp(0.0, 0.999)
+            // Repli déterministe sur le ratio d'ouverture de bacs [0.30, 0.70]
+            ((b.new_bin_ratio - 0.30) / 0.40).clamp(0.0, 0.999)
         };
         let y = (norm_y * self.dim_y as f64).floor() as usize;
 

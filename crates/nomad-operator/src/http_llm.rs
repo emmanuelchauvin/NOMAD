@@ -212,12 +212,12 @@ impl HttpLlamaOperator {
 
         // 2. Map classical heuristic names
         if trimmed.contains("FIRST_FIT") {
-            let code = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = 0.0;\n    score\n}".to_string();
+            let code = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let score = 0.0;\n    score\n}".to_string();
             let item_fn = parse_score_bin(&code).expect("First fit must parse");
             return (code, item_fn);
         }
         if trimmed.contains("BEST_FIT") {
-            let code = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}".to_string();
+            let code = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let score = post_residual as f64;\n    score\n}".to_string();
             let item_fn = parse_score_bin(&code).expect("Best fit must parse");
             return (code, item_fn);
         }
@@ -247,30 +247,17 @@ impl HttpLlamaOperator {
             }
         }
 
-        // 4. Deterministic AST fallback template
+        // 4. Deterministic AST fallback template (Strict Rule 0: Pure naive baselines, no human lookahead or magic bonuses)
         let mut rng = ChaCha8Rng::seed_from_u64(seed ^ (fallback_variant as u64));
-        let penalty_val: f64 = rng.gen_range(60.0..110.0);
-        let bonus_val: f64 = rng.gen_range(30.0..70.0);
-        let alpha_val: f64 = rng.gen_range(1.0..1.5);
-        let opp_penalty: f64 = rng.gen_range(25.0..55.0);
-        let match_bonus: f64 = rng.gen_range(45.0..75.0);
+        let weight: f64 = rng.gen_range(0.8..1.2);
 
         let code = match fallback_variant % 4 {
-            0 => format!(
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64 * {:.2};\n    if bin_residual >= next_item_size && post_residual < next_item_size {{\n        score = score + {:.1};\n    }}\n    if post_residual == next_item_size && next_item_size > 0 {{\n        score = score - {:.1};\n    }}\n    if post_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
-                alpha_val, opp_penalty, match_bonus, penalty_val
-            ),
-            1 => format!(
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64;\n    if bin_residual >= next_item_size && post_residual < next_item_size {{\n        score = score + {:.1};\n    }}\n    if post_residual == next_item_size || (post_residual >= next_item_size && post_residual - next_item_size < 10) {{\n        score = score - {:.1};\n    }}\n    if post_residual == 0 {{\n        score = score - {:.1};\n    }}\n    score\n}}",
-                opp_penalty, match_bonus, bonus_val
-            ),
-            2 => format!(
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64;\n    if post_residual == next_item_size || (post_residual >= next_item_size && post_residual - next_item_size < 10) {{\n        score = score - {:.1};\n    }} else if (post_residual as f64) < mean_residual {{\n        score = score - 15.0;\n    }}\n    score\n}}",
-                match_bonus
-            ),
+            0 => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let score = 0.0;\n    score\n}".to_string(),
+            1 => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let score = post_residual as f64;\n    score\n}".to_string(),
+            2 => "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let score = post_residual as f64 / bin_capacity.max(1) as f64;\n    score\n}".to_string(),
             _ => format!(
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64;\n    if bin_residual >= next_item_size && post_residual < next_item_size {{\n        score = score + {:.1};\n    }}\n    if fitting_bins_count == 1 {{\n        score = score - 25.0;\n    }}\n    score\n}}",
-                opp_penalty
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let score = (post_residual as f64) * {:.2};\n    score\n}}",
+                weight
             ),
         };
 
@@ -310,22 +297,18 @@ impl HttpLlamaOperator {
             return (code, item_fn);
         }
 
-        // 3. Deterministic AST fallback template
+        // 3. Deterministic AST fallback template (Strict Rule 0: Pure naive baselines, no human imbalance/horizon weights)
         let mut rng = ChaCha8Rng::seed_from_u64(seed ^ (fallback_variant as u64));
-        let imbalance_weight: f64 = rng.gen_range(1.5..4.5);
-        let horizon_weight: f64 = rng.gen_range(0.2..0.6);
+        let weight: f64 = rng.gen_range(0.8..1.2);
 
         let code = match fallback_variant % 4 {
-            0 => "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let mut score = node_residual_cpu as f64 + node_residual_ram as f64;\n    score\n}".to_string(),
-            1 => "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let mut score = cpu_norm * cpu_norm + ram_norm * ram_norm;\n    score\n}".to_string(),
+            0 => "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let score = (node_residual_cpu + node_residual_ram) as f64;\n    score\n}".to_string(),
+            1 => "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let score = (node_residual_cpu as f64 / node_capacity_cpu.max(1) as f64) + (node_residual_ram as f64 / node_capacity_ram.max(1) as f64);\n    score\n}".to_string(),
             2 => format!(
-                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {{\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let mut score = (cpu_norm + ram_norm) + imbalance * {:.1};\n    score\n}}",
-                imbalance_weight
+                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {{\n    let score = (node_residual_cpu as f64 * {:.2}) + node_residual_ram as f64;\n    score\n}}",
+                weight
             ),
-            _ => format!(
-                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {{\n    let horizon = (total_jobs - step_index) as f64 / total_jobs as f64;\n    let mut score = (node_residual_cpu as f64 + node_residual_ram as f64) * (1.0 + horizon * {:.1});\n    score\n}}",
-                horizon_weight
-            ),
+            _ => "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let score = node_residual_cpu as f64;\n    score\n}".to_string(),
         };
 
         let item_fn = parse_heuristic_fn(&code).expect("Template must be valid Rust AST");
@@ -656,11 +639,17 @@ mod tests {
         let (code_sched, _fn_sched) = HttpLlamaOperator::normalize_to_ast_score_node(&HttpLlamaOperator::extract_code_block(raw_sched), 42, 0);
         assert!(code_sched.contains("score_node"));
 
-        // Test fallback templates
-        let (code_fallback_bin, _) = HttpLlamaOperator::normalize_to_ast_score_bin("invalid code", 42, 2);
-        assert!(code_fallback_bin.contains("score_bin"));
+        // Test fallback templates (Rule 0: verify all 4 variants parse cleanly without expert lookahead injection)
+        for variant in 0..4 {
+            let (code_fallback_bin, _) = HttpLlamaOperator::normalize_to_ast_score_bin("invalid code", 42, variant);
+            assert!(code_fallback_bin.contains("score_bin"));
+            assert!(!code_fallback_bin.contains("next_item_size =="));
+            assert!(!code_fallback_bin.contains("fitting_bins_count =="));
 
-        let (code_fallback_sched, _) = HttpLlamaOperator::normalize_to_ast_score_node("invalid code", 42, 2);
-        assert!(code_fallback_sched.contains("score_node"));
+            let (code_fallback_sched, _) = HttpLlamaOperator::normalize_to_ast_score_node("invalid code", 42, variant);
+            assert!(code_fallback_sched.contains("score_node"));
+            assert!(!code_fallback_sched.contains("imbalance *"));
+            assert!(!code_fallback_sched.contains("horizon *"));
+        }
     }
 }

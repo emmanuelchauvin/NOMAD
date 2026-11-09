@@ -237,12 +237,12 @@ pub fn multi_locus_ast_crossover(
                 let init_expr = &init.expr;
                 if var_name == "score" {
                     stmt1 = syn::parse_quote! {
-                        score = score * 0.80 + ((#init_expr) as f64) * 0.20;
+                        let score = score * 0.80 + ((#init_expr) as f64) * 0.20;
                     };
                 } else if already_defined {
                     // Anti-shadowing : fusion causale légère pour ne pas écraser une variable locale
                     stmt1 = syn::parse_quote! {
-                        score = score + ((#init_expr) as f64) * 0.02;
+                        let score = score + ((#init_expr) as f64) * 0.02;
                     };
                 }
             }
@@ -272,33 +272,41 @@ pub fn multi_locus_ast_crossover(
                 if var_name == "score" {
                     if use_regime_dispatch {
                         // Croisement par Branchement de Régime (Regime Dispatch Crossover)
-                        // Préserve l'amplitude et l'échelle intrinsèque de chaque parent dans son domaine de régime
+                        // Assignation conditionnelle par shadowing pour compatibilité stricte rustc
                         if host.logic_code.contains("score_node") {
                             if (seed / 2) % 2 == 0 {
                                 stmt2 = syn::parse_quote! {
-                                    if (step_index as f64 / total_jobs.max(1) as f64) >= 0.5 {
-                                        score = (#init_expr) as f64;
-                                    }
+                                    let score = if (step_index as f64 / total_jobs.max(1) as f64) >= 0.5 {
+                                        (#init_expr) as f64
+                                    } else {
+                                        score
+                                    };
                                 };
                             } else {
                                 stmt2 = syn::parse_quote! {
-                                    if (node_residual_cpu as f64) >= mean_cpu_residual {
-                                        score = (#init_expr) as f64;
-                                    }
+                                    let score = if (node_residual_cpu as f64) >= mean_cpu_residual {
+                                        (#init_expr) as f64
+                                    } else {
+                                        score
+                                    };
                                 };
                             }
                         } else {
                             if (seed / 2) % 2 == 0 {
                                 stmt2 = syn::parse_quote! {
-                                    if (step_index as f64 / total_items.max(1) as f64) >= 0.5 {
-                                        score = (#init_expr) as f64;
-                                    }
+                                    let score = if (step_index as f64 / total_items.max(1) as f64) >= 0.5 {
+                                        (#init_expr) as f64
+                                    } else {
+                                        score
+                                    };
                                 };
                             } else {
                                 stmt2 = syn::parse_quote! {
-                                    if (bin_residual as f64) >= mean_residual {
-                                        score = (#init_expr) as f64;
-                                    }
+                                    let score = if (bin_residual as f64) >= mean_residual {
+                                        (#init_expr) as f64
+                                    } else {
+                                        score
+                                    };
                                 };
                             }
                         }
@@ -322,13 +330,16 @@ pub fn multi_locus_ast_crossover(
     }
     stmts.insert(locus2, stmt2.clone());
 
-    // Hachage combiné des fragments greffés
+    // Hachage combiné individuel des fragments greffés (format hash1:hash2 pour traçabilité multi-loci)
     let repr1 = quote::quote!(#stmt1).to_string();
     let repr2 = quote::quote!(#stmt2).to_string();
-    let mut fragment_hasher = Sha256::new();
-    fragment_hasher.update(repr1.as_bytes());
-    fragment_hasher.update(repr2.as_bytes());
-    let fragment_hash = hex::encode(fragment_hasher.finalize());
+    let mut h1 = Sha256::new();
+    h1.update(repr1.as_bytes());
+    let hash1 = hex::encode(h1.finalize());
+    let mut h2 = Sha256::new();
+    h2.update(repr2.as_bytes());
+    let hash2 = hex::encode(h2.finalize());
+    let fragment_hash = format!("{}:{}", hash1, hash2);
 
     let mut dep_hasher = Sha256::new();
     let mut combined_deps = collect_dependencies(&stmt1);

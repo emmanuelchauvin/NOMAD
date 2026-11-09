@@ -188,10 +188,22 @@ pub fn optimize_capsule_constants(
     if improved {
         let optimized_code = quote::quote!(#best_item_fn).to_string();
         let fp = Some(compute_structural_fingerprint(&best_item_fn));
-        let mut opt_capsule = capsule.clone();
-        opt_capsule.logic_code = optimized_code;
-        opt_capsule.ast_fingerprint = fp;
-        opt_capsule.semantic_interface = format!("{} (constants optimized)", capsule.semantic_interface);
+        let mut metadata = capsule.metadata.clone();
+        metadata.insert("optimized_from".to_string(), capsule.id.0.clone());
+        let opt_capsule = SkillCapsule::new_v2(
+            format!("{}_opt", capsule.name),
+            format!("{} (constants optimized)", capsule.semantic_interface),
+            optimized_code,
+            vec![capsule.id.clone()],
+            capsule.generation,
+            metadata,
+            capsule.interface_version.clone(),
+            capsule.policy_kind,
+            fp,
+            capsule.dependencies.clone(),
+            capsule.validation.clone(),
+            capsule.graft_manifest.clone(),
+        );
         (opt_capsule, best_score)
     } else {
         (capsule.clone(), current_score)
@@ -250,6 +262,10 @@ mod tests {
         assert!(score.is_valid);
         assert!(score.total_bins > 0);
         assert!(!optimized.logic_code.is_empty());
+        if optimized.id != capsule.id {
+            assert_eq!(optimized.parent_ids, vec![capsule.id.clone()]);
+            assert!(optimized.name.ends_with("_opt"));
+        }
     }
 }
 
