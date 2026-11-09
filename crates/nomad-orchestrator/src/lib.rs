@@ -158,4 +158,38 @@ mod tests {
         assert_eq!(engine.archive.grid.len(), initial_archive_count, "Archive must not be contaminated by validation/OOD evaluations");
         assert_eq!(engine.budget.executions_consumed, initial_exec_budget, "Selection budget must not be contaminated by validation/OOD evaluations");
     }
+
+    #[test]
+    fn test_paired_campaign_reproducibility_and_symmetry() {
+        let seed = 1042;
+        let oracle = OracleEvaluator::new(seed);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+
+        // 1. Group D run (mutation-only)
+        let mut config_d = ExperimentConfig::default();
+        config_d.group = ExperimentalGroup::GroupD;
+        config_d.rng_seed = seed;
+        config_d.population_size = 6;
+        config_d.max_generations = 2;
+        let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, &operator);
+        let report_d = engine_d.execute_run().expect("Group D run should succeed");
+
+        // 2. Group C run (swarm with crossover)
+        let mut config_c = ExperimentConfig::default();
+        config_c.group = ExperimentalGroup::GroupC;
+        config_c.rng_seed = seed;
+        config_c.population_size = 6;
+        config_c.max_generations = 2;
+        let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, &operator);
+        let report_c = engine_c.execute_run().expect("Group C run should succeed");
+
+        // Verification of experimental symmetry
+        assert!(report_d.best_in_distribution_score.is_valid);
+        assert!(report_c.best_in_distribution_score.is_valid);
+        assert!(report_d.generations_history.iter().all(|r| r.crossover_rate == 0.0), "Group D must have strictly 0 crossover rate");
+        assert!(report_c.generations_history.iter().all(|r| r.crossover_rate >= 0.20), "Group C must maintain active crossover rate");
+        assert_eq!(report_d.total_generations, 2);
+        assert_eq!(report_c.total_generations, 2);
+    }
 }

@@ -356,6 +356,21 @@ Chaque composant méthodologique est validé par isolement dans la matrice d'abl
 
 ---
 
+## 11.1 Protocole Statistique Pré-Enregistré (Campagne 30 Seeds)
+
+**Décision méthodologique pré-enregistrée (choix fixé formellement AVANT le lancement de la campagne statistique) :**
+- **Test statistique de référence :** Test des rangs signés de **Wilcoxon apparié** (unilatéral : hypothèse alternative $D - C > 0$, c'est-à-dire que le Groupe C Swarm utilise moins de bacs / d'excès que le Groupe D Mutation).
+- **Justification scientifique :** Chaque seed $s \in \{1000 + 17 \cdot i\}_{i=0}^{29}$ définit un cadre expérimental apparié symétrique (mêmes instances générées, budgets d'appels LLM et d'exécutions sandbox rigoureusement identiques). La distribution des écarts de score étant discrète et non gaussienne avec de multiples ex æquo, un test non paramétrique apparié est statistiquement supérieur à un test de Student ou à un test de Mann-Whitney non apparié.
+- **Correction des ex æquo (Ties) :** La variance de la statistique de rang est obligatoirement ajustée selon la formule exacte de tie correction :
+  $$\text{Var}(W) = \frac{n(n+1)(2n+1) - \sum_{i} \frac{t_i^3 - t_i}{2}}{24}$$
+  où $t_i$ est la taille du $i$-ème groupe d'ex æquo sur $|D - C|$ et $n$ est le nombre strict de paires **non nulles**.
+- **Taille d'effet :** $r = \frac{Z}{\sqrt{n_{\text{non-zéro}}}}$, accompagnée du $d$ de Cohen apparié et de la probabilité de supériorité (Common Language Effect Size).
+- **Contrôle du risque d'erreur de Type I (Multiplicité) :** Ajustement séquentiel de **Holm-Bonferroni** sur l'ensemble de la famille d'hypothèses ($H_1$ In-Distribution, $H_2$ OOD-1 Échelle, $H_2$ OOD-2 Loi de Puissance).
+- **Intervalles de confiance :** Bootstrap à 10 000 rééchantillonnages pour les moyennes et médianes des différences appariées (IC à 95 %).
+- **Métrique principale :** Bacs bruts et excès relatif normalisé sur la borne théorique $L_1$ : $\frac{\text{bins} - L_1}{L_1}$.
+
+---
+
 # 12. Exigences Techniques Rust et Déterminisme
 
 1. **Zéro Panic & Safe Error Handling :** Toutes les opérations faillibles (parsing AST, exécution sandboxée, requêtes réseau) retournent un type `Result<T, E>` typé via `thiserror`. Les appels `unwrap()` et `expect()` sont strictement proscrits en dehors des blocs de tests unitaires.
@@ -392,6 +407,10 @@ cargo run --release --bin nomad -- baseline --domain scheduling
 # 7. Étude comparative pré-enregistrée (Groupe C vs Groupe D)
 cargo run --release --bin nomad -- compare --domain bin-packing --runs 5
 cargo run --release --bin nomad -- compare --domain scheduling --runs 5
+
+# 8. Campagne statistique 30-seeds pré-enregistrée et analyse de significativité
+cargo run --release --bin nomad -- campaign --seeds 30 --operator ollama --output-dir campaign_30seeds
+python scripts/analysis/wilcoxon_analysis.py campaign_30seeds/campaign_aggregate.json --output-json campaign_30seeds/stats.json --output-csv campaign_30seeds/stats.csv
 ```
 
 ### Datasets Sanctuarisés (Empreintes SHA-256 officielles, Seed 42)

@@ -228,6 +228,43 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Run full 30-seed pre-registered statistical campaign (Group C vs Group D).
+    Campaign {
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
+
+        /// Number of paired seeds in the campaign (pre-registered protocol: 30).
+        #[arg(short, long, default_value_t = 30)]
+        seeds: usize,
+
+        #[arg(short, long, default_value_t = 10)]
+        pop_size: usize,
+
+        #[arg(short = 'n', long, default_value_t = 5)]
+        generations: usize,
+
+        /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        lookahead: bool,
+
+        #[arg(long, value_enum, default_value_t = OperatorArg::Ollama)]
+        operator: OperatorArg,
+
+        #[arg(long, default_value = "http://localhost:11434/v1/chat/completions")]
+        ollama_url: String,
+
+        #[arg(long, default_value = "qwen2.5-coder:7b")]
+        model: String,
+
+        /// Optional cooldown in milliseconds between LLM calls to prevent GPU overheating.
+        #[arg(long, default_value_t = 0)]
+        cooldown_ms: u64,
+
+        /// Output directory for individual runs and aggregate JSON report.
+        #[arg(short, long, default_value = "campaign_results")]
+        output_dir: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -1163,6 +1200,122 @@ fn main() -> Result<()> {
                 file.write_all(serialized.as_bytes())?;
                 println!("Paired comparison written to {}", path.display());
             }
+        }
+
+        Commands::Campaign {
+            domain,
+            seeds,
+            pop_size,
+            generations,
+            lookahead,
+            operator,
+            ollama_url,
+            model,
+            cooldown_ms,
+            output_dir,
+        } => {
+            let prob_domain: ProblemDomain = domain.into();
+            std::fs::create_dir_all(&output_dir)?;
+            println!("============================================================");
+            println!(" NOMAD PRE-REGISTERED 30-SEED STATISTICAL CAMPAIGN");
+            println!(" Target Domain   : {:?}", prob_domain);
+            println!(" Paired Seeds    : {}", seeds);
+            println!(" Lookahead (k=2) : {}", lookahead);
+            println!(" Output Directory: {}", output_dir.display());
+            println!("============================================================");
+
+            let op_instance: Box<dyn SkillOperator> = match operator {
+                OperatorArg::Mock => {
+                    let mut mock = DeterministicMockOperator::default();
+                    mock.domain = prob_domain;
+                    Box::new(mock)
+                }
+                OperatorArg::Ollama => Box::new(
+                    HttpLlamaOperator::new(
+                        ollama_url,
+                        model,
+                        "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+                        "Ollama API (Qwen 2.5 Coder 7B)",
+                        0.7,
+                        0.95,
+                    )
+                    .with_domain(prob_domain),
+                ),
+            };
+
+            let mut aggregate_pairs = Vec::new();
+
+            for r in 0..seeds {
+                let seed = 1000 + (r as u64) * 17;
+                let oracle = OracleEvaluator::new(seed);
+                let sched_oracle = SchedulingOracle::new(seed);
+                let sandbox = DeterministicSandbox::new();
+
+                // 1. Group D Run (Mutation-only baseline)
+                let mut config_d = ExperimentConfig::default();
+                config_d.domain = prob_domain;
+                config_d.group = ExperimentalGroup::GroupD;
+                config_d.rng_seed = seed;
+                config_d.population_size = pop_size;
+                config_d.max_generations = generations;
+                config_d.cooldown_ms = cooldown_ms;
+                config_d.lookahead = lookahead;
+
+                let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
+                    .with_scheduling_oracle(&sched_oracle);
+                let report_d = engine_d.execute_run()?;
+
+                let d_file = output_dir.join(format!("run_seed_{:04}_group_d.json", seed));
+                let mut f_d = File::create(&d_file)?;
+                f_d.write_all(serde_json::to_string_pretty(&report_d)?.as_bytes())?;
+
+                if cooldown_ms > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(cooldown_ms));
+                }
+
+                // 2. Group C Run (Full Swarm with Crossover)
+                let mut config_c = ExperimentConfig::default();
+                config_c.domain = prob_domain;
+                config_c.group = ExperimentalGroup::GroupC;
+                config_c.rng_seed = seed;
+                config_c.population_size = pop_size;
+                config_c.max_generations = generations;
+                config_c.cooldown_ms = cooldown_ms;
+                config_c.lookahead = lookahead;
+
+                let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
+                    .with_scheduling_oracle(&sched_oracle);
+                let report_c = engine_c.execute_run()?;
+
+                let c_file = output_dir.join(format!("run_seed_{:04}_group_c.json", seed));
+                let mut f_c = File::create(&c_file)?;
+                f_c.write_all(serde_json::to_string_pretty(&report_c)?.as_bytes())?;
+
+                println!(
+                    "Seed {:04} ({:02}/{}): Group D = {} bins | Group C = {} bins (Diff = {:+})",
+                    seed,
+                    r + 1,
+                    seeds,
+                    report_d.best_in_distribution_score.total_bins,
+                    report_c.best_in_distribution_score.total_bins,
+                    (report_c.best_in_distribution_score.total_bins as i64) - (report_d.best_in_distribution_score.total_bins as i64)
+                );
+
+                aggregate_pairs.push((report_c, report_d));
+
+                // Incremental auto-save of aggregate file
+                let agg_file = output_dir.join("campaign_aggregate.json");
+                let mut f_agg = File::create(&agg_file)?;
+                f_agg.write_all(serde_json::to_string_pretty(&aggregate_pairs)?.as_bytes())?;
+            }
+
+            println!("============================================================");
+            println!(" Campaign Complete: {} paired runs saved in {}", seeds, output_dir.display());
+            println!(" Aggregate data file: {}", output_dir.join("campaign_aggregate.json").display());
+            println!(" To analyze with statistical significance and Holm correction:");
+            println!("   python scripts/analysis/wilcoxon_analysis.py {}/campaign_aggregate.json --output-json {}/stats.json --output-csv {}/stats.csv",
+                output_dir.display(), output_dir.display(), output_dir.display());
+            println!("============================================================");
         }
     }
 
