@@ -956,9 +956,14 @@ fn main() -> Result<()> {
                 );
             }
             println!("------------------------------------------------------------");
+            if let Some(cif_p) = rebirth_report.cumulative_metrics.cif_performance {
+                println!(" CIF Performance (Excess ratio)       : {:.3}x", cif_p);
+            } else {
+                println!(" CIF Performance (Excess ratio)       : Undefined (Zero excess achieved)");
+            }
             println!(
-                " Cumulative Improvement Factor (CIF) : {:.3}x",
-                rebirth_report.cumulative_metrics.cumulative_improvement_factor
+                " CIF Quality-Diversity (QD ratio)     : {:.3}x",
+                rebirth_report.cumulative_metrics.cif_qd
             );
             println!(
                 " Functional Heritability Rate (R_herit): {:.1}%",
@@ -968,6 +973,36 @@ fn main() -> Result<()> {
                 " Innovation Rate (R_innov)             : {:.3} per 1000 evals",
                 rebirth_report.cumulative_metrics.innovation_rate
             );
+            println!("------------------------------------------------------------");
+            println!(" Budget Breakdown (Executions consumed):");
+            println!(
+                "  - Époque 1 (Genèse)                  : {} execs, {} LLM calls",
+                rebirth_report.budget_breakdown.budget_patrimony_epoch1.executions_consumed,
+                rebirth_report.budget_breakdown.budget_patrimony_epoch1.llm_calls_consumed
+            );
+            println!(
+                "  - Réévaluation du Patrimoine Hérité  : {} execs, {} LLM calls",
+                rebirth_report.budget_breakdown.budget_reevaluation_heritage.executions_consumed,
+                rebirth_report.budget_breakdown.budget_reevaluation_heritage.llm_calls_consumed
+            );
+            println!(
+                "  - Recherche Lignée Héritière         : {} execs, {} LLM calls",
+                rebirth_report.budget_breakdown.budget_search_heritage.executions_consumed,
+                rebirth_report.budget_breakdown.budget_search_heritage.llm_calls_consumed
+            );
+            println!(
+                "  - Recherche Lignée Tabula Rasa       : {} execs, {} LLM calls",
+                rebirth_report.budget_breakdown.budget_search_tabula_rasa.executions_consumed,
+                rebirth_report.budget_breakdown.budget_search_tabula_rasa.llm_calls_consumed
+            );
+            println!("------------------------------------------------------------");
+            println!(" Marginal Epoch Analysis:");
+            for rep in &rebirth_report.epoch_marginal_reports {
+                println!(
+                    "  Époque {} -> Bins Gain: {:+} | Excess Gain: {:+} | QD Gain: {:+.3}",
+                    rep.epoch, rep.bins_gain, rep.excess_gain, rep.qd_gain
+                );
+            }
             println!("============================================================");
 
             if let Some(path) = output {

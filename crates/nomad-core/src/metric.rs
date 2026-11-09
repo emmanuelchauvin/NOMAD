@@ -107,10 +107,20 @@ pub struct CumulativeTransmissionMetrics {
     pub innovation_rate: f64,
     /// R_herit : Proportion des motifs innovants transmis qui demeurent fonctionnellement actifs.
     pub functional_heritability_rate: f64,
-    /// CIF : Cumulative Improvement Factor (ratio d'efficacité ou d'excès entre Tabula Rasa et Héritière).
+    /// CIF historique (champ déprécié, maintenu pour compatibilité, aligné sur cif_performance).
+    #[deprecated(note = "Use cif_performance, cif_qd, or cif_functional_transmission instead")]
     pub cumulative_improvement_factor: f64,
     /// Total count of validated innovations preserved in collective heritage.
     pub validated_innovations_count: usize,
+    /// CIF Performance : ratio brut tabula_excess / heritage_excess sans clamp (None si excès nul).
+    #[serde(default)]
+    pub cif_performance: Option<f64>,
+    /// CIF QD : ratio de diversité QD-Score heritage / tabula sans clamp.
+    #[serde(default)]
+    pub cif_qd: f64,
+    /// CIF Transmission Fonctionnelle : conservation des motifs fonctionnels hérités (= functional_heritability_rate).
+    #[serde(default)]
+    pub cif_functional_transmission: f64,
 }
 
 impl BenchmarkScore {
