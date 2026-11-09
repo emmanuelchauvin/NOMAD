@@ -10,7 +10,7 @@ use nomad_core::{
 };
 use nomad_genome::verify_level1_structural_survival;
 use nomad_sandbox::HeuristicSandbox;
-use crate::anti_dead_code::create_ablation_capsule;
+use crate::anti_dead_code::create_ablation_capsule_res;
 
 /// ============================================================================
 /// JobRequest : Requête de Tâche de Calcul Multi-Ressources
@@ -411,34 +411,58 @@ impl SchedulingOracle {
         }
 
         // Niveau 3 : Ablation Causale C_null
-        let c_null_capsule = match create_ablation_capsule(child) {
-            Some(c) => c,
-            None => {
-                // Pas de greffon ablatable (mutation ou seed), validé au niveau 2
-                child.validation = ValidationStatus::PassedLevel2Computational;
-                return Ok(ValidationStatus::PassedLevel2Computational);
+        if child.graft_manifest.is_none() {
+            child.validation = ValidationStatus::PassedLevel2Computational;
+            return Ok(ValidationStatus::PassedLevel2Computational);
+        }
+
+        let c_null_capsule = match create_ablation_capsule_res(child) {
+            Ok(c) => c,
+            Err(e) => {
+                let status = ValidationStatus::NotEvaluable(format!("Scheduling ablation failed: {}", e));
+                child.validation = status.clone();
+                return Ok(status);
             }
         };
 
         // Comparaison décisionnelle différentielle sur un jeu de sondes
         let mut divergent_decisions = 0usize;
+        let mut null_nodes_total = 0usize;
+        let mut orig_nodes_total = 0usize;
+
         for inst in self.in_distribution.instances.iter().take(5) {
             let (eval_c, _, _) = self.evaluate_instance(inst, child, sandbox, fuel_limit);
             let (eval_null, _, _) = self.evaluate_instance(inst, &c_null_capsule, sandbox, fuel_limit);
+
+            if !eval_null.is_valid {
+                let status = ValidationStatus::NotEvaluable(
+                    "Scheduling ablation produced invalid execution on probe instance".to_string(),
+                );
+                child.validation = status.clone();
+                return Ok(status);
+            }
+
+            orig_nodes_total += eval_c.bins_used;
+            null_nodes_total += eval_null.bins_used;
 
             if eval_c.bins_used != eval_null.bins_used || eval_c.trajectory != eval_null.trajectory {
                 divergent_decisions += 1;
             }
         }
 
-        if divergent_decisions > 0 {
+        if null_nodes_total < orig_nodes_total {
+            let status = ValidationStatus::GraftHarmful(format!(
+                "Scheduling ablation improved nodes used (null: {}, orig: {})",
+                null_nodes_total, orig_nodes_total
+            ));
+            child.validation = status.clone();
+            Ok(status)
+        } else if divergent_decisions > 0 && null_nodes_total > orig_nodes_total {
             child.validation = ValidationStatus::PassedLevel3Behavioral;
             Ok(ValidationStatus::PassedLevel3Behavioral)
         } else {
-            child.validation = ValidationStatus::Failed(
-                "Ablation C_null produced identical decisions (no causal impact)".to_string(),
-            );
-            Err("Level 3 Behavioral failed: grafted unit has no causal impact on scheduling decisions".to_string())
+            child.validation = ValidationStatus::PassedLevel2Computational;
+            Ok(ValidationStatus::PassedLevel2Computational)
         }
     }
 }

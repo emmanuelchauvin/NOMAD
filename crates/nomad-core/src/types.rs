@@ -219,10 +219,26 @@ pub enum ValidationStatus {
     PassedLevel1Structural,
     /// Niveau 2 validé : activation effective et calcul dynamique lors de l'évaluation.
     PassedLevel2Computational,
-    /// Niveau 3 validé : impact comportemental causal prouvé par ablation différentielle C_null.
+    /// Niveau 3 validé : impact comportemental causal prouvé par ablation différentielle C_null (dégradation à la suppression).
     PassedLevel3Behavioral,
+    /// Statut non évaluable : l'ablation C_null est invalide, a planté ou le fragment est introuvable.
+    NotEvaluable(String),
+    /// Statut greffe nocive : l'ablation a amélioré la performance (la greffe dégradait l'heuristique).
+    GraftHarmful(String),
     /// Échec de validation avec description explicite de la cause du rejet.
     Failed(String),
+}
+
+impl ValidationStatus {
+    /// Indique si la capsule a validé rigoureusement le Niveau 3 (survie comportementale causale).
+    pub fn is_passed_level3(&self) -> bool {
+        matches!(self, Self::PassedLevel3Behavioral)
+    }
+
+    /// Indique si la capsule a validé au moins le Niveau 2 (survie computationnelle effective).
+    pub fn is_passed_at_least_level2(&self) -> bool {
+        matches!(self, Self::PassedLevel2Computational | Self::PassedLevel3Behavioral)
+    }
 }
 
 impl Default for ValidationStatus {

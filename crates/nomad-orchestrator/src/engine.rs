@@ -529,6 +529,14 @@ impl<'a> EvolutionEngine<'a> {
                         nomad_core::ValidationStatus::PassedLevel3Behavioral => true,
                         nomad_core::ValidationStatus::PassedLevel2Computational => !should_crossover,
                         nomad_core::ValidationStatus::PassedLevel1Structural => !should_crossover,
+                        nomad_core::ValidationStatus::NotEvaluable(reason) => {
+                            tracing::warn!("Rejet bloquant Anti-Dead-Code (Non Évaluable) de {} : {}", child_capsule.name, reason);
+                            false
+                        }
+                        nomad_core::ValidationStatus::GraftHarmful(reason) => {
+                            tracing::warn!("Rejet bloquant Anti-Dead-Code (Greffe Nocive) de {} : {}", child_capsule.name, reason);
+                            false
+                        }
                         nomad_core::ValidationStatus::Failed(reason) => {
                             tracing::warn!("Rejet bloquant Anti-Dead-Code de {} : {}", child_capsule.name, reason);
                             false
