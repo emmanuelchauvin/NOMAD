@@ -166,7 +166,9 @@ mod tests {
         let s4 = oracle.evaluate_in_distribution(&SkillCapsule::new("C4", "", c4, vec![], 0, Default::default()), &sandbox, 50_000);
         println!(">>> 1264 Champion with lookahead bonus: {} bins", s4.total_bins);
         assert!(s3.total_bins <= 1265);
-        assert!(s4.total_bins <= 1265);
+        // Corrected expectation: with compound assignment `-=` faithfully executed by the AST interpreter
+        // (rather than silently dropped as a no-op in prior versions), this specific bonus yields 1266 bins.
+        assert!(s4.total_bins <= 1266);
     }
 
     #[test]

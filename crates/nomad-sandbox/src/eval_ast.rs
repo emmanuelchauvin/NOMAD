@@ -6,7 +6,7 @@ use syn::{
 };
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum EvalError {
     #[error("Parse error: {0}")]
     ParseError(String),
@@ -14,6 +14,12 @@ pub enum EvalError {
     UndefinedVariable(String),
     #[error("Fuel limit exceeded during AST interpretation")]
     FuelExceeded,
+    #[error("Maximum AST expression recursion depth exceeded ({current} > {max})")]
+    RecursionLimitExceeded { current: usize, max: usize },
+    #[error("Memory limit or collection capacity exceeded: {0}")]
+    MemoryLimitExceeded(String),
+    #[error("Pathological input rejected: {0}")]
+    InvalidInput(String),
     #[error("Unsupported AST expression: {0}")]
     UnsupportedExpr(String),
 }
@@ -51,7 +57,7 @@ pub struct ScorePolicyContext {
 /// ============================================================================
 /// Bilan d'une exécution de `score_bin` renvoyant le score, le fuel consommé
 /// et les statistiques d'activation des branches.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstEvalOutcome {
     /// Score numérique attribué au bac (le bac ayant le score minimal ou maximal est choisi).
     pub score: f64,
@@ -64,28 +70,60 @@ pub struct AstEvalOutcome {
 }
 
 /// ============================================================================
-/// AstInterpreter : Interpréteur Déterministe d'AST Rust avec Comptage de Fuel
+/// AstInterpreter : Interpréteur Déterministe d'AST Rust avec Limitation de Ressources
 /// ============================================================================
-/// Exécute de façon sécurisée et isolée une fonction `score_bin` représentée
-/// sous forme d'AST `syn::ItemFn` sans risque de blocage ou d'accès hôte non autorisé.
+/// Interpréteur déterministe avec limitation de ressources (fuel, profondeur, mémoire),
+/// sans isolation de processus au sens OS.
 pub struct AstInterpreter<'a> {
     item_fn: &'a ItemFn,
     fuel_limit: u64,
+    max_depth: usize,
+    max_vars: usize,
 }
 
 impl<'a> AstInterpreter<'a> {
-    /// Initialise l'interpréteur avec la fonction AST et un plafond strict de fuel.
+    /// Initialise l'interpréteur avec la fonction AST, un plafond de fuel,
+    /// une profondeur maximale de récursion de 48 et une limite de 128 variables.
     pub fn new(item_fn: &'a ItemFn, fuel_limit: u64) -> Self {
         Self {
             item_fn,
             fuel_limit,
+            max_depth: 48,
+            max_vars: 128,
+        }
+    }
+
+    /// Initialise l'interpréteur avec des limites de ressources configurables.
+    pub fn with_limits(
+        item_fn: &'a ItemFn,
+        fuel_limit: u64,
+        max_depth: usize,
+        max_vars: usize,
+    ) -> Self {
+        Self {
+            item_fn,
+            fuel_limit,
+            max_depth,
+            max_vars,
         }
     }
 
     /// ========================================================================
     /// eval_with_vars : Interprétation Séquentielle Générique avec Variables
     /// ========================================================================
-    pub fn eval_with_vars(&self, mut vars: HashMap<String, f64>, default_fallback: f64) -> Result<AstEvalOutcome, EvalError> {
+    pub fn eval_with_vars(
+        &self,
+        mut vars: HashMap<String, f64>,
+        default_fallback: f64,
+    ) -> Result<AstEvalOutcome, EvalError> {
+        if vars.len() > self.max_vars {
+            return Err(EvalError::MemoryLimitExceeded(format!(
+                "Initial variable count {} exceeds maximum {}",
+                vars.len(),
+                self.max_vars
+            )));
+        }
+
         let mut fuel_consumed = 0u64;
         let mut branches_taken = 0usize;
         let mut score_mutations = 0usize;
@@ -113,7 +151,14 @@ impl<'a> AstInterpreter<'a> {
                         &mut fuel_consumed,
                         &mut branches_taken,
                         &mut score_mutations,
+                        0,
                     )?;
+                    if vars.len() >= self.max_vars && !vars.contains_key(&ident) {
+                        return Err(EvalError::MemoryLimitExceeded(format!(
+                            "Variable count exceeded maximum limit of {}",
+                            self.max_vars
+                        )));
+                    }
                     vars.insert(ident, val);
                 }
                 Stmt::Expr(expr, semi) => {
@@ -123,6 +168,7 @@ impl<'a> AstInterpreter<'a> {
                         &mut fuel_consumed,
                         &mut branches_taken,
                         &mut score_mutations,
+                        0,
                     )?;
                     if semi.is_none() {
                         return_val = Some(val);
@@ -148,6 +194,25 @@ impl<'a> AstInterpreter<'a> {
     /// eval : Algorithme d'Interprétation Séquentielle de `score_bin`
     /// ========================================================================
     pub fn eval(&self, ctx: &ScorePolicyContext) -> Result<AstEvalOutcome, EvalError> {
+        // Validation stricte des entrées pour rejeter les cas pathologiques
+        if ctx.bin_capacity == 0 {
+            return Err(EvalError::InvalidInput("bin_capacity must be > 0".to_string()));
+        }
+        if ctx.item_size == 0 {
+            return Err(EvalError::InvalidInput("item_size must be > 0".to_string()));
+        }
+        if ctx.item_size > ctx.bin_capacity {
+            return Err(EvalError::InvalidInput(format!(
+                "item_size ({}) exceeds bin_capacity ({})",
+                ctx.item_size, ctx.bin_capacity
+            )));
+        }
+        if !ctx.mean_residual.is_finite() {
+            return Err(EvalError::InvalidInput(
+                "mean_residual must be a finite number".to_string(),
+            ));
+        }
+
         let mut vars = HashMap::new();
         vars.insert("item_size".to_string(), ctx.item_size as f64);
         vars.insert("next_item_size".to_string(), ctx.next_item_size as f64);
@@ -167,6 +232,28 @@ impl<'a> AstInterpreter<'a> {
     /// eval_scheduling : Interprétation Séquentielle de `score_node`
     /// ========================================================================
     pub fn eval_scheduling(&self, ctx: &SchedulingInputs) -> Result<AstEvalOutcome, EvalError> {
+        // Validation stricte des entrées pour l'ordonnancement
+        if ctx.node_capacity_cpu == 0 || ctx.node_capacity_ram == 0 {
+            return Err(EvalError::InvalidInput(
+                "node capacity CPU and RAM must be > 0".to_string(),
+            ));
+        }
+        if ctx.job_cpu == 0 && ctx.job_ram == 0 {
+            return Err(EvalError::InvalidInput(
+                "job CPU and RAM cannot both be 0".to_string(),
+            ));
+        }
+        if ctx.job_cpu > ctx.node_capacity_cpu || ctx.job_ram > ctx.node_capacity_ram {
+            return Err(EvalError::InvalidInput(
+                "job requirements exceed node capacity".to_string(),
+            ));
+        }
+        if !ctx.mean_cpu_residual.is_finite() || !ctx.mean_ram_residual.is_finite() {
+            return Err(EvalError::InvalidInput(
+                "mean CPU and RAM residuals must be finite numbers".to_string(),
+            ));
+        }
+
         let mut vars = HashMap::new();
         vars.insert("job_cpu".to_string(), ctx.job_cpu as f64);
         vars.insert("job_ram".to_string(), ctx.job_ram as f64);
@@ -193,7 +280,15 @@ impl<'a> AstInterpreter<'a> {
         fuel: &mut u64,
         branches: &mut usize,
         mutations: &mut usize,
+        depth: usize,
     ) -> Result<f64, EvalError> {
+        if depth > self.max_depth {
+            return Err(EvalError::RecursionLimitExceeded {
+                current: depth,
+                max: self.max_depth,
+            });
+        }
+
         *fuel += 2;
         if *fuel > self.fuel_limit {
             return Err(EvalError::FuelExceeded);
@@ -208,7 +303,7 @@ impl<'a> AstInterpreter<'a> {
                     .base10_parse::<f64>()
                     .map_err(|e| EvalError::ParseError(e.to_string())),
                 Lit::Bool(b) => Ok(if b.value { 1.0 } else { 0.0 }),
-                _ => Ok(0.0),
+                _ => Err(EvalError::UnsupportedExpr(format!("Unsupported literal: {:?}", lit))),
             },
             Expr::Path(ExprPath { path, .. }) => {
                 if let Some(ident) = path.get_ident() {
@@ -228,24 +323,24 @@ impl<'a> AstInterpreter<'a> {
                 }
             }
             Expr::Cast(ExprCast { expr, .. }) => {
-                self.eval_expr(expr, vars, fuel, branches, mutations)
+                self.eval_expr(expr, vars, fuel, branches, mutations, depth + 1)
             }
             Expr::Paren(ExprParen { expr, .. }) => {
-                self.eval_expr(expr, vars, fuel, branches, mutations)
+                self.eval_expr(expr, vars, fuel, branches, mutations, depth + 1)
             }
             Expr::Unary(ExprUnary { op, expr, .. }) => {
-                let val = self.eval_expr(expr, vars, fuel, branches, mutations)?;
+                let val = self.eval_expr(expr, vars, fuel, branches, mutations, depth + 1)?;
                 match op {
                     UnOp::Neg(_) => Ok(-val),
                     UnOp::Not(_) => Ok(if val == 0.0 { 1.0 } else { 0.0 }),
-                    _ => Ok(val),
+                    _ => Err(EvalError::UnsupportedExpr(format!("Unsupported unary operator: {:?}", op))),
                 }
             }
             Expr::Binary(ExprBinary {
                 left, op, right, ..
             }) => {
-                let l = self.eval_expr(left, vars, fuel, branches, mutations)?;
-                let r = self.eval_expr(right, vars, fuel, branches, mutations)?;
+                let l = self.eval_expr(left, vars, fuel, branches, mutations, depth + 1)?;
+                let r = self.eval_expr(right, vars, fuel, branches, mutations, depth + 1)?;
                 match op {
                     BinOp::Add(_) => Ok(l + r),
                     BinOp::Sub(_) => Ok(l - r),
@@ -272,8 +367,54 @@ impl<'a> AstInterpreter<'a> {
                     BinOp::Ne(_) => Ok(if (l - r).abs() >= 1e-6 { 1.0 } else { 0.0 }),
                     BinOp::And(_) => Ok(if l != 0.0 && r != 0.0 { 1.0 } else { 0.0 }),
                     BinOp::Or(_) => Ok(if l != 0.0 || r != 0.0 { 1.0 } else { 0.0 }),
-                    // syn 2.0 compound assignments are handled in Expr::Binary when enabled or Expr::Assign
-                    _ => Ok(0.0),
+                    BinOp::AddAssign(_)
+                    | BinOp::SubAssign(_)
+                    | BinOp::MulAssign(_)
+                    | BinOp::DivAssign(_)
+                    | BinOp::RemAssign(_) => {
+                        if let Expr::Path(ExprPath { path, .. }) = &**left {
+                            if let Some(ident) = path.get_ident() {
+                                let name = ident.to_string();
+                                let current = vars.get(&name).copied().unwrap_or(0.0);
+                                let updated = match op {
+                                    BinOp::AddAssign(_) => current + r,
+                                    BinOp::SubAssign(_) => current - r,
+                                    BinOp::MulAssign(_) => current * r,
+                                    BinOp::DivAssign(_) => {
+                                        if r != 0.0 {
+                                            current / r
+                                        } else {
+                                            0.0
+                                        }
+                                    }
+                                    BinOp::RemAssign(_) => {
+                                        if r != 0.0 {
+                                            current % r
+                                        } else {
+                                            0.0
+                                        }
+                                    }
+                                    _ => unreachable!(),
+                                };
+                                if name == "score" {
+                                    *mutations += 1;
+                                }
+                                if vars.len() >= self.max_vars && !vars.contains_key(&name) {
+                                    return Err(EvalError::MemoryLimitExceeded(format!(
+                                        "Variable count exceeded maximum limit of {}",
+                                        self.max_vars
+                                    )));
+                                }
+                                vars.insert(name, updated);
+                                Ok(updated)
+                            } else {
+                                Ok(r)
+                            }
+                        } else {
+                            Ok(r)
+                        }
+                    }
+                    _ => Err(EvalError::UnsupportedExpr(format!("Unsupported binary operator: {:?}", op))),
                 }
             }
             Expr::If(ExprIf {
@@ -283,7 +424,7 @@ impl<'a> AstInterpreter<'a> {
                 ..
             }) => {
                 let condition_met =
-                    self.eval_expr(cond, vars, fuel, branches, mutations)? != 0.0;
+                    self.eval_expr(cond, vars, fuel, branches, mutations, depth + 1)? != 0.0;
                 if condition_met {
                     *branches += 1;
                     let mut last_val = 0.0;
@@ -304,29 +445,42 @@ impl<'a> AstInterpreter<'a> {
                                     fuel,
                                     branches,
                                     mutations,
+                                    depth + 1,
                                 )?;
+                                if vars.len() >= self.max_vars && !vars.contains_key(&ident) {
+                                    return Err(EvalError::MemoryLimitExceeded(format!(
+                                        "Variable count exceeded maximum limit of {}",
+                                        self.max_vars
+                                    )));
+                                }
                                 vars.insert(ident, v);
                             }
                             Stmt::Expr(e, _) => {
-                                last_val = self.eval_expr(e, vars, fuel, branches, mutations)?;
+                                last_val = self.eval_expr(e, vars, fuel, branches, mutations, depth + 1)?;
                             }
                             _ => {}
                         }
                     }
                     Ok(last_val)
                 } else if let Some((_, else_expr)) = else_branch {
-                    self.eval_expr(else_expr, vars, fuel, branches, mutations)
+                    self.eval_expr(else_expr, vars, fuel, branches, mutations, depth + 1)
                 } else {
                     Ok(0.0)
                 }
             }
             Expr::Assign(assign) => {
-                let r = self.eval_expr(&assign.right, vars, fuel, branches, mutations)?;
+                let r = self.eval_expr(&assign.right, vars, fuel, branches, mutations, depth + 1)?;
                 if let Expr::Path(ExprPath { path, .. }) = &*assign.left {
                     if let Some(ident) = path.get_ident() {
                         let name = ident.to_string();
                         if name == "score" {
                             *mutations += 1;
+                        }
+                        if vars.len() >= self.max_vars && !vars.contains_key(&name) {
+                            return Err(EvalError::MemoryLimitExceeded(format!(
+                                "Variable count exceeded maximum limit of {}",
+                                self.max_vars
+                            )));
                         }
                         vars.insert(name, r);
                     }
@@ -337,7 +491,7 @@ impl<'a> AstInterpreter<'a> {
                 let mut last = 0.0;
                 for stmt in &block.block.stmts {
                     if let Stmt::Expr(e, _) = stmt {
-                        last = self.eval_expr(e, vars, fuel, branches, mutations)?;
+                        last = self.eval_expr(e, vars, fuel, branches, mutations, depth + 1)?;
                     }
                 }
                 Ok(last)
@@ -348,11 +502,17 @@ impl<'a> AstInterpreter<'a> {
                 args,
                 ..
             }) => {
-                let recv_val = self.eval_expr(receiver, vars, fuel, branches, mutations)?;
+                if args.len() > 8 {
+                    return Err(EvalError::MemoryLimitExceeded(format!(
+                        "Method argument count {} exceeds limit of 8",
+                        args.len()
+                    )));
+                }
+                let recv_val = self.eval_expr(receiver, vars, fuel, branches, mutations, depth + 1)?;
                 let method_name = method.to_string();
                 let mut eval_args = Vec::with_capacity(args.len());
                 for arg in args {
-                    eval_args.push(self.eval_expr(arg, vars, fuel, branches, mutations)?);
+                    eval_args.push(self.eval_expr(arg, vars, fuel, branches, mutations, depth + 1)?);
                 }
                 match method_name.as_str() {
                     "powi" => {
@@ -398,13 +558,22 @@ impl<'a> AstInterpreter<'a> {
                         let res = recv_val.clamp(-50.0, 50.0).exp();
                         Ok(if res.is_finite() { res } else { 0.0 })
                     }
-                    _ => Ok(recv_val),
+                    _ => Err(EvalError::UnsupportedExpr(format!(
+                        "Unsupported method call: {}",
+                        method_name
+                    ))),
                 }
             }
             Expr::Call(ExprCall { func, args, .. }) => {
+                if args.len() > 8 {
+                    return Err(EvalError::MemoryLimitExceeded(format!(
+                        "Function argument count {} exceeds limit of 8",
+                        args.len()
+                    )));
+                }
                 let mut eval_args = Vec::with_capacity(args.len());
                 for arg in args {
-                    eval_args.push(self.eval_expr(arg, vars, fuel, branches, mutations)?);
+                    eval_args.push(self.eval_expr(arg, vars, fuel, branches, mutations, depth + 1)?);
                 }
                 let fn_name = if let Expr::Path(ExprPath { path, .. }) = &**func {
                     path.segments
@@ -446,10 +615,15 @@ impl<'a> AstInterpreter<'a> {
                         let res = a.powf(b);
                         Ok(if res.is_finite() { res } else { 0.0 })
                     }
-                    _ => Ok(eval_args.first().copied().unwrap_or(0.0)),
+                    _ => Err(EvalError::UnsupportedExpr(format!(
+                        "Unsupported function call: {}",
+                        fn_name
+                    ))),
                 }
             }
-            _ => Ok(0.0),
+            _ => Err(EvalError::UnsupportedExpr(
+                "Unsupported expression construct".to_string(),
+            )),
         }
     }
 }
@@ -556,11 +730,6 @@ mod tests {
             fitting_bins_count: 3,
         };
 
-        // stream_progress = 0.5^2 = 0.25
-        // residual_ratio = 0.2, .powi(3) = 0.008
-        // 1.5 * 0.25 + 0.5 = 0.875
-        // score_init = 1.0 - 0.875 * 0.008 = 0.993
-        // final_score = 0.993 * 0.95 + 0.2 * 0.05 = 0.94335 + 0.010 = 0.95335
         let outcome = interpreter.eval(&ctx).unwrap();
         assert!(
             (outcome.score - 0.95335).abs() < 1e-4,
@@ -568,5 +737,173 @@ mod tests {
             outcome.score
         );
     }
-}
 
+    #[test]
+    fn test_ast_interpreter_recursion_depth_limit() {
+        // Build an expression nested 55 levels deep: ((((...(1.0 + 1.0)...))))
+        let mut expr_str = "1.0".to_string();
+        for _ in 0..55 {
+            expr_str = format!("({} + 1.0)", expr_str);
+        }
+        let code = format!("pub fn score_bin() -> f64 {{ let score = {}; score }}", expr_str);
+        let item_fn: ItemFn = syn::parse_str(&code).unwrap();
+
+        let interpreter = AstInterpreter::new(&item_fn, 50_000);
+        let ctx = ScorePolicyContext {
+            item_size: 10,
+            next_item_size: 10,
+            bin_residual: 50,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 10,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+            post_residual: 40,
+            fitting_bins_count: 1,
+        };
+
+        let result = interpreter.eval(&ctx);
+        assert!(matches!(
+            result,
+            Err(EvalError::RecursionLimitExceeded { current: _, max: 48 })
+        ));
+    }
+
+    #[test]
+    fn test_ast_interpreter_memory_limit_exceeded() {
+        // Generate a function declaring 135 local variables, exceeding max_vars = 128
+        let mut decls = String::new();
+        for i in 0..135 {
+            decls.push_str(&format!("let v{} = {} as f64;\n", i, i));
+        }
+        let code = format!("pub fn score_bin() -> f64 {{\n{} let score = 1.0;\n score }}", decls);
+        let item_fn: ItemFn = syn::parse_str(&code).unwrap();
+
+        let interpreter = AstInterpreter::new(&item_fn, 50_000);
+        let ctx = ScorePolicyContext {
+            item_size: 10,
+            next_item_size: 10,
+            bin_residual: 50,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 10,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+            post_residual: 40,
+            fitting_bins_count: 1,
+        };
+
+        let result = interpreter.eval(&ctx);
+        assert!(matches!(result, Err(EvalError::MemoryLimitExceeded(_))));
+    }
+
+    #[test]
+    fn test_ast_interpreter_pathological_inputs_rejected() {
+        let code = "pub fn score_bin() -> f64 { 1.0 }";
+        let item_fn: ItemFn = syn::parse_str(code).unwrap();
+        let interpreter = AstInterpreter::new(&item_fn, 50_000);
+
+        // Case 1: item_size == 0
+        let ctx_zero_item = ScorePolicyContext {
+            item_size: 0,
+            next_item_size: 0,
+            bin_residual: 50,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 10,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+            post_residual: 50,
+            fitting_bins_count: 1,
+        };
+        assert!(matches!(
+            interpreter.eval(&ctx_zero_item),
+            Err(EvalError::InvalidInput(_))
+        ));
+
+        // Case 2: bin_capacity == 0
+        let ctx_zero_cap = ScorePolicyContext {
+            item_size: 10,
+            next_item_size: 0,
+            bin_residual: 50,
+            bin_capacity: 0,
+            step_index: 0,
+            total_items: 10,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+            post_residual: 40,
+            fitting_bins_count: 1,
+        };
+        assert!(matches!(
+            interpreter.eval(&ctx_zero_cap),
+            Err(EvalError::InvalidInput(_))
+        ));
+
+        // Case 3: item_size > bin_capacity
+        let ctx_huge_item = ScorePolicyContext {
+            item_size: 150,
+            next_item_size: 0,
+            bin_residual: 50,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 10,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+            post_residual: 0,
+            fitting_bins_count: 1,
+        };
+        assert!(matches!(
+            interpreter.eval(&ctx_huge_item),
+            Err(EvalError::InvalidInput(_))
+        ));
+
+        // Case 4: NaN in mean_residual
+        let ctx_nan = ScorePolicyContext {
+            item_size: 10,
+            next_item_size: 0,
+            bin_residual: 50,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 10,
+            open_bins_count: 1,
+            mean_residual: f64::NAN,
+            post_residual: 40,
+            fitting_bins_count: 1,
+        };
+        assert!(matches!(
+            interpreter.eval(&ctx_nan),
+            Err(EvalError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn test_ast_interpreter_fuel_exhaustion_without_panic() {
+        let code = r#"
+        pub fn score_bin() -> f64 {
+            let mut score = 0.0;
+            score = score + 1.0;
+            score = score + 2.0;
+            score = score + 3.0;
+            score
+        }
+        "#;
+        let item_fn: ItemFn = syn::parse_str(code).unwrap();
+        // Set fuel limit very low (e.g. 5) so it runs out cleanly
+        let interpreter = AstInterpreter::new(&item_fn, 5);
+        let ctx = ScorePolicyContext {
+            item_size: 10,
+            next_item_size: 10,
+            bin_residual: 50,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 10,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+            post_residual: 40,
+            fitting_bins_count: 1,
+        };
+
+        let result = interpreter.eval(&ctx);
+        assert_eq!(result, Err(EvalError::FuelExceeded));
+    }
+}
