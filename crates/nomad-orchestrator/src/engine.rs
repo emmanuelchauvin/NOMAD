@@ -48,6 +48,8 @@ pub struct ExperimentRunReport {
     pub rng_seed: u64,
     pub total_generations: usize,
     pub best_in_distribution_score: BenchmarkScore,
+    #[serde(default)]
+    pub best_validation_score: Option<BenchmarkScore>,
     pub best_ood1_score: BenchmarkScore,
     pub best_ood2_score: BenchmarkScore,
     pub best_capsule: SkillCapsule,
@@ -208,19 +210,22 @@ impl<'a> EvolutionEngine<'a> {
 
         let best_ind = best_overall.unwrap_or_else(|| current_population[0].clone());
 
-        // 3. Independent Out-Of-Distribution Evaluation of the Best Heuristic
-        info!("Evaluating winning capsule {} on OOD benchmarks...", best_ind.capsule.id);
-        let (ood1_score, ood2_score) = if self.config.domain == ProblemDomain::MultiResourceScheduling {
+        // 3. Independent In-Distribution Validation & Out-Of-Distribution Evaluation of the Best Heuristic
+        // Note: Neither validation nor OOD evaluations affect selection, MAP-Elites, or the search budget.
+        info!("Evaluating winning capsule {} on validation and OOD benchmarks...", best_ind.capsule.id);
+        let (val_score, ood1_score, ood2_score) = if self.config.domain == ProblemDomain::MultiResourceScheduling {
             if let Some(sched) = self.scheduling_oracle {
                 (
+                    Some(sched.evaluate_validation(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call)),
                     sched.evaluate_dataset(&sched.ood1_scale, &best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
                     sched.evaluate_dataset(&sched.ood2_skewed, &best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
                 )
             } else {
-                (BenchmarkScore::fatal_penalty(50), BenchmarkScore::fatal_penalty(50))
+                (None, BenchmarkScore::fatal_penalty(50), BenchmarkScore::fatal_penalty(50))
             }
         } else {
             (
+                Some(self.oracle.evaluate_validation(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call)),
                 self.oracle.evaluate_ood1(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
                 self.oracle.evaluate_ood2(&best_ind.capsule, self.sandbox, self.config.fuel_limit_per_call),
             )
@@ -231,6 +236,7 @@ impl<'a> EvolutionEngine<'a> {
             rng_seed: self.config.rng_seed,
             total_generations: generation_records.len(),
             best_in_distribution_score: best_ind.in_distribution_score,
+            best_validation_score: val_score,
             best_ood1_score: ood1_score,
             best_ood2_score: ood2_score,
             best_capsule: best_ind.capsule,

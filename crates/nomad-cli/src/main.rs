@@ -1003,6 +1003,14 @@ fn main() -> Result<()> {
                 report.archive.coverage() * 100.0,
                 report.archive.qd_score()
             );
+            if let Some(ref val_score) = report.best_validation_score {
+                println!(
+                    " Validation Score : {} bins (excess: +{}), Efficiency: {:.2}%",
+                    val_score.total_bins,
+                    val_score.total_excess_bins,
+                    val_score.mean_efficiency * 100.0
+                );
+            }
             println!(
                 " OOD-1 Score      : {} bins (excess: +{}), Efficiency: {:.2}%",
                 report.best_ood1_score.total_bins,

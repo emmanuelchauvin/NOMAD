@@ -138,11 +138,13 @@ fn compute_residual_entropy(bin_levels: &[u32], capacity: u32) -> f64 {
 ///
 /// **Jeux de données sanctuarisés :**
 /// - `in_distribution` : 50 instances, N=50, tailles U(10, 80), capacité C=100.
+/// - `validation` : 50 instances de validation in-distribution (seed dérivée sanctuarisée).
 /// - `ood1_scale` : 50 instances de passage à l'échelle, N=500, U(10, 80).
 /// - `ood2_powerlaw` : 50 instances de rupture de distribution (loi de puissance).
 #[derive(Debug, Clone)]
 pub struct OracleEvaluator {
     pub in_distribution: Dataset,
+    pub validation: Dataset,
     pub ood1_scale: Dataset,
     pub ood2_powerlaw: Dataset,
 }
@@ -152,6 +154,7 @@ impl OracleEvaluator {
     pub fn new(seed: u64) -> Self {
         Self {
             in_distribution: Dataset::generate_in_distribution(seed),
+            validation: Dataset::generate_validation(seed),
             ood1_scale: Dataset::generate_ood1_scale(seed),
             ood2_powerlaw: Dataset::generate_ood2_distribution_shift(seed),
         }
@@ -165,6 +168,16 @@ impl OracleEvaluator {
         fuel_limit_per_call: u64,
     ) -> BenchmarkScore {
         self.evaluate_dataset(&self.in_distribution, capsule, sandbox, fuel_limit_per_call)
+    }
+
+    /// Évalue une capsule sur le jeu de validation In-Distribution (non utilisé pour la sélection ni MAP-Elites).
+    pub fn evaluate_validation(
+        &self,
+        capsule: &SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+    ) -> BenchmarkScore {
+        self.evaluate_dataset(&self.validation, capsule, sandbox, fuel_limit_per_call)
     }
 
     /// Évalue une capsule sur le benchmark hors-distribution OOD-1 (Échelle N=500).

@@ -124,4 +124,38 @@ mod tests {
         }
         assert!(crossover_count > 0, "At least one crossover should have occurred in Group C");
     }
+
+    #[test]
+    fn test_validation_and_ood_do_not_contaminate_archive_or_selection_budget() {
+        let mut config = ExperimentConfig::default();
+        config.group = ExperimentalGroup::GroupC;
+        config.rng_seed = 42;
+        config.population_size = 6;
+        config.max_generations = 2;
+
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        let report = engine.execute_run().expect("Run execution should succeed");
+
+        // 1. Validation score must be present and valid
+        assert!(report.best_validation_score.is_some());
+        let val_score = report.best_validation_score.unwrap();
+        assert!(val_score.is_valid);
+        assert!(val_score.total_bins > 0);
+
+        // 2. Post-run independent evaluation on validation & OOD must not alter engine's archive or budget
+        let initial_archive_count = engine.archive.grid.len();
+        let initial_exec_budget = engine.budget.executions_consumed;
+
+        // Perform independent evaluation on validation and OOD
+        let _val = oracle.evaluate_validation(&report.best_capsule, &sandbox, 100_000);
+        let _ood1 = oracle.evaluate_ood1(&report.best_capsule, &sandbox, 100_000);
+        let _ood2 = oracle.evaluate_ood2(&report.best_capsule, &sandbox, 100_000);
+
+        assert_eq!(engine.archive.grid.len(), initial_archive_count, "Archive must not be contaminated by validation/OOD evaluations");
+        assert_eq!(engine.budget.executions_consumed, initial_exec_budget, "Selection budget must not be contaminated by validation/OOD evaluations");
+    }
 }

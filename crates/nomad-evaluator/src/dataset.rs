@@ -82,6 +82,26 @@ impl Dataset {
         Self::new("NOMAD_IN_DISTRIBUTION_N50_50INST", instances)
     }
 
+    /// Pre-registered In-Distribution Validation Dataset:
+    /// 50 instances, N=50 items, Uniform distribution U(10, 80), capacity C=100.
+    /// Uses distinct derived seed (seed ^ 0x5A11_DA71_0E) to prevent data leakage.
+    pub fn generate_validation(seed: u64) -> Self {
+        let mut rng = ChaCha8Rng::seed_from_u64(seed ^ 0x5A11_DA71_0E_u64);
+        let mut instances = Vec::with_capacity(50);
+        let capacity = 100u32;
+
+        for i in 0..50 {
+            let items: Vec<u32> = (0..50).map(|_| rng.gen_range(10..=80)).collect();
+            instances.push(BinPackingInstance::new(
+                format!("in_dist_val_{:02}", i + 1),
+                items,
+                capacity,
+            ));
+        }
+
+        Self::new("NOMAD_IN_DISTRIBUTION_VALIDATION_N50_50INST", instances)
+    }
+
     /// Pre-registered OOD-1 (Scale) Dataset:
     /// 50 instances, N=500 items, Uniform distribution U(10, 80), capacity C=100.
     pub fn generate_ood1_scale(seed: u64) -> Self {
@@ -126,5 +146,25 @@ impl Dataset {
         }
 
         Self::new("NOMAD_OOD2_POWERLAW_N500_50INST", instances)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validation_dataset_integrity_and_separation() {
+        let seed = 42;
+        let train_ds = Dataset::generate_in_distribution(seed);
+        let val_ds = Dataset::generate_validation(seed);
+
+        assert_eq!(train_ds.instances.len(), 50);
+        assert_eq!(val_ds.instances.len(), 50);
+        // Ensure distinct cryptographic signatures
+        assert_ne!(train_ds.dataset_hash, val_ds.dataset_hash);
+        // Ensure instances are distinct
+        assert_ne!(train_ds.instances[0].instance_hash, val_ds.instances[0].instance_hash);
+        assert_eq!(val_ds.name, "NOMAD_IN_DISTRIBUTION_VALIDATION_N50_50INST");
     }
 }

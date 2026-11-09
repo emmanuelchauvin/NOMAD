@@ -91,6 +91,39 @@ impl SchedulingDataset {
         }
     }
 
+    /// Pre-registered In-Distribution Validation Dataset :
+    /// 50 instances de 50 tâches hétérogènes (seed dérivée distincte).
+    pub fn generate_validation(seed: u64) -> Self {
+        let mut rng = ChaCha8Rng::seed_from_u64(seed ^ 0x5A11_DA71_0E_u64);
+        let mut instances = Vec::with_capacity(50);
+
+        for inst_idx in 0..50 {
+            let mut jobs = Vec::with_capacity(50);
+            for job_id in 0..50 {
+                let cpu_req = rng.gen_range(1..=8);
+                let ram_req = rng.gen_range(2..=32);
+                jobs.push(JobRequest {
+                    job_id,
+                    cpu_req,
+                    ram_req,
+                });
+            }
+            instances.push(SchedulingInstance {
+                name: format!("Val-Sched-{:03}", inst_idx),
+                jobs,
+                node_capacity_cpu: 32,
+                node_capacity_ram: 128,
+            });
+        }
+
+        let dataset_hash = Self::compute_hash(&instances);
+        Self {
+            dataset_name: "In-Distribution Validation (Multi-Resource Scheduling)".to_string(),
+            instances,
+            dataset_hash,
+        }
+    }
+
     /// Benchmark Hors-Distribution OOD-1 : Mise à l'échelle (50 instances de 300 tâches).
     pub fn generate_ood_scale(seed: u64) -> Self {
         let mut rng = ChaCha8Rng::seed_from_u64(seed ^ 0xFEEDFACE);
@@ -178,6 +211,7 @@ impl SchedulingDataset {
 /// ============================================================================
 pub struct SchedulingOracle {
     pub in_distribution: SchedulingDataset,
+    pub validation: SchedulingDataset,
     pub ood1_scale: SchedulingDataset,
     pub ood2_skewed: SchedulingDataset,
 }
@@ -186,9 +220,20 @@ impl SchedulingOracle {
     pub fn new(seed: u64) -> Self {
         Self {
             in_distribution: SchedulingDataset::generate_in_distribution(seed),
+            validation: SchedulingDataset::generate_validation(seed),
             ood1_scale: SchedulingDataset::generate_ood_scale(seed),
             ood2_skewed: SchedulingDataset::generate_ood_skewed(seed),
         }
+    }
+
+    /// Évalue une capsule sur le jeu de validation In-Distribution.
+    pub fn evaluate_validation(
+        &self,
+        capsule: &SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+    ) -> BenchmarkScore {
+        self.evaluate_dataset(&self.validation, capsule, sandbox, fuel_limit_per_call)
     }
 
     /// Évalue une instance unique de placement de tâches.
