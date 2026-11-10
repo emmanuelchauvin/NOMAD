@@ -110,14 +110,16 @@ impl MapElitesArchive {
             // Domaine 1D Bin Packing
             // ================================================================
             // Axe X : Ratio d'espace mort critique [1..15] sur les bacs ouverts.
-            // Les heuristiques performantes convergent sous 0.08. Découpage logarithmique adapté à [0.0, 0.15]
+            // Les heuristiques performantes convergent sous 0.08. Échelle logarithmique compressée
+            // sur la plage réelle observée [0.0, 0.15] (évite l'écrasement dans la tranche 0).
             let nx = ((1.0 + b.dead_space_ratio.max(0.0) / 0.015).ln() / (11.0f64).ln())
                 .clamp(0.0, 0.999);
 
             // Axe Y : Entropie de Shannon composite du remplissage [0.0, 2.5].
-            // Maximum théorique ln(10) ≈ 2.3025. Découpage régulier sur [0.0, 2.40]
+            // Maximum théorique ln(10) ≈ 2.3025. Découpage calibré sur la plage réelle [0.0, 2.50]
+            // (évite la division linéaire brute sur [0.0, 1.0]).
             let ny = if b.residual_variance > 0.0 {
-                (b.residual_variance / 2.40).clamp(0.0, 0.999)
+                (b.residual_variance / 2.50).clamp(0.0, 0.999)
             } else {
                 ((b.new_bin_ratio - 0.30).max(0.0) / 0.40).clamp(0.0, 0.999)
             };
