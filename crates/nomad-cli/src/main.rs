@@ -1324,14 +1324,27 @@ fn main() -> Result<()> {
                         .with_scheduling_oracle(&sched_oracle);
                 let report_c = engine_c.execute_run()?;
 
+                let val_d = report_d.best_validation_score.as_ref().map(|s| s.total_bins).unwrap_or(0);
+                let val_c = report_c.best_validation_score.as_ref().map(|s| s.total_bins).unwrap_or(0);
                 println!(
-                    "Pair #{:02} (Seed {}): Group D Bins = {} vs Group C Bins = {} (Δ = {:+})",
+                    "Pair #{:02} (Seed {}):\n  In-Dist : Group D = {} vs Group C = {} (Δ = {:+})\n  Val     : Group D = {} vs Group C = {} (Δ = {:+})\n  OOD-1   : Group D = {} vs Group C = {} (Δ = {:+})\n  OOD-2   : Group D = {} vs Group C = {} (Δ = {:+})",
                     r + 1,
                     seed,
                     report_d.best_in_distribution_score.total_bins,
                     report_c.best_in_distribution_score.total_bins,
                     (report_c.best_in_distribution_score.total_bins as i64)
-                        - (report_d.best_in_distribution_score.total_bins as i64)
+                        - (report_d.best_in_distribution_score.total_bins as i64),
+                    val_d,
+                    val_c,
+                    (val_c as i64) - (val_d as i64),
+                    report_d.best_ood1_score.total_bins,
+                    report_c.best_ood1_score.total_bins,
+                    (report_c.best_ood1_score.total_bins as i64)
+                        - (report_d.best_ood1_score.total_bins as i64),
+                    report_d.best_ood2_score.total_bins,
+                    report_c.best_ood2_score.total_bins,
+                    (report_c.best_ood2_score.total_bins as i64)
+                        - (report_d.best_ood2_score.total_bins as i64),
                 );
 
                 paired_results.push((report_c, report_d));

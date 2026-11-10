@@ -1,0 +1,5795 @@
+[
+  [
+    {
+      "group": "GroupC",
+      "rng_seed": 1000,
+      "total_generations": 15,
+      "best_in_distribution_score": {
+        "is_valid": true,
+        "total_bins": 397,
+        "total_theoretical_min_bins": 384,
+        "total_excess_bins": 13,
+        "mean_efficiency": 0.9677777777777777,
+        "total_fuel": 159190,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 14.164093501984128,
+          "new_bin_ratio": 0.1588,
+          "mean_fullness": 0.9677777777777777,
+          "dead_space_ratio": 0.16448412698412695
+        },
+        "tldr_score": -0.1416409350198413,
+        "trajectory_metrics": null
+      },
+      "best_score_without_lookahead": {
+        "is_valid": true,
+        "total_bins": 397,
+        "total_theoretical_min_bins": 384,
+        "total_excess_bins": 13,
+        "mean_efficiency": 0.9677777777777777,
+        "total_fuel": 159190,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 14.164093501984128,
+          "new_bin_ratio": 0.1588,
+          "mean_fullness": 0.9677777777777777,
+          "dead_space_ratio": 0.16448412698412695
+        },
+        "tldr_score": -0.1416409350198413,
+        "trajectory_metrics": null
+      },
+      "best_validation_score": {
+        "is_valid": true,
+        "total_bins": 388,
+        "total_theoretical_min_bins": 378,
+        "total_excess_bins": 10,
+        "mean_efficiency": 0.9755555555555554,
+        "total_fuel": 159326,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 11.89350818452381,
+          "new_bin_ratio": 0.1552,
+          "mean_fullness": 0.9755555555555554,
+          "dead_space_ratio": 0.17571428571428574
+        },
+        "tldr_score": -0.1189350818452381,
+        "trajectory_metrics": null
+      },
+      "best_ood1_score": {
+        "is_valid": true,
+        "total_bins": 2213,
+        "total_theoretical_min_bins": 2121,
+        "total_excess_bins": 92,
+        "mean_efficiency": 0.9584406932243126,
+        "total_fuel": 3729268,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 12.065829598846692,
+          "new_bin_ratio": 0.8852,
+          "mean_fullness": 0.9584406932243126,
+          "dead_space_ratio": 0.3013128438800836
+        },
+        "tldr_score": -0.12065829598846692,
+        "trajectory_metrics": null
+      },
+      "best_ood2_score": {
+        "is_valid": true,
+        "total_bins": 1763,
+        "total_theoretical_min_bins": 1522,
+        "total_excess_bins": 241,
+        "mean_efficiency": 0.864639179344338,
+        "total_fuel": 1119150,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 24.74758963634383,
+          "new_bin_ratio": 0.7052,
+          "mean_fullness": 0.864639179344338,
+          "dead_space_ratio": 0.05353797945894468
+        },
+        "tldr_score": -0.24747589636343828,
+        "trajectory_metrics": null
+      },
+      "best_capsule": {
+        "id": "4ff19d8ad2434a4c",
+        "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g4",
+        "semantic_interface": "Mutated from parent 3a937960f0abeefc at gen 4",
+        "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let score = (node_residual_cpu + node_residual_ram) as f64;\n    score\n}",
+        "parent_ids": [
+          "3a937960f0abeefc"
+        ],
+        "generation": 4,
+        "content_hash": "4ff19d8ad2434a4c2cf0b457f8117f9f23a7f4c2060ca5549691f98b07f153ea",
+        "created_at": "2026-11-10T16:44:26.885193500Z",
+        "metadata": {
+          "operator": "HttpLlamaOperator",
+          "parent_hash": "3a937960f0abeefca6d9fa238177ebb763b1504c9b82b532c6d0cd8b1b437954"
+        },
+        "interface_version": "ScorePolicyV1",
+        "policy_kind": "ScorePolicy",
+        "ast_fingerprint": {
+          "max_depth": 4,
+          "branch_count": 0,
+          "op_count": 1,
+          "statement_count": 2,
+          "ast_hash": "56d35a7bebd71a10d48b554cf55d1e67c8bfb7b7454f47cd745d7729d3053cd0"
+        },
+        "dependencies": [],
+        "validation": "PassedLevel2Computational",
+        "graft_manifest": null
+      },
+      "generations_history": [
+        {
+          "generation": 1,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 425561,
+          "best_capsule_id": "4ed614a4c2610bf6",
+          "best_capsule_name": "LLM-Seed-005",
+          "llm_calls_consumed": 8,
+          "executions_consumed": 400,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.6,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 2,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 218674,
+          "best_capsule_id": "cbc56739c27e1268",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1",
+          "llm_calls_consumed": 23,
+          "executions_consumed": 1150,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.5199999999999999,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 8
+        },
+        {
+          "generation": 3,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 635087,
+          "best_capsule_id": "35d1262c42c05252",
+          "best_capsule_name": "LLM-Seed-003-mut-g1",
+          "llm_calls_consumed": 31,
+          "executions_consumed": 1550,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.4899999999999999,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 9
+        },
+        {
+          "generation": 4,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 674762,
+          "best_capsule_id": "3a937960f0abeefc",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2",
+          "llm_calls_consumed": 41,
+          "executions_consumed": 2050,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.45999999999999985,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 12
+        },
+        {
+          "generation": 5,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 159190,
+          "best_capsule_id": "4ff19d8ad2434a4c",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g4",
+          "llm_calls_consumed": 50,
+          "executions_consumed": 2500,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.43999999999999984,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 14
+        },
+        {
+          "generation": 6,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 674520,
+          "best_capsule_id": "239db6a48ac6b6e5",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5",
+          "llm_calls_consumed": 65,
+          "executions_consumed": 3250,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.3699999999999998,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 21
+        },
+        {
+          "generation": 7,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 674520,
+          "best_capsule_id": "239db6a48ac6b6e5",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5",
+          "llm_calls_consumed": 74,
+          "executions_consumed": 3700,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.34999999999999976,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 23
+        },
+        {
+          "generation": 8,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 674218,
+          "best_capsule_id": "09ec9842b69673ad",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7",
+          "llm_calls_consumed": 85,
+          "executions_consumed": 4250,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.31999999999999973,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 26
+        },
+        {
+          "generation": 9,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 674218,
+          "best_capsule_id": "09ec9842b69673ad",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7",
+          "llm_calls_consumed": 97,
+          "executions_consumed": 4850,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.2699999999999997,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 31
+        },
+        {
+          "generation": 10,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 218674,
+          "best_capsule_id": "69b862db5002d2e1",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g9",
+          "llm_calls_consumed": 104,
+          "executions_consumed": 5200,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.2699999999999997,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 31
+        },
+        {
+          "generation": 11,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 674218,
+          "best_capsule_id": "09ec9842b69673ad",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7",
+          "llm_calls_consumed": 111,
+          "executions_consumed": 5550,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.25,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 31
+        },
+        {
+          "generation": 12,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 674218,
+          "best_capsule_id": "09ec9842b69673ad",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7",
+          "llm_calls_consumed": 120,
+          "executions_consumed": 6000,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.25,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 33
+        },
+        {
+          "generation": 13,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 159190,
+          "best_capsule_id": "397ab2cb25b8a3ce",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12",
+          "llm_calls_consumed": 131,
+          "executions_consumed": 6550,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.25,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 36
+        },
+        {
+          "generation": 14,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 159190,
+          "best_capsule_id": "397ab2cb25b8a3ce",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12",
+          "llm_calls_consumed": 141,
+          "executions_consumed": 7050,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.25,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 39
+        },
+        {
+          "generation": 15,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 159190,
+          "best_capsule_id": "397ab2cb25b8a3ce",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12",
+          "llm_calls_consumed": 150,
+          "executions_consumed": 7500,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.25,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 41
+        }
+      ],
+      "budget_consumed": {
+        "llm_calls_consumed": 150,
+        "executions_consumed": 7500
+      },
+      "total_lineage_nodes": 150,
+      "total_lineage_edges": 187,
+      "phylogeny": {
+        "graph": {
+          "nodes": [
+            {
+              "id": "cef2441aa3ced6c5",
+              "name": "LLM-Seed-000",
+              "generation": 0,
+              "content_hash": "cef2441aa3ced6c56135134608f4da8d35cd73004a281c41db0d73e5003e9e48",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:44.253059Z"
+            },
+            {
+              "id": "8ffc0d0a6b34d9d9",
+              "name": "LLM-Seed-001",
+              "generation": 0,
+              "content_hash": "8ffc0d0a6b34d9d9b30d6756b768896cf4688460a2fd610f8d3b210f04d185b5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:47.887347300Z"
+            },
+            {
+              "id": "f61395f2bff18fd5",
+              "name": "LLM-Seed-002",
+              "generation": 0,
+              "content_hash": "f61395f2bff18fd565842f317d468b46aa2c23d5d8299ce583568eddaac2402b",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:51.372688Z"
+            },
+            {
+              "id": "9b41950bdeb769d7",
+              "name": "LLM-Seed-003",
+              "generation": 0,
+              "content_hash": "9b41950bdeb769d729222134e30a1588bef2347ecba1a3df732b85bcc7943f2f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:55.123731300Z"
+            },
+            {
+              "id": "aa209b658ccc493d",
+              "name": "LLM-Seed-004",
+              "generation": 0,
+              "content_hash": "aa209b658ccc493db19f1a4994f898c2d69cd8c61462a0e9ee239d3cd8de35fc",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:58.365698500Z"
+            },
+            {
+              "id": "4ed614a4c2610bf6",
+              "name": "LLM-Seed-005",
+              "generation": 0,
+              "content_hash": "4ed614a4c2610bf6547d922de4ee177233d70dea88a12e7608f75502ae980e30",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:01.743450400Z"
+            },
+            {
+              "id": "047704399848e733",
+              "name": "LLM-Seed-006",
+              "generation": 0,
+              "content_hash": "047704399848e733c405d6cbafdd3ce29414841cb8096721b605bcebac5c71ea",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:04.490881400Z"
+            },
+            {
+              "id": "b860bf1d2987d624",
+              "name": "LLM-Seed-007",
+              "generation": 0,
+              "content_hash": "b860bf1d2987d62416fd23959ecb2e38a882a2a5ce6c856abe7eca11e2f06ab8",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:07.958515900Z"
+            },
+            {
+              "id": "630784b17bb89e24",
+              "name": "SwarmCross-g1-9b41-4ed6",
+              "generation": 1,
+              "content_hash": "630784b17bb89e24d57e8c7c1f50b84f6292a6406619315451972e88a25b3734",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:08.510824500Z"
+            },
+            {
+              "id": "d6d7e0f23f3f627c",
+              "name": "SwarmCross-g1-9b41-4ed6",
+              "generation": 1,
+              "content_hash": "d6d7e0f23f3f627c6621776b73c89a87bd713a5d81aa410bb8726c68c70514a1",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:09.206351300Z"
+            },
+            {
+              "id": "462a383b6b8c5c98",
+              "name": "SwarmCross-g1-9b41-4ed6",
+              "generation": 1,
+              "content_hash": "462a383b6b8c5c98fe9998a5900728c7780a7fc9c633e325f6ca92708ef0257c",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:09.856635800Z"
+            },
+            {
+              "id": "2ff81efaad9a2703",
+              "name": "LLM-Seed-003-mut-g1",
+              "generation": 1,
+              "content_hash": "2ff81efaad9a2703915b6be39fe41633a9a23f119cc83a21db1805d6b6e71253",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:15.041423200Z"
+            },
+            {
+              "id": "cdbe38a7da55ed39",
+              "name": "LLM-Seed-003-mut-g1",
+              "generation": 1,
+              "content_hash": "cdbe38a7da55ed39836be003dc012063b2f8a7347b70165ddc31679a2f1b314f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:19.642939800Z"
+            },
+            {
+              "id": "8bb7c3638ddef2e8",
+              "name": "LLM-Seed-003-mut-g1",
+              "generation": 1,
+              "content_hash": "8bb7c3638ddef2e850316777cc067cb213474767c0ef99a253edc70e080edd4c",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:24.024632300Z"
+            },
+            {
+              "id": "6ae8a88bf64424c2",
+              "name": "SwarmCross-g1-9b41-b860",
+              "generation": 1,
+              "content_hash": "6ae8a88bf64424c29b80c4ae4224b97889bec8cbf71eb832dec0193344b67b64",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:24.617303700Z"
+            },
+            {
+              "id": "ceb5398db80eb056",
+              "name": "LLM-Seed-003-mut-g1",
+              "generation": 1,
+              "content_hash": "ceb5398db80eb056e384f8ab642ee82debed9432f14a807dd9648f9863716670",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:29.241054500Z"
+            },
+            {
+              "id": "a096b1f09cf9b86d",
+              "name": "SwarmCross-g1-9b41-b860",
+              "generation": 1,
+              "content_hash": "a096b1f09cf9b86d491b586ae361ae6c02220e46cb52bd2c0db026e6639013d6",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:29.883412300Z"
+            },
+            {
+              "id": "600d054d9b53da96",
+              "name": "SwarmCross-g1-9b41-b860",
+              "generation": 1,
+              "content_hash": "600d054d9b53da963ac0829a6e71cb76b7277f331feabb9fd74ae6e08c44b3ee",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:30.567967500Z"
+            },
+            {
+              "id": "35d1262c42c05252",
+              "name": "LLM-Seed-003-mut-g1",
+              "generation": 1,
+              "content_hash": "35d1262c42c05252afad4c052d2ed95257b4e98020825c244710c87c113bd631",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:35.478495700Z"
+            },
+            {
+              "id": "94dbba63d2453ee5",
+              "name": "SwarmCross-g1-35d1-9b41",
+              "generation": 1,
+              "content_hash": "94dbba63d2453ee59e48d9cfca6c32c87a819867eac8b715a48a1065eb12cca4",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:36.112861400Z"
+            },
+            {
+              "id": "660bd3314286faa5",
+              "name": "SwarmCross-g1-35d1-9b41",
+              "generation": 1,
+              "content_hash": "660bd3314286faa5b5b2ef7f96a7fa3d8eb12d1d5645998ee402c8dd1080e8c4",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:36.900507800Z"
+            },
+            {
+              "id": "cbc56739c27e1268",
+              "name": "LLM-Seed-003-mut-g1-mut-g1",
+              "generation": 1,
+              "content_hash": "cbc56739c27e126806d6ee2fd51581874a3a5873137c2e14bcb4e0ea8cc3e310",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:43.223669500Z"
+            },
+            {
+              "id": "074308e8e3e4b874",
+              "name": "LLM-Seed-003-mut-g1-mut-g1",
+              "generation": 1,
+              "content_hash": "074308e8e3e4b874f76bcde6b2eb705db9386cef071c28ac893e07f6323c7e09",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:47.530948700Z"
+            },
+            {
+              "id": "6cdad0b0a4e0f56a",
+              "name": "LLM-Seed-003-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "6cdad0b0a4e0f56af24b6bffb137dfa8e147beac107d36d98269cdb9ca0a3224",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:52.363895400Z"
+            },
+            {
+              "id": "3be881dc60f233ec",
+              "name": "LLM-Seed-003-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "3be881dc60f233ec9690caacc16255e759c95d8e3652db76bad121fd91234bd7",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:42:57.913872100Z"
+            },
+            {
+              "id": "de1312d3f7fd32aa",
+              "name": "SwarmCross-g2-35d1-cbc5",
+              "generation": 2,
+              "content_hash": "de1312d3f7fd32aa6934d3f6e593b9e728ba65029c86b54767eb9e660c1913ff",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:58.670529400Z"
+            },
+            {
+              "id": "a91a1e0068add4e4",
+              "name": "SwarmCross-g2-35d1-cbc5",
+              "generation": 2,
+              "content_hash": "a91a1e0068add4e4dc36fa0ee3ea48d55df3ec41e106cfdc7901ded2ea4f279b",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:42:59.571356800Z"
+            },
+            {
+              "id": "3a937960f0abeefc",
+              "name": "LLM-Seed-003-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "3a937960f0abeefca6d9fa238177ebb763b1504c9b82b532c6d0cd8b1b437954",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:05.117855800Z"
+            },
+            {
+              "id": "6678f4db42c2367a",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g2",
+              "generation": 2,
+              "content_hash": "6678f4db42c2367a367cbdaec6feecbdaa33cad7ebfcfd4fff121c45d7666b62",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:10.591996700Z"
+            },
+            {
+              "id": "511493f40b371872",
+              "name": "SwarmCross-g2-3a93-cbc5",
+              "generation": 2,
+              "content_hash": "511493f40b371872459cd3f45b27ac08a4bea6eb5b4fe4be82999e1e3da1b7ac",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:43:11.273256200Z"
+            },
+            {
+              "id": "5535b9cb93d5b317",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g2",
+              "generation": 2,
+              "content_hash": "5535b9cb93d5b317152816a304bd91878a51c29ae86626a3619447314fd1359f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:17.284426400Z"
+            },
+            {
+              "id": "e35a766113f5fe00",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g3",
+              "generation": 3,
+              "content_hash": "e35a766113f5fe00f3e82562ccd00db8f7d66425f364968388488654295576ee",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:22.578531300Z"
+            },
+            {
+              "id": "cf9d3cb8f5964f8d",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g3",
+              "generation": 3,
+              "content_hash": "cf9d3cb8f5964f8d70c6390a3de63295859bb57806093ece647b5703749251d6",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:28.499953500Z"
+            },
+            {
+              "id": "2f4c33af841215b6",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g3",
+              "generation": 3,
+              "content_hash": "2f4c33af841215b626cd59002f0a7582cfb3689ad854c420c22b57581c160001",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:33.880439600Z"
+            },
+            {
+              "id": "f27df90da3347609",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g3",
+              "generation": 3,
+              "content_hash": "f27df90da33476095106ba8d992c36cc38d0574fe1f7145b1076a39cbdce8e05",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:39.140419600Z"
+            },
+            {
+              "id": "f8d2d295b95942dc",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g3",
+              "generation": 3,
+              "content_hash": "f8d2d295b95942dc36c41cc3bc41808a01e28db4231520bd589d16a07753cd58",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:45.038563100Z"
+            },
+            {
+              "id": "748f856134fc15ac",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g3",
+              "generation": 3,
+              "content_hash": "748f856134fc15ac141a28bde856d4ea942a65a93a0b39dced7420dd47a7568b",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:50.286974900Z"
+            },
+            {
+              "id": "5adece0b1159d11b",
+              "name": "SwarmCross-g3-3a93-35d1",
+              "generation": 3,
+              "content_hash": "5adece0b1159d11b364b8bf546cae67c16288e2672bee10e2046dfbfcf430c9b",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:43:50.962149800Z"
+            },
+            {
+              "id": "a8e705d695e0397f",
+              "name": "SwarmCross-g3-3a93-35d1",
+              "generation": 3,
+              "content_hash": "a8e705d695e0397fc51af65ca803acc210ab0fa4b4cfbf8461a08e5d36f83fc3",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:43:51.833925100Z"
+            },
+            {
+              "id": "a56a4915c1033498",
+              "name": "SwarmCross-g3-3a93-35d1",
+              "generation": 3,
+              "content_hash": "a56a4915c1033498507e72d7bc9d7d5d5d4124593439b7d384829a63f563ebc7",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:43:52.637770500Z"
+            },
+            {
+              "id": "30b1d9623fd20087",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g3",
+              "generation": 3,
+              "content_hash": "30b1d9623fd2008732a720950774817cef28a5bf5fe52c4248079621845403bd",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:43:58.369618300Z"
+            },
+            {
+              "id": "676516dc72cebb7f",
+              "name": "SwarmCross-g4-3a93-748f",
+              "generation": 4,
+              "content_hash": "676516dc72cebb7f1a944fe685460a879c43b5b6ed72dc15284e0628289302bb",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:43:59.087146Z"
+            },
+            {
+              "id": "7bfbe14ef1bdfe4d",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g4",
+              "generation": 4,
+              "content_hash": "7bfbe14ef1bdfe4dd5346c1655fd11a8cd5e5a59e0bfec645b7c410a67143050",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:04.904264300Z"
+            },
+            {
+              "id": "80237999bde1e06e",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g4",
+              "generation": 4,
+              "content_hash": "80237999bde1e06e863926598833a1407f59f1fd33b67d7b3ab36e68befb79c1",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:10.136704800Z"
+            },
+            {
+              "id": "33bd1584973a6d28",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g4",
+              "generation": 4,
+              "content_hash": "33bd1584973a6d28f422c1e6f90c1c4c8f34a1c06cfe8e8ea150893e9e1c0377",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:15.995634700Z"
+            },
+            {
+              "id": "e5f32300cc6e0432",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g4",
+              "generation": 4,
+              "content_hash": "e5f32300cc6e04326d5c711e4375ac540400af4f1624d8088d7493f1d8bcea89",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:21.421184700Z"
+            },
+            {
+              "id": "4ff19d8ad2434a4c",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g4",
+              "generation": 4,
+              "content_hash": "4ff19d8ad2434a4c2cf0b457f8117f9f23a7f4c2060ca5549691f98b07f153ea",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:26.885193500Z"
+            },
+            {
+              "id": "bafebd6ce7ddc449",
+              "name": "SwarmCross-g4-3a93-748f",
+              "generation": 4,
+              "content_hash": "bafebd6ce7ddc449df6ddd19f6c4cb9ed503abb4a0fff6525c1f008704d05e73",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:44:27.065241300Z"
+            },
+            {
+              "id": "a0866f55850a686c",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g4",
+              "generation": 4,
+              "content_hash": "a0866f55850a686c3c8fce4b89d100b73987c981d9cc93341482472f49ca3cc7",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:32.893282200Z"
+            },
+            {
+              "id": "ac83ce882aecb020",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g4",
+              "generation": 4,
+              "content_hash": "ac83ce882aecb0206c93b05e8975d0ba706ad9f4e3516ed1aebbdc1524062c93",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:38.101303300Z"
+            },
+            {
+              "id": "239db6a48ac6b6e5",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5",
+              "generation": 5,
+              "content_hash": "239db6a48ac6b6e57bd8bcfa6d2292840f5f548f93711ce6d563340d57f52b36",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:43.286478600Z"
+            },
+            {
+              "id": "8ebf2eabe76275b6",
+              "name": "SwarmCross-g5-239d-4ff1",
+              "generation": 5,
+              "content_hash": "8ebf2eabe76275b64a4545e2073992bdd6f1b62591f84cfd1be908301a300cbd",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:44:43.970947100Z"
+            },
+            {
+              "id": "112edab1de985241",
+              "name": "SwarmCross-g5-239d-4ff1",
+              "generation": 5,
+              "content_hash": "112edab1de9852411e62643fc3d1e5eb0fda3e9af95982e7ca497914fb8276fc",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:44:44.850790800Z"
+            },
+            {
+              "id": "d5b17c12d6cdad6d",
+              "name": "SwarmCross-g5-239d-4ff1",
+              "generation": 5,
+              "content_hash": "d5b17c12d6cdad6d946f2e11f78e0a8377bf47528e25caf9caabef21f0f77080",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:44:45.728713700Z"
+            },
+            {
+              "id": "835705a03c7b302b",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g5",
+              "generation": 5,
+              "content_hash": "835705a03c7b302b924820f568f53981a1c0b5a88e1919d6f8e908c1a2c09ae9",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:52.127590100Z"
+            },
+            {
+              "id": "403a50b238eb5af4",
+              "name": "SwarmCross-g5-239d-3a93",
+              "generation": 5,
+              "content_hash": "403a50b238eb5af45444bece9bf82a30105e77633c086c51cdbfe9a34b4c6efa",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:44:52.902012400Z"
+            },
+            {
+              "id": "aba0320d35c7ceb2",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g5",
+              "generation": 5,
+              "content_hash": "aba0320d35c7ceb22b65117f3a776e0e9426550871c81b87fe197f7cc033cb3b",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:44:58.732378600Z"
+            },
+            {
+              "id": "f257bba28a0fa7b0",
+              "name": "SwarmCross-g5-239d-3a93",
+              "generation": 5,
+              "content_hash": "f257bba28a0fa7b0bde4a7a2d6f4d33c1eb75236f3445ff54ff7d3ca030042b9",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:44:58.734488400Z"
+            },
+            {
+              "id": "8177f728405cca66",
+              "name": "SwarmCross-g5-239d-3a93",
+              "generation": 5,
+              "content_hash": "8177f728405cca66ac70721d9a9c8108badb119d523d3090ef463c20bcbea668",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:44:59.634003300Z"
+            },
+            {
+              "id": "fde3cd7026100fa6",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g5",
+              "generation": 5,
+              "content_hash": "fde3cd7026100fa6f2b62fd90163a74044f5ffd41500c274878047d0044a6777",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:45:06.485155Z"
+            },
+            {
+              "id": "c057ddcb0a6f9009",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g5",
+              "generation": 5,
+              "content_hash": "c057ddcb0a6f9009c42520504075d5fc6339d117f6581b6591e42b8eac4ace16",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:45:12.916637300Z"
+            },
+            {
+              "id": "a5072c6bcdc93934",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g5",
+              "generation": 5,
+              "content_hash": "a5072c6bcdc93934b3a9ffa90133dcfe3f180b23033f5811c949e248cc19c3f6",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:45:19.046604800Z"
+            },
+            {
+              "id": "2da4b984693a6d56",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g5",
+              "generation": 5,
+              "content_hash": "2da4b984693a6d567958bc336c65e76db54bb04d3012c46cc44d4a69da0874d0",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:45:24.823190800Z"
+            },
+            {
+              "id": "9d63479eccce814a",
+              "name": "SwarmCross-g5-239d-ac83",
+              "generation": 5,
+              "content_hash": "9d63479eccce814a4e3c17332e2c90bc1c8a0773cbf88e5bceb82c1b4ce4036d",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:45:25.575489500Z"
+            },
+            {
+              "id": "39897122836c276b",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g5",
+              "generation": 5,
+              "content_hash": "39897122836c276bfdd274e451d6173c9032d6321e13803934410863390f564c",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:45:31.564028300Z"
+            },
+            {
+              "id": "aa536e077fb741b4",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g6",
+              "generation": 6,
+              "content_hash": "aa536e077fb741b42462417fe1fa6776798921877289c91e2365bd083a3abbce",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:45:38.084067Z"
+            },
+            {
+              "id": "57152e92cad95cec",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g6",
+              "generation": 6,
+              "content_hash": "57152e92cad95cec74677cbc9df988c2ef5f5bfd2a61e0162ac3fb5a1a1813f6",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:45:43.771145800Z"
+            },
+            {
+              "id": "5c788353299899c9",
+              "name": "SwarmCross-g6-239d-3a93",
+              "generation": 6,
+              "content_hash": "5c788353299899c963f0c54d63605b2c038503937cc8deff982022cb9171a3ed",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:45:44.487475300Z"
+            },
+            {
+              "id": "c095f0962b0efd4c",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g6",
+              "generation": 6,
+              "content_hash": "c095f0962b0efd4c8da5fe2c9406c80bcdcb070677edb3263714c2ebfc0fd814",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:45:50.496495700Z"
+            },
+            {
+              "id": "c80d2241dc989e5b",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g6",
+              "generation": 6,
+              "content_hash": "c80d2241dc989e5b154b7e89a9917b77d0314093709d4ccc2f4fb083d8fa230f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:45:56.419772Z"
+            },
+            {
+              "id": "702007b29fd1be70",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g6",
+              "generation": 6,
+              "content_hash": "702007b29fd1be7020838c57774873f95e7ee0398fbb17548705084aed6f2a86",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:01.925206100Z"
+            },
+            {
+              "id": "b29c4f79f7ff81f2",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g6",
+              "generation": 6,
+              "content_hash": "b29c4f79f7ff81f2bafad660f229ce2151f1b213738faba4e977db7dcf4f19be",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:07.618998500Z"
+            },
+            {
+              "id": "b967d219cb64974d",
+              "name": "SwarmCross-g6-239d-3a93",
+              "generation": 6,
+              "content_hash": "b967d219cb64974de129d050e6df65e349517a4120b61aea632f2bcf2a092602",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:46:08.385144500Z"
+            },
+            {
+              "id": "3242f399354965cd",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g6",
+              "generation": 6,
+              "content_hash": "3242f399354965cd693252b34079792eefd602492387f829bcee1f34dbf4c294",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:14.421823700Z"
+            },
+            {
+              "id": "dd54be2c726da0e3",
+              "name": "SwarmCross-g7-239d-5715",
+              "generation": 7,
+              "content_hash": "dd54be2c726da0e3854e4545a0aa4bb61ded267a4f9086b028827312959e931b",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:46:15.217039300Z"
+            },
+            {
+              "id": "94e4b1f980c60e09",
+              "name": "SwarmCross-g7-239d-5715",
+              "generation": 7,
+              "content_hash": "94e4b1f980c60e0907762c7b5e5fc6bbf7d593bedc92b4d469a51f7d8aa6a820",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:46:16.109822700Z"
+            },
+            {
+              "id": "d7813520d05817da",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7",
+              "generation": 7,
+              "content_hash": "d7813520d05817da6e0a60d220a41832b139839b196ddd4ce1722b751a2f6a8e",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:22.545455700Z"
+            },
+            {
+              "id": "09ec9842b69673ad",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7",
+              "generation": 7,
+              "content_hash": "09ec9842b69673ada4cb53ec20c583c57f6d433262be0af97abdca29479b009e",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:27.827671600Z"
+            },
+            {
+              "id": "c574290b729c9e02",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g7",
+              "generation": 7,
+              "content_hash": "c574290b729c9e0217b337a5d8512c967a2f96be582b6138902db8841d404789",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:33.117110900Z"
+            },
+            {
+              "id": "dbf60e4cb90f5ef0",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g7",
+              "generation": 7,
+              "content_hash": "dbf60e4cb90f5ef08b13915c046c6c8ce0d16e586a3156e68e59e03e5b57c51f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:38.892815Z"
+            },
+            {
+              "id": "5950539f65433b15",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g7",
+              "generation": 7,
+              "content_hash": "5950539f65433b1529627f2c905727e4c15368afba6aaecc273c3342ea7d7e25",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:44.907409500Z"
+            },
+            {
+              "id": "d6c83d7457052aa9",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g7",
+              "generation": 7,
+              "content_hash": "d6c83d7457052aa9d04c8a61b0267b80a820188e846500e666c8d0abd907ec3f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:51.152265700Z"
+            },
+            {
+              "id": "693f1fef3ca7767c",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g7",
+              "generation": 7,
+              "content_hash": "693f1fef3ca7767ccbeb8a3278003b32396665c410e3fac56ca5e1d3a216ace9",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:46:56.767733300Z"
+            },
+            {
+              "id": "66253807a0e88603",
+              "name": "SwarmCross-g7-09ec-239d",
+              "generation": 7,
+              "content_hash": "66253807a0e88603ff90a6694228e426e2e2b7ac0d93f132b0e1712a4764df6e",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:46:57.624811100Z"
+            },
+            {
+              "id": "44c5b4d1a65fff76",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g7",
+              "generation": 7,
+              "content_hash": "44c5b4d1a65fff76903c755e429199c1d4ebc32d4e7ca957b15c678ab6107b00",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:03.055843Z"
+            },
+            {
+              "id": "84bdcb24f2f1eb27",
+              "name": "SwarmCross-g8-09ec-239d",
+              "generation": 8,
+              "content_hash": "84bdcb24f2f1eb27367b4bc5c934a9f999e7e097a3871fa64742af4c1ec97452",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:47:03.735239300Z"
+            },
+            {
+              "id": "56925799888e830f",
+              "name": "SwarmCross-g8-09ec-239d",
+              "generation": 8,
+              "content_hash": "56925799888e830fbcbccf1b1e494c3676f9a3976572f99564dd70262876731c",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:47:04.626108Z"
+            },
+            {
+              "id": "463621a9551901a5",
+              "name": "SwarmCross-g8-09ec-239d",
+              "generation": 8,
+              "content_hash": "463621a9551901a5887a0a8308b50ddeac4cee95221f0e0446d66b9582bad38e",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:47:05.489712800Z"
+            },
+            {
+              "id": "4f162ad63057a2ab",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g8",
+              "generation": 8,
+              "content_hash": "4f162ad63057a2ab222c4b00d5cbda43c1bd658cc4e52fedf955b9f2bfc08cac",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:11.042643700Z"
+            },
+            {
+              "id": "8cdf95e3fdc80648",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g8",
+              "generation": 8,
+              "content_hash": "8cdf95e3fdc80648e9a741d69a97181873484f818b91e182370841c15055b877",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:16.313543300Z"
+            },
+            {
+              "id": "b15830eb09a42c5e",
+              "name": "SwarmCross-g8-09ec-dbf6",
+              "generation": 8,
+              "content_hash": "b15830eb09a42c5ebc1505efcb2e5dcfbdb030d34b22df3e7ee74f3eca6109c2",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:47:16.996276400Z"
+            },
+            {
+              "id": "c69cf09759a9bffc",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g8",
+              "generation": 8,
+              "content_hash": "c69cf09759a9bffc0a5042a42ad71c72ff6f11ab00af173f77bb6ecfd5f44eac",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:23.057385500Z"
+            },
+            {
+              "id": "8e647b1481b5ae7b",
+              "name": "SwarmCross-g8-09ec-dbf6",
+              "generation": 8,
+              "content_hash": "8e647b1481b5ae7b9c66f3b2eed93accd4dbf3718133ca37f8be6b19952ddf67",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:47:23.867001500Z"
+            },
+            {
+              "id": "60538d343db69cfb",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g8",
+              "generation": 8,
+              "content_hash": "60538d343db69cfb412c989cefca8f22bdac6f9def301d9ff543ec8ab23ffcc3",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:29.952900100Z"
+            },
+            {
+              "id": "3d16b0bba64c4994",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g8",
+              "generation": 8,
+              "content_hash": "3d16b0bba64c49947aea389a70f12f5da4d895afcb40a85a6c19392ee41960ad",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:35.342935Z"
+            },
+            {
+              "id": "7a97165b48ee371e",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g8",
+              "generation": 8,
+              "content_hash": "7a97165b48ee371e9355d98005c6a6211766b6a74e50e05ab580167c09269d62",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:41.069771100Z"
+            },
+            {
+              "id": "f1e7887f5b1203fa",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g8",
+              "generation": 8,
+              "content_hash": "f1e7887f5b1203fab019b17c8510a6166744f33e16feb7424a8b272ee148c55a",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:46.440910600Z"
+            },
+            {
+              "id": "fe050bd5daf31967",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g9",
+              "generation": 9,
+              "content_hash": "fe050bd5daf31967f5eab437d4b380b51ca988f7f410f7ec3e55ed1ad3168fa6",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:52.441490400Z"
+            },
+            {
+              "id": "d0f5d5991831d82a",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g9",
+              "generation": 9,
+              "content_hash": "d0f5d5991831d82a86af144d76fea82567d69daec81d36ce8fcad5ccbd5734b0",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:47:58.476129800Z"
+            },
+            {
+              "id": "f9cb5dc60b54a9c7",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g9",
+              "generation": 9,
+              "content_hash": "f9cb5dc60b54a9c7520e41d1b507d35577f944e130fff70c4c529d0483638081",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:04.297618100Z"
+            },
+            {
+              "id": "7bd9c9c1077dc019",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g9",
+              "generation": 9,
+              "content_hash": "7bd9c9c1077dc019705f310d2d0ab686f0a61fe7e03149ebc04ae6cd6834bfef",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:10.299178500Z"
+            },
+            {
+              "id": "f88f04cb6b9372e5",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g9",
+              "generation": 9,
+              "content_hash": "f88f04cb6b9372e5e3ef1ca646ba93b2679bf93e0fb1713363b8a3d32195ad83",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:16.116492300Z"
+            },
+            {
+              "id": "69b862db5002d2e1",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g9",
+              "generation": 9,
+              "content_hash": "69b862db5002d2e10b2fbe359af99d9a1dfc59fa1ba95aece7ea3742f8727ab5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:21.383114Z"
+            },
+            {
+              "id": "7735fe3a393560b2",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g9",
+              "generation": 9,
+              "content_hash": "7735fe3a393560b26b5d1c263fabedd9e6f4369c92a9f08d3824ce223a8e3db5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:26.093065Z"
+            },
+            {
+              "id": "a2f711ca9f1157d0",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g10",
+              "generation": 10,
+              "content_hash": "a2f711ca9f1157d0fc1ea12a616c7546df47e2de60a499defb70722300a24232",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:31.274612900Z"
+            },
+            {
+              "id": "23f81901980c7463",
+              "name": "SwarmCross-g10-09ec-69b8",
+              "generation": 10,
+              "content_hash": "23f81901980c7463530438e87a69423a39c974070cb049124d2127eea33f92c4",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:48:31.961310900Z"
+            },
+            {
+              "id": "68329f8fdf2fa393",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g10",
+              "generation": 10,
+              "content_hash": "68329f8fdf2fa393a39a0a1345f4ea53054320e98811085437b4f0e8802a4ccf",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:37.410505900Z"
+            },
+            {
+              "id": "b77d546d69005d61",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g10",
+              "generation": 10,
+              "content_hash": "b77d546d69005d614c3d34d4273a680c024412b4ac9e9fc2c1a4240abb48bf5d",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:43.347372800Z"
+            },
+            {
+              "id": "46caa7af714214a3",
+              "name": "SwarmCross-g10-09ec-69b8",
+              "generation": 10,
+              "content_hash": "46caa7af714214a3eaf07717b33655e9eacc626c5f8aca42d9bb97ee281dcbef",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:48:44.302013100Z"
+            },
+            {
+              "id": "b1627af9ffd69be1",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g10",
+              "generation": 10,
+              "content_hash": "b1627af9ffd69be19c9fa7f90285498021caa2b669e9bd22a49561b6a71d16c4",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:50.319654600Z"
+            },
+            {
+              "id": "f371c00e62cc6e46",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g10",
+              "generation": 10,
+              "content_hash": "f371c00e62cc6e4662ef2753d7085455e8c1b5cdbdf61acd7128972543484ed5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:48:55.719129200Z"
+            },
+            {
+              "id": "b041242b72e5e936",
+              "name": "SwarmCross-g11-09ec-b77d",
+              "generation": 11,
+              "content_hash": "b041242b72e5e93643fabdeac5db777374cf5abe693dfc5f94251fc3f3a324f6",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:48:56.443724Z"
+            },
+            {
+              "id": "7c2ddff57e40cb90",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g11",
+              "generation": 11,
+              "content_hash": "7c2ddff57e40cb90d94e56ef3f8f446c5272c31949645293905e5a95c8181d23",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:02.279434800Z"
+            },
+            {
+              "id": "229d0dce82fb7045",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g11",
+              "generation": 11,
+              "content_hash": "229d0dce82fb7045622839dd5387086f9bfab264bc5e3180eda40a95cb275692",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:08.022140600Z"
+            },
+            {
+              "id": "3f9a96fbf0b4a0f4",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g11",
+              "generation": 11,
+              "content_hash": "3f9a96fbf0b4a0f4b824f78b1ee0030481065afec6bdc818ba6804a14cfe9def",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:13.682687400Z"
+            },
+            {
+              "id": "29f8c5b1c5370655",
+              "name": "SwarmCross-g11-09ec-b77d",
+              "generation": 11,
+              "content_hash": "29f8c5b1c5370655543890da4dfdea4ee8667829528f019e934dd4fc78d8a6ee",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:49:14.417422100Z"
+            },
+            {
+              "id": "8abd71cb8faeebe1",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g11",
+              "generation": 11,
+              "content_hash": "8abd71cb8faeebe14e7679ab05d6166fc84a2aa27c46ebfb171a92ebfaffd614",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:20.549351700Z"
+            },
+            {
+              "id": "0f274e177bd092be",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g11",
+              "generation": 11,
+              "content_hash": "0f274e177bd092be7368e780cccdbf0e013c3947d4b18f85c06cfde6b5c316a3",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:26.405521700Z"
+            },
+            {
+              "id": "dcaae84319860547",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g11",
+              "generation": 11,
+              "content_hash": "dcaae84319860547702b228dda178d0b509384748a08ec5b09eb8837e8713b67",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:32.414568700Z"
+            },
+            {
+              "id": "461b4a9eccba357f",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g11",
+              "generation": 11,
+              "content_hash": "461b4a9eccba357f28c5f9544eccda5d7787ba78d8d708d0fe3fcd45a04b6ac5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:38.518633800Z"
+            },
+            {
+              "id": "397ab2cb25b8a3ce",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12",
+              "generation": 12,
+              "content_hash": "397ab2cb25b8a3ce548e8b731f7bdf640d1c5ffd7ded0f4692c967bbefe63881",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:43.811176600Z"
+            },
+            {
+              "id": "352ab3d853a2fb80",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g12",
+              "generation": 12,
+              "content_hash": "352ab3d853a2fb80214bee317b330913612936879401dc5096c4c20fac88f5e1",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:46.625257800Z"
+            },
+            {
+              "id": "77b60599c17d9a5b",
+              "name": "SwarmCross-g12-397a-09ec",
+              "generation": 12,
+              "content_hash": "77b60599c17d9a5b651c4f236eb126cb31473b775c34fce36cfd2b397c2c292f",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:49:47.093855600Z"
+            },
+            {
+              "id": "f1e5e17e8f855f09",
+              "name": "SwarmCross-g12-397a-09ec",
+              "generation": 12,
+              "content_hash": "f1e5e17e8f855f0913c918d2d89ddebbceef017e7d16261840eb9fb33d583dc6",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:49:47.366664200Z"
+            },
+            {
+              "id": "25d5d52122f5f5ee",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g12",
+              "generation": 12,
+              "content_hash": "25d5d52122f5f5ee7f3ce823c6f17a504f9f09b7ec3eac9ea0775dd0a75880fc",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:50.219025400Z"
+            },
+            {
+              "id": "1ba94e7e3c8cbfb3",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g12",
+              "generation": 12,
+              "content_hash": "1ba94e7e3c8cbfb3dd9756f411d136d50b87852268d54940de3a6f30903f6d52",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:52.565269500Z"
+            },
+            {
+              "id": "7fcb39fc702be706",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g12",
+              "generation": 12,
+              "content_hash": "7fcb39fc702be7061b267d7deaceae37fdb167daab69867f097c4c05b84f6d2e",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:55.602955500Z"
+            },
+            {
+              "id": "63350f27c799493e",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g12",
+              "generation": 12,
+              "content_hash": "63350f27c799493e89ae8ce0c5f275e7f9df3157aba3d7f399b0c776b2ea6179",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:49:59.267189600Z"
+            },
+            {
+              "id": "3f5ff0d389ae3f34",
+              "name": "SwarmCross-g12-397a-09ec",
+              "generation": 12,
+              "content_hash": "3f5ff0d389ae3f340c07162506795e66797762afab126728f6df8a42a5cdbda1",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:49:59.811910900Z"
+            },
+            {
+              "id": "10f1bb20c1805507",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g12",
+              "generation": 12,
+              "content_hash": "10f1bb20c180550785c8c617cba1aff09adf30e97fceba564ff6cabaa0f1ce1b",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:03.132765100Z"
+            },
+            {
+              "id": "5b197e79f9496c1f",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g12",
+              "generation": 12,
+              "content_hash": "5b197e79f9496c1fca3f71f6479a1e9467e1a072813a58d545cd23ba6a698bb5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:06.493905200Z"
+            },
+            {
+              "id": "972953339db3fd68",
+              "name": "SwarmCross-g13-397a-1ba9",
+              "generation": 13,
+              "content_hash": "972953339db3fd681b9315596bf280489fb8aeccf0ac77e08407484a7b574fc4",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:50:06.670007800Z"
+            },
+            {
+              "id": "dddeb455f479f0fb",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "dddeb455f479f0fb9080da4e634901f7790b834e268a10bd3983a7f251f08115",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:09.808911800Z"
+            },
+            {
+              "id": "8224ed8197f25eac",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "8224ed8197f25eac5d81fc6b0f7319decab184adf938951c3b77ce9da1f57295",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:12.619622300Z"
+            },
+            {
+              "id": "da837f3fd12ee769",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "da837f3fd12ee769fb423228cfcec078376fc0b1a99ac28bb115dc0c02bbb39f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:16.255425900Z"
+            },
+            {
+              "id": "55c8881965481652",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "55c88819654816522c9c27f0b116c213e590db9c8b4275a92002bb8888d056f8",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:19.979340100Z"
+            },
+            {
+              "id": "f6f46c4e1dfcaff1",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "f6f46c4e1dfcaff12851e3d5b8a63526a39aa1ca015a3913ed1d3408c530303c",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:23.018815600Z"
+            },
+            {
+              "id": "955c07ef237ac061",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "955c07ef237ac061ef0d8cee4c86eb3d5793dca70627e687d083f8a59314435c",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:25.986642400Z"
+            },
+            {
+              "id": "974a10d817e87af5",
+              "name": "SwarmCross-g13-397a-1ba9",
+              "generation": 13,
+              "content_hash": "974a10d817e87af518eeef2b94667909bb465a779e8799ced1b5220c9fa39f9c",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:50:26.225856500Z"
+            },
+            {
+              "id": "08ff68e89032dae9",
+              "name": "SwarmCross-g13-397a-1ba9",
+              "generation": 13,
+              "content_hash": "08ff68e89032dae9c62694e97769a11cef69417e6cfb261b54b1bfd1ab4f6d0e",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:50:26.555766300Z"
+            },
+            {
+              "id": "e2dd4bc5872b3010",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "e2dd4bc5872b3010eecb287105edd87945984d50affadd1e02b4089260192011",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:29.723389400Z"
+            },
+            {
+              "id": "dabc48f35d8342ff",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "dabc48f35d8342ff30852d54dee05e84e6cc66b4859b065832a269759a7046be",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:32.976521200Z"
+            },
+            {
+              "id": "2bc34225fe90403a",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "2bc34225fe90403ac075273add4eaa719263e84853a2c72311e3345205469229",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:36.846540Z"
+            },
+            {
+              "id": "00ba583767e11a94",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "00ba583767e11a94c7714461b129164f69c64aa512156f61ac0db03253165c48",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:40.321450400Z"
+            },
+            {
+              "id": "903f90b9c86eb604",
+              "name": "SwarmCross-g14-397a-955c",
+              "generation": 14,
+              "content_hash": "903f90b9c86eb604f882a48a9d4508336f7c3baba4677a2b75db0e81a5e433a2",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:50:40.838289100Z"
+            },
+            {
+              "id": "1934cdebd7843656",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "1934cdebd7843656662c8463d78e1021082a6be418876acec795049002091bca",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:43.719269900Z"
+            },
+            {
+              "id": "f002092e1c3dafbb",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "f002092e1c3dafbb9b60ae9440e99c06063f16202f9ab761e469ced8db543902",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:46.925278100Z"
+            },
+            {
+              "id": "86b6f2271bba72cf",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "86b6f2271bba72cf8e9e294124ae0b31d3f929506399fde7171ff3ee8ac6f084",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:50.678117900Z"
+            },
+            {
+              "id": "6f4ffc7426c9376a",
+              "name": "SwarmCross-g14-397a-955c",
+              "generation": 14,
+              "content_hash": "6f4ffc7426c9376ac240e4b9d8cf6ff60017d8e316301f41183bcb20e2edf0b5",
+              "is_crossover": true,
+              "created_at": "2026-11-10T16:50:51.233968Z"
+            },
+            {
+              "id": "a81be5ed112d1509",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "a81be5ed112d15093f692d387506039413764490174d15672986a2d096997df4",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:50:54.135162900Z"
+            }
+          ],
+          "node_holes": [],
+          "edge_property": "directed",
+          "edges": [
+            [
+              3,
+              8,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              5,
+              8,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              3,
+              9,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              5,
+              9,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              3,
+              10,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              5,
+              10,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              3,
+              11,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              3,
+              12,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              3,
+              13,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              3,
+              14,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              7,
+              14,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              3,
+              15,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              3,
+              16,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              7,
+              16,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              3,
+              17,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              7,
+              17,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              3,
+              18,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              18,
+              19,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              3,
+              19,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              18,
+              20,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              3,
+              20,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              18,
+              21,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              18,
+              22,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              18,
+              23,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              18,
+              24,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              18,
+              25,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              21,
+              25,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              18,
+              26,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              21,
+              26,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              18,
+              27,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              28,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              29,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              21,
+              29,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              27,
+              30,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              31,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              32,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              33,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              34,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              35,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              36,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              37,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              18,
+              37,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              27,
+              38,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              18,
+              38,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              27,
+              39,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              18,
+              39,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              27,
+              40,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              41,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              36,
+              41,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              27,
+              42,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              43,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              44,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              45,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              46,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              47,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              36,
+              47,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              27,
+              48,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              49,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              27,
+              50,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              51,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              46,
+              51,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              52,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              46,
+              52,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              53,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              46,
+              53,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              54,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              55,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              27,
+              55,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              56,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              57,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              27,
+              57,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              58,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              27,
+              58,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              59,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              60,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              61,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              62,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              63,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              49,
+              63,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              64,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              65,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              66,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              67,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              27,
+              67,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              68,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              69,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              70,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              71,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              72,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              27,
+              72,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              73,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              74,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              66,
+              74,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              75,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              66,
+              75,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              50,
+              76,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              50,
+              77,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              78,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              79,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              80,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              81,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              82,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              83,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              50,
+              83,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              84,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              85,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              50,
+              85,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              86,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              50,
+              86,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              87,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              50,
+              87,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              88,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              89,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              90,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              79,
+              90,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              91,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              92,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              79,
+              92,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              93,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              94,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              95,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              96,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              97,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              98,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              99,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              100,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              101,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              102,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              103,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              104,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              105,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              102,
+              105,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              106,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              107,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              108,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              102,
+              108,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              109,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              110,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              111,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              107,
+              111,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              112,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              113,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              114,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              115,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              107,
+              115,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              77,
+              116,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              117,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              118,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              119,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              77,
+              120,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              121,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              122,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              77,
+              122,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              120,
+              123,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              77,
+              123,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              120,
+              124,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              125,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              126,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              127,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              128,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              77,
+              128,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              120,
+              129,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              130,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              131,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              125,
+              131,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              120,
+              132,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              133,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              134,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              135,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              136,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              137,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              138,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              125,
+              138,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              120,
+              139,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              125,
+              139,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              120,
+              140,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              141,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              142,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              143,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              144,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              137,
+              144,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              120,
+              145,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              146,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              147,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              120,
+              148,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-1"
+                }
+              }
+            ],
+            [
+              137,
+              148,
+              {
+                "Crossover": {
+                  "parent_role": "Parent-2"
+                }
+              }
+            ],
+            [
+              120,
+              149,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ]
+          ]
+        },
+        "node_indices": {
+          "239db6a48ac6b6e5": 50,
+          "c057ddcb0a6f9009": 60,
+          "33bd1584973a6d28": 44,
+          "d5b17c12d6cdad6d": 53,
+          "56925799888e830f": 86,
+          "e2dd4bc5872b3010": 140,
+          "3a937960f0abeefc": 27,
+          "462a383b6b8c5c98": 10,
+          "461b4a9eccba357f": 119,
+          "b29c4f79f7ff81f2": 71,
+          "c574290b729c9e02": 78,
+          "b860bf1d2987d624": 7,
+          "cdbe38a7da55ed39": 12,
+          "5950539f65433b15": 80,
+          "57152e92cad95cec": 66,
+          "693f1fef3ca7767c": 82,
+          "2ff81efaad9a2703": 11,
+          "511493f40b371872": 29,
+          "5c788353299899c9": 67,
+          "974a10d817e87af5": 138,
+          "63350f27c799493e": 127,
+          "9b41950bdeb769d7": 3,
+          "b77d546d69005d61": 107,
+          "f27df90da3347609": 34,
+          "3f9a96fbf0b4a0f4": 114,
+          "d6d7e0f23f3f627c": 9,
+          "a56a4915c1033498": 39,
+          "aa209b658ccc493d": 4,
+          "77b60599c17d9a5b": 122,
+          "a2f711ca9f1157d0": 104,
+          "972953339db3fd68": 131,
+          "6f4ffc7426c9376a": 148,
+          "8177f728405cca66": 58,
+          "b967d219cb64974d": 72,
+          "00ba583767e11a94": 143,
+          "660bd3314286faa5": 20,
+          "80237999bde1e06e": 43,
+          "fe050bd5daf31967": 97,
+          "f9cb5dc60b54a9c7": 99,
+          "600d054d9b53da96": 17,
+          "35d1262c42c05252": 18,
+          "cbc56739c27e1268": 21,
+          "fde3cd7026100fa6": 59,
+          "25d5d52122f5f5ee": 124,
+          "f6f46c4e1dfcaff1": 136,
+          "dbf60e4cb90f5ef0": 79,
+          "ceb5398db80eb056": 15,
+          "6cdad0b0a4e0f56a": 23,
+          "d6c83d7457052aa9": 81,
+          "a5072c6bcdc93934": 61,
+          "23f81901980c7463": 105,
+          "08ff68e89032dae9": 139,
+          "dddeb455f479f0fb": 132,
+          "b041242b72e5e936": 111,
+          "676516dc72cebb7f": 41,
+          "047704399848e733": 6,
+          "6ae8a88bf64424c2": 14,
+          "1ba94e7e3c8cbfb3": 125,
+          "dabc48f35d8342ff": 141,
+          "2da4b984693a6d56": 62,
+          "4ed614a4c2610bf6": 5,
+          "3d16b0bba64c4994": 94,
+          "835705a03c7b302b": 54,
+          "463621a9551901a5": 87,
+          "7bd9c9c1077dc019": 100,
+          "bafebd6ce7ddc449": 47,
+          "d0f5d5991831d82a": 98,
+          "955c07ef237ac061": 137,
+          "aba0320d35c7ceb2": 56,
+          "1934cdebd7843656": 145,
+          "86b6f2271bba72cf": 147,
+          "94dbba63d2453ee5": 19,
+          "4f162ad63057a2ab": 88,
+          "7735fe3a393560b2": 103,
+          "a8e705d695e0397f": 38,
+          "4ff19d8ad2434a4c": 46,
+          "f002092e1c3dafbb": 146,
+          "f1e5e17e8f855f09": 123,
+          "8cdf95e3fdc80648": 89,
+          "8e647b1481b5ae7b": 92,
+          "10f1bb20c1805507": 129,
+          "7a97165b48ee371e": 95,
+          "b15830eb09a42c5e": 90,
+          "f88f04cb6b9372e5": 101,
+          "229d0dce82fb7045": 113,
+          "903f90b9c86eb604": 144,
+          "de1312d3f7fd32aa": 25,
+          "d7813520d05817da": 76,
+          "69b862db5002d2e1": 102,
+          "ac83ce882aecb020": 49,
+          "8224ed8197f25eac": 133,
+          "397ab2cb25b8a3ce": 120,
+          "0f274e177bd092be": 117,
+          "7fcb39fc702be706": 126,
+          "94e4b1f980c60e09": 75,
+          "f257bba28a0fa7b0": 57,
+          "3f5ff0d389ae3f34": 128,
+          "f8d2d295b95942dc": 35,
+          "a096b1f09cf9b86d": 16,
+          "7c2ddff57e40cb90": 112,
+          "3242f399354965cd": 73,
+          "112edab1de985241": 52,
+          "39897122836c276b": 64,
+          "a91a1e0068add4e4": 26,
+          "630784b17bb89e24": 8,
+          "702007b29fd1be70": 70,
+          "5b197e79f9496c1f": 130,
+          "dd54be2c726da0e3": 74,
+          "3be881dc60f233ec": 24,
+          "403a50b238eb5af4": 55,
+          "074308e8e3e4b874": 22,
+          "748f856134fc15ac": 36,
+          "30b1d9623fd20087": 40,
+          "6678f4db42c2367a": 28,
+          "c80d2241dc989e5b": 69,
+          "f1e7887f5b1203fa": 96,
+          "dcaae84319860547": 118,
+          "2f4c33af841215b6": 33,
+          "aa536e077fb741b4": 65,
+          "f61395f2bff18fd5": 2,
+          "5adece0b1159d11b": 37,
+          "9d63479eccce814a": 63,
+          "09ec9842b69673ad": 77,
+          "b1627af9ffd69be1": 109,
+          "a81be5ed112d1509": 149,
+          "8bb7c3638ddef2e8": 13,
+          "e5f32300cc6e0432": 45,
+          "8ebf2eabe76275b6": 51,
+          "2bc34225fe90403a": 142,
+          "e35a766113f5fe00": 31,
+          "5535b9cb93d5b317": 30,
+          "7bfbe14ef1bdfe4d": 42,
+          "8ffc0d0a6b34d9d9": 1,
+          "352ab3d853a2fb80": 121,
+          "da837f3fd12ee769": 134,
+          "66253807a0e88603": 83,
+          "44c5b4d1a65fff76": 84,
+          "cef2441aa3ced6c5": 0,
+          "a0866f55850a686c": 48,
+          "cf9d3cb8f5964f8d": 32,
+          "46caa7af714214a3": 108,
+          "29f8c5b1c5370655": 115,
+          "55c8881965481652": 135,
+          "84bdcb24f2f1eb27": 85,
+          "c69cf09759a9bffc": 91,
+          "c095f0962b0efd4c": 68,
+          "60538d343db69cfb": 93,
+          "8abd71cb8faeebe1": 116,
+          "f371c00e62cc6e46": 110,
+          "68329f8fdf2fa393": 106
+        }
+      },
+      "archive": {
+        "dim_x": 10,
+        "dim_y": 10,
+        "grid": {
+          "0,3": {
+            "capsule": {
+              "id": "397ab2cb25b8a3ce",
+              "name": "LLM-Seed-003-mut-g1-mut-g2-mut-g5-mut-g7-mut-g12",
+              "semantic_interface": "Mutated from parent 09ec9842b69673ad at gen 12",
+              "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let score = (node_residual_cpu + node_residual_ram) as f64;\n    score\n}",
+              "parent_ids": [
+                "09ec9842b69673ad"
+              ],
+              "generation": 12,
+              "content_hash": "397ab2cb25b8a3ce548e8b731f7bdf640d1c5ffd7ded0f4692c967bbefe63881",
+              "created_at": "2026-11-10T16:49:43.811176600Z",
+              "metadata": {
+                "operator": "HttpLlamaOperator",
+                "parent_hash": "09ec9842b69673ada4cb53ec20c583c57f6d433262be0af97abdca29479b009e"
+              },
+              "interface_version": "ScorePolicyV1",
+              "policy_kind": "ScorePolicy",
+              "ast_fingerprint": {
+                "max_depth": 4,
+                "branch_count": 0,
+                "op_count": 1,
+                "statement_count": 2,
+                "ast_hash": "56d35a7bebd71a10d48b554cf55d1e67c8bfb7b7454f47cd745d7729d3053cd0"
+              },
+              "dependencies": [],
+              "validation": "PassedLevel2Computational",
+              "graft_manifest": null
+            },
+            "niche_coord": [
+              0,
+              3
+            ],
+            "behavior": {
+              "residual_variance": 14.164093501984128,
+              "new_bin_ratio": 0.1588,
+              "mean_fullness": 0.9677777777777777,
+              "dead_space_ratio": 0.16448412698412695
+            },
+            "fitness": {
+              "is_valid": true,
+              "total_bins": 397,
+              "total_theoretical_min_bins": 384,
+              "total_excess_bins": 13,
+              "mean_efficiency": 0.9677777777777777,
+              "total_fuel": 159190,
+              "solved_instances": 50,
+              "total_instances": 50,
+              "behavior": {
+                "residual_variance": 14.164093501984128,
+                "new_bin_ratio": 0.1588,
+                "mean_fullness": 0.9677777777777777,
+                "dead_space_ratio": 0.16448412698412695
+              },
+              "tldr_score": -0.1416409350198413,
+              "trajectory_metrics": null
+            },
+            "structural_fingerprint": {
+              "max_depth": 4,
+              "branch_count": 0,
+              "op_count": 1,
+              "statement_count": 2,
+              "ast_hash": "56d35a7bebd71a10d48b554cf55d1e67c8bfb7b7454f47cd745d7729d3053cd0"
+            },
+            "times_sampled": 142,
+            "times_replaced": 6
+          }
+        },
+        "total_samples": 142,
+        "ucb_exploration_factor": 1.414
+      },
+      "crossover_attempts": 45,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 41
+    },
+    {
+      "group": "GroupD",
+      "rng_seed": 1000,
+      "total_generations": 15,
+      "best_in_distribution_score": {
+        "is_valid": true,
+        "total_bins": 397,
+        "total_theoretical_min_bins": 384,
+        "total_excess_bins": 13,
+        "mean_efficiency": 0.9677777777777777,
+        "total_fuel": 159190,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 14.164093501984128,
+          "new_bin_ratio": 0.1588,
+          "mean_fullness": 0.9677777777777777,
+          "dead_space_ratio": 0.16448412698412695
+        },
+        "tldr_score": -0.1416409350198413,
+        "trajectory_metrics": null
+      },
+      "best_score_without_lookahead": {
+        "is_valid": true,
+        "total_bins": 397,
+        "total_theoretical_min_bins": 384,
+        "total_excess_bins": 13,
+        "mean_efficiency": 0.9677777777777777,
+        "total_fuel": 159190,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 14.164093501984128,
+          "new_bin_ratio": 0.1588,
+          "mean_fullness": 0.9677777777777777,
+          "dead_space_ratio": 0.16448412698412695
+        },
+        "tldr_score": -0.1416409350198413,
+        "trajectory_metrics": null
+      },
+      "best_validation_score": {
+        "is_valid": true,
+        "total_bins": 388,
+        "total_theoretical_min_bins": 378,
+        "total_excess_bins": 10,
+        "mean_efficiency": 0.9755555555555554,
+        "total_fuel": 159326,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 11.89350818452381,
+          "new_bin_ratio": 0.1552,
+          "mean_fullness": 0.9755555555555554,
+          "dead_space_ratio": 0.17571428571428574
+        },
+        "tldr_score": -0.1189350818452381,
+        "trajectory_metrics": null
+      },
+      "best_ood1_score": {
+        "is_valid": true,
+        "total_bins": 2213,
+        "total_theoretical_min_bins": 2121,
+        "total_excess_bins": 92,
+        "mean_efficiency": 0.9584406932243126,
+        "total_fuel": 3729268,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 12.065829598846692,
+          "new_bin_ratio": 0.8852,
+          "mean_fullness": 0.9584406932243126,
+          "dead_space_ratio": 0.3013128438800836
+        },
+        "tldr_score": -0.12065829598846692,
+        "trajectory_metrics": null
+      },
+      "best_ood2_score": {
+        "is_valid": true,
+        "total_bins": 1763,
+        "total_theoretical_min_bins": 1522,
+        "total_excess_bins": 241,
+        "mean_efficiency": 0.864639179344338,
+        "total_fuel": 1119150,
+        "solved_instances": 50,
+        "total_instances": 50,
+        "behavior": {
+          "residual_variance": 24.74758963634383,
+          "new_bin_ratio": 0.7052,
+          "mean_fullness": 0.864639179344338,
+          "dead_space_ratio": 0.05353797945894468
+        },
+        "tldr_score": -0.24747589636343828,
+        "trajectory_metrics": null
+      },
+      "best_capsule": {
+        "id": "f74d5ecc5080fbf3",
+        "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+        "semantic_interface": "Mutated from parent 129bd9d7ad60233f at gen 12",
+        "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let score = (node_residual_cpu + node_residual_ram) as f64;\n    score\n}",
+        "parent_ids": [
+          "129bd9d7ad60233f"
+        ],
+        "generation": 12,
+        "content_hash": "f74d5ecc5080fbf39b562edb1ee0cabe93a1d53e2aef7be9ec92874726a4ab46",
+        "created_at": "2026-11-10T16:40:41.839869200Z",
+        "metadata": {
+          "parent_hash": "129bd9d7ad60233fc4d4022c29d1e4f361388ba30139b7685961a0368fefb6eb",
+          "operator": "HttpLlamaOperator"
+        },
+        "interface_version": "ScorePolicyV1",
+        "policy_kind": "ScorePolicy",
+        "ast_fingerprint": {
+          "max_depth": 4,
+          "branch_count": 0,
+          "op_count": 1,
+          "statement_count": 2,
+          "ast_hash": "56d35a7bebd71a10d48b554cf55d1e67c8bfb7b7454f47cd745d7729d3053cd0"
+        },
+        "dependencies": [],
+        "validation": "PassedLevel2Computational",
+        "graft_manifest": null
+      },
+      "generations_history": [
+        {
+          "generation": 1,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 425561,
+          "best_capsule_id": "4ed614a4c2610bf6",
+          "best_capsule_name": "LLM-Seed-005",
+          "llm_calls_consumed": 8,
+          "executions_consumed": 400,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 2,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 510756,
+          "best_capsule_id": "9b41950bdeb769d7",
+          "best_capsule_name": "LLM-Seed-003",
+          "llm_calls_consumed": 15,
+          "executions_consumed": 750,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 3,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 721761,
+          "best_capsule_id": "d7970f44d3288f2d",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g2",
+          "llm_calls_consumed": 22,
+          "executions_consumed": 1100,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 4,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 717778,
+          "best_capsule_id": "72f1bdb089801c52",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g3",
+          "llm_calls_consumed": 29,
+          "executions_consumed": 1450,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 5,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 718043,
+          "best_capsule_id": "6d8cb65acd77717f",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g4",
+          "llm_calls_consumed": 36,
+          "executions_consumed": 1800,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 6,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 721827,
+          "best_capsule_id": "312b8617a983d6cf",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g5",
+          "llm_calls_consumed": 43,
+          "executions_consumed": 2150,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 7,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 721827,
+          "best_capsule_id": "e3060c579d60e3d4",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+          "llm_calls_consumed": 50,
+          "executions_consumed": 2500,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 8,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 721761,
+          "best_capsule_id": "e5198a7e4d46b6b2",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g7",
+          "llm_calls_consumed": 57,
+          "executions_consumed": 2850,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 9,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 734902,
+          "best_capsule_id": "129bd9d7ad60233f",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+          "llm_calls_consumed": 64,
+          "executions_consumed": 3200,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 10,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 218674,
+          "best_capsule_id": "57090f786e3ae390",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g9",
+          "llm_calls_consumed": 71,
+          "executions_consumed": 3550,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 11,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 734902,
+          "best_capsule_id": "129bd9d7ad60233f",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+          "llm_calls_consumed": 78,
+          "executions_consumed": 3900,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 12,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 734902,
+          "best_capsule_id": "129bd9d7ad60233f",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+          "llm_calls_consumed": 85,
+          "executions_consumed": 4250,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 13,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 159190,
+          "best_capsule_id": "f74d5ecc5080fbf3",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+          "llm_calls_consumed": 92,
+          "executions_consumed": 4600,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 14,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 159190,
+          "best_capsule_id": "f74d5ecc5080fbf3",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+          "llm_calls_consumed": 99,
+          "executions_consumed": 4950,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        },
+        {
+          "generation": 15,
+          "best_bins": 397,
+          "best_efficiency": 0.9677777777777777,
+          "best_fuel": 159190,
+          "best_capsule_id": "f74d5ecc5080fbf3",
+          "best_capsule_name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+          "llm_calls_consumed": 106,
+          "executions_consumed": 5300,
+          "qd_score": 0.9677777777777777,
+          "archive_coverage": 0.01,
+          "occupied_niches": 1,
+          "crossover_rate": 0.0,
+          "crossover_not_evaluable_count": 0,
+          "crossover_rejected_count": 0
+        }
+      ],
+      "budget_consumed": {
+        "llm_calls_consumed": 106,
+        "executions_consumed": 5300
+      },
+      "total_lineage_nodes": 106,
+      "total_lineage_edges": 98,
+      "phylogeny": {
+        "graph": {
+          "nodes": [
+            {
+              "id": "cef2441aa3ced6c5",
+              "name": "LLM-Seed-000",
+              "generation": 0,
+              "content_hash": "cef2441aa3ced6c56135134608f4da8d35cd73004a281c41db0d73e5003e9e48",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:31:53.866774700Z"
+            },
+            {
+              "id": "8ffc0d0a6b34d9d9",
+              "name": "LLM-Seed-001",
+              "generation": 0,
+              "content_hash": "8ffc0d0a6b34d9d9b30d6756b768896cf4688460a2fd610f8d3b210f04d185b5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:31:57.519581900Z"
+            },
+            {
+              "id": "f61395f2bff18fd5",
+              "name": "LLM-Seed-002",
+              "generation": 0,
+              "content_hash": "f61395f2bff18fd565842f317d468b46aa2c23d5d8299ce583568eddaac2402b",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:01.051844Z"
+            },
+            {
+              "id": "9b41950bdeb769d7",
+              "name": "LLM-Seed-003",
+              "generation": 0,
+              "content_hash": "9b41950bdeb769d729222134e30a1588bef2347ecba1a3df732b85bcc7943f2f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:04.850295500Z"
+            },
+            {
+              "id": "aa209b658ccc493d",
+              "name": "LLM-Seed-004",
+              "generation": 0,
+              "content_hash": "aa209b658ccc493db19f1a4994f898c2d69cd8c61462a0e9ee239d3cd8de35fc",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:08.120641300Z"
+            },
+            {
+              "id": "4ed614a4c2610bf6",
+              "name": "LLM-Seed-005",
+              "generation": 0,
+              "content_hash": "4ed614a4c2610bf6547d922de4ee177233d70dea88a12e7608f75502ae980e30",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:11.503244900Z"
+            },
+            {
+              "id": "047704399848e733",
+              "name": "LLM-Seed-006",
+              "generation": 0,
+              "content_hash": "047704399848e733c405d6cbafdd3ce29414841cb8096721b605bcebac5c71ea",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:14.261575200Z"
+            },
+            {
+              "id": "b860bf1d2987d624",
+              "name": "LLM-Seed-007",
+              "generation": 0,
+              "content_hash": "b860bf1d2987d62416fd23959ecb2e38a882a2a5ce6c856abe7eca11e2f06ab8",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:17.727794500Z"
+            },
+            {
+              "id": "22a6282d471786b6",
+              "name": "LLM-Seed-003-mut-g1",
+              "generation": 1,
+              "content_hash": "22a6282d471786b6f8ccee05b3a4d522b6bb44b3978ed59749464f4bd50d2f03",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:22.521412Z"
+            },
+            {
+              "id": "9f5612b161166aa6",
+              "name": "LLM-Seed-003-mut-g1",
+              "generation": 1,
+              "content_hash": "9f5612b161166aa6c917ae611417fd139d4e363c95246af06054f214cdd2662d",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:27.600948200Z"
+            },
+            {
+              "id": "4821bda428bfcb9a",
+              "name": "LLM-Seed-003-mut-g1",
+              "generation": 1,
+              "content_hash": "4821bda428bfcb9af99348d56c3f2f83fb9779ff897a4b70929258f423b4158b",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:32.543970100Z"
+            },
+            {
+              "id": "5360ccb29eb331ef",
+              "name": "LLM-Seed-003-mut-g1-mut-g1",
+              "generation": 1,
+              "content_hash": "5360ccb29eb331efb42409ed98146448b46ecb2c628a67f2224dfc7cb7dfc2c7",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:38.200929300Z"
+            },
+            {
+              "id": "5876641b2fcd0201",
+              "name": "LLM-Seed-003-mut-g1-mut-g1",
+              "generation": 1,
+              "content_hash": "5876641b2fcd02014e3ed3f1666f349320c8b6741531c74c20e71cf93f62c3e0",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:43.897390600Z"
+            },
+            {
+              "id": "32a1fe6363bc3d4f",
+              "name": "LLM-Seed-003-mut-g1-mut-g1",
+              "generation": 1,
+              "content_hash": "32a1fe6363bc3d4fa6ad3ee5d302a80f36c74f62b7275308af47a5e51ebff93f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:49.680282Z"
+            },
+            {
+              "id": "ed8c05ea08be826e",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g1",
+              "generation": 1,
+              "content_hash": "ed8c05ea08be826ece7bd535104a7017cb58a21c4147cf499255451fec98e293",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:32:55.544072100Z"
+            },
+            {
+              "id": "312b914624239ff5",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "312b914624239ff5f0781009594e381606a79bb5233cf911bb47ae5697d760f5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:01.924680200Z"
+            },
+            {
+              "id": "253304f9fe2c8b79",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "253304f9fe2c8b794e282e8e5e15b679181fabead46c9d5aaa25731243138b86",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:07.709825500Z"
+            },
+            {
+              "id": "d7970f44d3288f2d",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "d7970f44d3288f2d29c611bd001c242b25085d6911afcd57e4043e9c9226bd1b",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:13.415753400Z"
+            },
+            {
+              "id": "45efd7c146b53532",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "45efd7c146b53532b2d8ddb2dbed1ac17fd93c39272b002999b2cba98bc5ff52",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:19.413801100Z"
+            },
+            {
+              "id": "533b3baf03883e1d",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "533b3baf03883e1dd4741017b1d973788f23008e7ff9621c58828d5525c79d78",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:25.220452200Z"
+            },
+            {
+              "id": "820bdf8ca143cb2f",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "820bdf8ca143cb2f35f82aa8e65f720bb7e2b7cbae086745b17e078236fa68a4",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:31.340500100Z"
+            },
+            {
+              "id": "de026d4477f2ab01",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g2",
+              "generation": 2,
+              "content_hash": "de026d4477f2ab01ae63ffbf35386db590bd88d2613a54a54fbf3f353368a3cd",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:38.177431100Z"
+            },
+            {
+              "id": "2dfb2b34b385839f",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g3",
+              "generation": 3,
+              "content_hash": "2dfb2b34b385839f7db4429929d47ea60bb2a44430d85e8a2610c4dabb3616be",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:44.714019Z"
+            },
+            {
+              "id": "cc8a87d83eb1487d",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g3",
+              "generation": 3,
+              "content_hash": "cc8a87d83eb1487db30202759bb5cf768f33ddba6289d0d7ecd919d7c6c3c960",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:51.397560100Z"
+            },
+            {
+              "id": "cd262b92b01b6b69",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g3",
+              "generation": 3,
+              "content_hash": "cd262b92b01b6b691ca5b515bb52b974ba35e7a44908b0468a3e7e3b524712ca",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:33:57.796718800Z"
+            },
+            {
+              "id": "ebee656976bdc1e3",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g3",
+              "generation": 3,
+              "content_hash": "ebee656976bdc1e3169cc3be4358a0c230032787e3b3398a94ce84cfba24db86",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:04.269844800Z"
+            },
+            {
+              "id": "e988229af33e47b0",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g3",
+              "generation": 3,
+              "content_hash": "e988229af33e47b00e3f9ec07dbac255e0a4c88c2a152fce28b2b722b2eb20b4",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:10.129070200Z"
+            },
+            {
+              "id": "79ab851c4a50b14f",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g3",
+              "generation": 3,
+              "content_hash": "79ab851c4a50b14f1702522a38c9ba7fe9ea00f33d697bb91807420545975a81",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:16.568666900Z"
+            },
+            {
+              "id": "72f1bdb089801c52",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g3",
+              "generation": 3,
+              "content_hash": "72f1bdb089801c528a6595641f604ce072a5e36eccf4c9bca0d2a8c8214586df",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:21.728382500Z"
+            },
+            {
+              "id": "55aabff602044c73",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g4",
+              "generation": 4,
+              "content_hash": "55aabff602044c73c86671a058f1d9347feff1789531c6f34f33be762c38b60e",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:27.474205100Z"
+            },
+            {
+              "id": "b2140e5539e67c6e",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g4",
+              "generation": 4,
+              "content_hash": "b2140e5539e67c6eaa46a0964792c5eec22a2057ce9ef3a03423ae3224dbbf08",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:33.220498900Z"
+            },
+            {
+              "id": "6d8cb65acd77717f",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g4",
+              "generation": 4,
+              "content_hash": "6d8cb65acd77717ffb85d0179dbd6201fce398786081727e1db4affb680bc94e",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:38.955315400Z"
+            },
+            {
+              "id": "d7125adc97cd17b5",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g4",
+              "generation": 4,
+              "content_hash": "d7125adc97cd17b584aac3715a9127a8cb9b184c911e9894b9917916e1e30056",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:45.545520500Z"
+            },
+            {
+              "id": "392de3f3ce183933",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g4",
+              "generation": 4,
+              "content_hash": "392de3f3ce183933f54be8276d5ab4afbd882030aea3098ecb893177e999a39c",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:51.408645500Z"
+            },
+            {
+              "id": "cd5620939ecd8c89",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g4",
+              "generation": 4,
+              "content_hash": "cd5620939ecd8c895c26e522a4acb297d05fecae8cbfebe25ca3ce3cb6ed769f",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:34:57.149996500Z"
+            },
+            {
+              "id": "129c5dc8b296f272",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g4",
+              "generation": 4,
+              "content_hash": "129c5dc8b296f2728ebf74a394451c8cf9ba282f99ffd7117262f951c764d9c3",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:03.287569400Z"
+            },
+            {
+              "id": "0203cb310f10289e",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g5",
+              "generation": 5,
+              "content_hash": "0203cb310f10289e20137848c25272b8e4ef1e59e76a8be41ee6fcaccb58ec23",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:10.117441800Z"
+            },
+            {
+              "id": "e1713209b5d4f194",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g5",
+              "generation": 5,
+              "content_hash": "e1713209b5d4f194a585abf1381c60268e7ec0dd96c29bd61f72401a252e4ae2",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:16.042331300Z"
+            },
+            {
+              "id": "05b379e37b7f7c6c",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g5",
+              "generation": 5,
+              "content_hash": "05b379e37b7f7c6c16eb7c4e133fe22e578b9f0818e261638dfe5f1625dcd62d",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:22.607718500Z"
+            },
+            {
+              "id": "312b8617a983d6cf",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g5",
+              "generation": 5,
+              "content_hash": "312b8617a983d6cf9a70d673b8b9425c52c9733c7d61db0832fe4f313e7b697a",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:28.523080800Z"
+            },
+            {
+              "id": "7745d09d2ed811b1",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g5",
+              "generation": 5,
+              "content_hash": "7745d09d2ed811b1f268f7e2b1bbd47839e2c5e524cffc18e36f3c11e7d49fe7",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:34.692649200Z"
+            },
+            {
+              "id": "bb3ba93dd5e19559",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g5",
+              "generation": 5,
+              "content_hash": "bb3ba93dd5e19559f39ad137d4b62d330b2875adefc58b37e3760be6fcf3d715",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:40.593398100Z"
+            },
+            {
+              "id": "5daa3af704ca9cfc",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g5",
+              "generation": 5,
+              "content_hash": "5daa3af704ca9cfc02abc9a114535e76a713d095083e1ec319d16faf1aa31ad3",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:46.652337300Z"
+            },
+            {
+              "id": "e3060c579d60e3d4",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+              "generation": 6,
+              "content_hash": "e3060c579d60e3d4161de6a7c2c4d2e14102813d56c7cb23f51e98bf9d9dc9e9",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:52.425533400Z"
+            },
+            {
+              "id": "508d51e4dd34d9d3",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+              "generation": 6,
+              "content_hash": "508d51e4dd34d9d3ee965934c327682543485b366f18b140424ac7a39a70bf78",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:35:59.033275900Z"
+            },
+            {
+              "id": "1fa72983c88df0a5",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+              "generation": 6,
+              "content_hash": "1fa72983c88df0a5917c22bc65532874436052d2d23b7085c62bf1f8d0b2d142",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:36:05.008122500Z"
+            },
+            {
+              "id": "3758c3083814b728",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+              "generation": 6,
+              "content_hash": "3758c3083814b728063f4df176ae6bed75172b584bac25ffb8c027a4104c85ee",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:36:11.493072100Z"
+            },
+            {
+              "id": "f4c2b9234fbfdec7",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+              "generation": 6,
+              "content_hash": "f4c2b9234fbfdec772df54514928257ca9f1490d488c31c1077745bf4cd70b0b",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:36:17.991712800Z"
+            },
+            {
+              "id": "129bd9d7ad60233f",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6",
+              "generation": 6,
+              "content_hash": "129bd9d7ad60233fc4d4022c29d1e4f361388ba30139b7685961a0368fefb6eb",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:36:23.791207700Z"
+            },
+            {
+              "id": "11c7a8e554b6f5fa",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g6",
+              "generation": 6,
+              "content_hash": "11c7a8e554b6f5fa46eb7f33a87f832c1368f26570a7d0747ac8a40dba14e281",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:36:30.140262700Z"
+            },
+            {
+              "id": "e3cd4a479cf60004",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g7",
+              "generation": 7,
+              "content_hash": "e3cd4a479cf600043dbb8c45bf2ef81cb3a1a67b14ee01eaacc0e16d25fcbd5d",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:36:36.832151400Z"
+            },
+            {
+              "id": "3fe2080e90cca189",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g7",
+              "generation": 7,
+              "content_hash": "3fe2080e90cca189c93289611950f586468242e827e8fdb9cd98523fba9ee075",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:36:43.530282100Z"
+            },
+            {
+              "id": "d6e5e5d29ccf6807",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g7",
+              "generation": 7,
+              "content_hash": "d6e5e5d29ccf68071cebb84522b87b30dcb2faaff9a8e0c460c214aa57aa04dc",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:36:49.243564300Z"
+            },
+            {
+              "id": "8ef4e9c58bc7ef76",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g7",
+              "generation": 7,
+              "content_hash": "8ef4e9c58bc7ef7611a88b248e433b7d11b44b25f28c2efd5010ea3267e98c29",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:36:55.862845100Z"
+            },
+            {
+              "id": "e5198a7e4d46b6b2",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g7",
+              "generation": 7,
+              "content_hash": "e5198a7e4d46b6b24db7c653d80b896edeadf00868e9945e8bce924b925e59ff",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:01.728247900Z"
+            },
+            {
+              "id": "d385ed84787effc9",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g7",
+              "generation": 7,
+              "content_hash": "d385ed84787effc981ec24da681c3abc9b9a5d084cc0adee6fb05812f8b96900",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:08.520247100Z"
+            },
+            {
+              "id": "48aecc9c51c5d33c",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g7",
+              "generation": 7,
+              "content_hash": "48aecc9c51c5d33cbc47a064ecd10ef667b138622cac6dc037d15ac7628ee93d",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:14.412918300Z"
+            },
+            {
+              "id": "6b3a3db7af48bd14",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g8",
+              "generation": 8,
+              "content_hash": "6b3a3db7af48bd14513bff530f828546de4b213efbcc37b97c6671f89c3638d8",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:21.332258500Z"
+            },
+            {
+              "id": "ae642479f8d9fe79",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g8",
+              "generation": 8,
+              "content_hash": "ae642479f8d9fe79f805be789039eede1c28bb8723a9f07e393d2f81f65f4ca8",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:27.792846Z"
+            },
+            {
+              "id": "9b40cf7a0441f5a5",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g8",
+              "generation": 8,
+              "content_hash": "9b40cf7a0441f5a528ffdec2288de3c7667d661b6a68ce746b25735922b6ca00",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:34.315038500Z"
+            },
+            {
+              "id": "49ff0d5abe83ab2e",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g8",
+              "generation": 8,
+              "content_hash": "49ff0d5abe83ab2eaf35f931da19b020b281ba7e70cd7052d12fb90cc874a1af",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:41.658995Z"
+            },
+            {
+              "id": "fbe9d49e9f4a7d88",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g8",
+              "generation": 8,
+              "content_hash": "fbe9d49e9f4a7d88e2ce5e8c5de9516a0a0c362adb9936d907ee12c5d0fe2536",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:47.557348200Z"
+            },
+            {
+              "id": "b0ad4d8541557321",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g8",
+              "generation": 8,
+              "content_hash": "b0ad4d8541557321ba59d4830313a9f87d6da1ea26f55be4945dc23bf9cae4bb",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:53.261613900Z"
+            },
+            {
+              "id": "6de9df5d29a25972",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g8",
+              "generation": 8,
+              "content_hash": "6de9df5d29a2597256aa160594155da054b9a426a34ae9a43f69f848560bed67",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:37:59.757885800Z"
+            },
+            {
+              "id": "1a1ef82ad06a7aa0",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g9",
+              "generation": 9,
+              "content_hash": "1a1ef82ad06a7aa04fa21ec556775ca3304d7e788ac17a7dc537258f0fd1f5ef",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:38:04.721738300Z"
+            },
+            {
+              "id": "f6e119b1f3591be3",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g9",
+              "generation": 9,
+              "content_hash": "f6e119b1f3591be3df3877badc3a3cf2710cd61c3b08d2dadf19a79fb8d1b793",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:38:10.983632Z"
+            },
+            {
+              "id": "d15f4bb9121214fd",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g9",
+              "generation": 9,
+              "content_hash": "d15f4bb9121214fd033d006ea6f93c93127f54b288dd804492036e3c7309a7d5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:38:16.724420400Z"
+            },
+            {
+              "id": "806126c76d18d7a3",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g9",
+              "generation": 9,
+              "content_hash": "806126c76d18d7a3537e3949a9797802bf5c01744bebd7b42e2f68b626640d11",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:38:23.384409700Z"
+            },
+            {
+              "id": "aa140c1625f250bb",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g9",
+              "generation": 9,
+              "content_hash": "aa140c1625f250bb6e851806dc737d7b06affe34de104d6cb0e7cf242eb5e552",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:38:29.258094100Z"
+            },
+            {
+              "id": "5e83da41cffa930c",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g9",
+              "generation": 9,
+              "content_hash": "5e83da41cffa930c201d9f9d8856348118f7d8982b64009415658264cb3112f4",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:38:35.905758200Z"
+            },
+            {
+              "id": "57090f786e3ae390",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g9",
+              "generation": 9,
+              "content_hash": "57090f786e3ae39005bfa16eff1cff2696fa4dfb4b64c8aee3009222f3e52700",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:38:43.049992500Z"
+            },
+            {
+              "id": "c572f6ba50757763",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g10",
+              "generation": 10,
+              "content_hash": "c572f6ba50757763a260d6a72bcb31ed045e58ac69182f56f696561d7ff3c6dc",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:38:48.282904600Z"
+            },
+            {
+              "id": "6a34adb4871c621b",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g10",
+              "generation": 10,
+              "content_hash": "6a34adb4871c621beaec53ea61342fdd93ce81a456b22833e735c89e3e9cc0ee",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:38:54.305620100Z"
+            },
+            {
+              "id": "75d1d25f71fd1c88",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g10",
+              "generation": 10,
+              "content_hash": "75d1d25f71fd1c88388808553dc230cd103f80293b66186cfcd8d850d3caa3d1",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:00.859256700Z"
+            },
+            {
+              "id": "bce818af869893b9",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g10",
+              "generation": 10,
+              "content_hash": "bce818af869893b93959e746894fc7bd98dd6eb986e0bb121ac1952c8e846287",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:06.737482500Z"
+            },
+            {
+              "id": "0a8f0619f109c398",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g10",
+              "generation": 10,
+              "content_hash": "0a8f0619f109c39846e02722bcc09a254037e04731d1863f9420f728dc80a6ea",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:13.191406400Z"
+            },
+            {
+              "id": "10dc7b9a434ce351",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g10",
+              "generation": 10,
+              "content_hash": "10dc7b9a434ce351b1ad2d773a8842b114f1b09d0774849b64ee8051faa53a76",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:19.023602500Z"
+            },
+            {
+              "id": "bd97d26e20c3f82a",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g10",
+              "generation": 10,
+              "content_hash": "bd97d26e20c3f82a6fbfffffebac0d12065d1f453ccc4b2f9383b4196844d5c1",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:24.743923800Z"
+            },
+            {
+              "id": "39bf146a4e2e6983",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g11",
+              "generation": 11,
+              "content_hash": "39bf146a4e2e6983b682631ab4252b60e68fcede3e18b30f3b220ec7542d8ca8",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:30.458698200Z"
+            },
+            {
+              "id": "e8bff37fdc253e01",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g11",
+              "generation": 11,
+              "content_hash": "e8bff37fdc253e01471adc7ec82bbace84731a3cbb11be7d704e5c3416314cd7",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:36.163855600Z"
+            },
+            {
+              "id": "1b324abb22bf576c",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g11",
+              "generation": 11,
+              "content_hash": "1b324abb22bf576cf96a5e10b1f937a6bcffdbb294c45b0b95fc362756c3a4f3",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:42.505713600Z"
+            },
+            {
+              "id": "c5b3e0a3de29f658",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g11",
+              "generation": 11,
+              "content_hash": "c5b3e0a3de29f65808a262cfaaf05ca0cfb885148669adcfbc3c8c20e8d73df2",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:49.048464300Z"
+            },
+            {
+              "id": "99083b9007d84489",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g11",
+              "generation": 11,
+              "content_hash": "99083b9007d84489ac4a93c8114d8c503100c8eacdddfabfc2d816452c46a009",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:39:56.438095900Z"
+            },
+            {
+              "id": "fc78ba3a08e9b619",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g11",
+              "generation": 11,
+              "content_hash": "fc78ba3a08e9b619c61f0f85aa33caf3b4b5184fb38faa7e070cb5097fce8c99",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:03.061690400Z"
+            },
+            {
+              "id": "b154d5c5eb6dabac",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g11",
+              "generation": 11,
+              "content_hash": "b154d5c5eb6dabac78ac89cfd2f814a15a46abfcf995b6c40ed1089aeeeb6d01",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:10.156819400Z"
+            },
+            {
+              "id": "0d4b95bbb77ce676",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+              "generation": 12,
+              "content_hash": "0d4b95bbb77ce676edbc824365f10ffc4863bdac3c25a90207ded905dd8c8674",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:17.103429500Z"
+            },
+            {
+              "id": "4af656b433c49e65",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+              "generation": 12,
+              "content_hash": "4af656b433c49e65353f73102bfef2d57d382966dc2d5c74357ced8dbd1b404d",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:23.044543Z"
+            },
+            {
+              "id": "128e434204c7cac0",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+              "generation": 12,
+              "content_hash": "128e434204c7cac0ddcdd1567e6c2097e9a0ab3716aa02215c308cebe8008514",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:28.924473400Z"
+            },
+            {
+              "id": "1832441cd2a2c773",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+              "generation": 12,
+              "content_hash": "1832441cd2a2c773705183a6cf2241111f276cfaaaad5471c03dc8829b0fca13",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:35.483361600Z"
+            },
+            {
+              "id": "f74d5ecc5080fbf3",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+              "generation": 12,
+              "content_hash": "f74d5ecc5080fbf39b562edb1ee0cabe93a1d53e2aef7be9ec92874726a4ab46",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:41.839869200Z"
+            },
+            {
+              "id": "907b7ae915469e9d",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g12",
+              "generation": 12,
+              "content_hash": "907b7ae915469e9d01df06cf08287d6d85322205f786730bfe6368aee8c466c5",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:44.720324400Z"
+            },
+            {
+              "id": "0f8498ea6423da6d",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g12",
+              "generation": 12,
+              "content_hash": "0f8498ea6423da6dca7325d7fd707fc395cdb3138a090b0c70317556fbf65825",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:47.840491800Z"
+            },
+            {
+              "id": "40683701b02673e2",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "40683701b02673e22cabcee23db8594f6a77bb1c425947d51e65bc8f56a59341",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:51.068183800Z"
+            },
+            {
+              "id": "19cb22387d86a7a0",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "19cb22387d86a7a0e6f605e949dd8a441e6f6eb74d6b1d6377ca954dc00c6ceb",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:55.418565200Z"
+            },
+            {
+              "id": "d29314c4929023b4",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "d29314c4929023b430a587af435d33528fc44cc640b03fab404a36f9072f5093",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:40:58.563285500Z"
+            },
+            {
+              "id": "ee961c3e0d4428d4",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "ee961c3e0d4428d4c78bc30553e150cd4b11d8ac118747681acadc759e80252d",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:02.534591500Z"
+            },
+            {
+              "id": "05ad0476c563c00b",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "05ad0476c563c00b00101f4b4aec78c4831ca1c01696f86097b28f7f3e4c5a3e",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:05.805627800Z"
+            },
+            {
+              "id": "18a4c3f87d47b7be",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "18a4c3f87d47b7be6fe1cd493d2709a9b1a1f447cb95905e29b186dd8fb2f09c",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:08.634848300Z"
+            },
+            {
+              "id": "0418cde1149d834d",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g13",
+              "generation": 13,
+              "content_hash": "0418cde1149d834d8a062b6a35b6b5e3b2d9a841da1115a8e783a0cd25837753",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:11.950362300Z"
+            },
+            {
+              "id": "8fe079ce926b6d79",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "8fe079ce926b6d7962aa7598514d46e17d0971f182c209227897bcc345b2445e",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:14.903497700Z"
+            },
+            {
+              "id": "52e0dd95da0d3844",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "52e0dd95da0d3844526ada35c2915a993c8dc1a06ae1e044e87941fd16049926",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:18.228664300Z"
+            },
+            {
+              "id": "844643c157ca6381",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "844643c157ca63811a27fb15ac078bb2961d0521790924e5a36864dd0cd4747b",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:21.598452700Z"
+            },
+            {
+              "id": "5717fb89b6db7f30",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "5717fb89b6db7f30b807ec09f84a4405bfd51d9cf2a6c97f6220e1c1a35f9037",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:25.293566900Z"
+            },
+            {
+              "id": "1559dc61a33ad484",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "1559dc61a33ad484495e9e8e6434f2c6f43b6442810fb78f6ac3a69e51cce738",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:28.354744700Z"
+            },
+            {
+              "id": "720785bddfeafea6",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "720785bddfeafea6ac9e9f0d3085ac331abe0499cc1f84b49e0f7f64dbf26689",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:31.860724800Z"
+            },
+            {
+              "id": "245fdde6a0a2dba3",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12-mut-g14",
+              "generation": 14,
+              "content_hash": "245fdde6a0a2dba379efef7bf28dfa4c015b8642741a52ef7c3f5286d2d97afa",
+              "is_crossover": false,
+              "created_at": "2026-11-10T16:41:36.337334300Z"
+            }
+          ],
+          "node_holes": [],
+          "edge_property": "directed",
+          "edges": [
+            [
+              3,
+              8,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              3,
+              9,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              3,
+              10,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              10,
+              11,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              10,
+              12,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              10,
+              13,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              14,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              15,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              16,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              17,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              18,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              19,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              20,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              21,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              22,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              23,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              24,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              25,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              26,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              27,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              28,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              29,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              30,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              31,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              32,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              33,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              34,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              35,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              36,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              37,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              38,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              39,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              40,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              41,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              42,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              43,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              44,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              45,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              46,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              47,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              13,
+              48,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              49,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              50,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              51,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              52,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              53,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              54,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              55,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              56,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              57,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              58,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              59,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              60,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              61,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              62,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              63,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              64,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              65,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              66,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              67,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              68,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              69,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              70,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              71,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              72,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              73,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              74,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              75,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              76,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              77,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              78,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              79,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              80,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              81,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              82,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              83,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              84,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              85,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              86,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              87,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              88,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              48,
+              89,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              90,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              91,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              92,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              93,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              94,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              95,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              96,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              97,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              98,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              99,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              100,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              101,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              102,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              103,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              104,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ],
+            [
+              89,
+              105,
+              {
+                "Mutation": {
+                  "details": "Single-parent mutation"
+                }
+              }
+            ]
+          ]
+        },
+        "node_indices": {
+          "b2140e5539e67c6e": 30,
+          "05b379e37b7f7c6c": 38,
+          "f6e119b1f3591be3": 65,
+          "48aecc9c51c5d33c": 56,
+          "aa140c1625f250bb": 68,
+          "39bf146a4e2e6983": 78,
+          "ee961c3e0d4428d4": 95,
+          "0418cde1149d834d": 98,
+          "4af656b433c49e65": 86,
+          "5717fb89b6db7f30": 102,
+          "1559dc61a33ad484": 103,
+          "907b7ae915469e9d": 90,
+          "844643c157ca6381": 101,
+          "e1713209b5d4f194": 37,
+          "3fe2080e90cca189": 51,
+          "7745d09d2ed811b1": 40,
+          "e3cd4a479cf60004": 50,
+          "1a1ef82ad06a7aa0": 64,
+          "b154d5c5eb6dabac": 84,
+          "533b3baf03883e1d": 19,
+          "5daa3af704ca9cfc": 42,
+          "820bdf8ca143cb2f": 20,
+          "d7125adc97cd17b5": 32,
+          "49ff0d5abe83ab2e": 60,
+          "5876641b2fcd0201": 12,
+          "6de9df5d29a25972": 63,
+          "4821bda428bfcb9a": 10,
+          "52e0dd95da0d3844": 100,
+          "cd262b92b01b6b69": 24,
+          "508d51e4dd34d9d3": 44,
+          "ed8c05ea08be826e": 14,
+          "3758c3083814b728": 46,
+          "1832441cd2a2c773": 88,
+          "ae642479f8d9fe79": 58,
+          "aa209b658ccc493d": 4,
+          "e3060c579d60e3d4": 43,
+          "0f8498ea6423da6d": 91,
+          "806126c76d18d7a3": 67,
+          "f61395f2bff18fd5": 2,
+          "4ed614a4c2610bf6": 5,
+          "e8bff37fdc253e01": 79,
+          "0d4b95bbb77ce676": 85,
+          "1fa72983c88df0a5": 45,
+          "6b3a3db7af48bd14": 57,
+          "d29314c4929023b4": 94,
+          "129c5dc8b296f272": 35,
+          "72f1bdb089801c52": 28,
+          "b860bf1d2987d624": 7,
+          "1b324abb22bf576c": 80,
+          "22a6282d471786b6": 8,
+          "57090f786e3ae390": 70,
+          "128e434204c7cac0": 87,
+          "f4c2b9234fbfdec7": 47,
+          "9b41950bdeb769d7": 3,
+          "10dc7b9a434ce351": 76,
+          "5360ccb29eb331ef": 11,
+          "79ab851c4a50b14f": 27,
+          "45efd7c146b53532": 18,
+          "e5198a7e4d46b6b2": 54,
+          "047704399848e733": 6,
+          "253304f9fe2c8b79": 16,
+          "de026d4477f2ab01": 21,
+          "5e83da41cffa930c": 69,
+          "32a1fe6363bc3d4f": 13,
+          "ebee656976bdc1e3": 25,
+          "55aabff602044c73": 29,
+          "c5b3e0a3de29f658": 81,
+          "bce818af869893b9": 74,
+          "9f5612b161166aa6": 9,
+          "2dfb2b34b385839f": 22,
+          "99083b9007d84489": 82,
+          "40683701b02673e2": 92,
+          "bb3ba93dd5e19559": 41,
+          "11c7a8e554b6f5fa": 49,
+          "fc78ba3a08e9b619": 83,
+          "312b8617a983d6cf": 39,
+          "e988229af33e47b0": 26,
+          "fbe9d49e9f4a7d88": 61,
+          "245fdde6a0a2dba3": 105,
+          "cc8a87d83eb1487d": 23,
+          "312b914624239ff5": 15,
+          "d15f4bb9121214fd": 66,
+          "cd5620939ecd8c89": 34,
+          "8fe079ce926b6d79": 99,
+          "bd97d26e20c3f82a": 77,
+          "d7970f44d3288f2d": 17,
+          "6d8cb65acd77717f": 31,
+          "c572f6ba50757763": 71,
+          "b0ad4d8541557321": 62,
+          "9b40cf7a0441f5a5": 59,
+          "75d1d25f71fd1c88": 73,
+          "0a8f0619f109c398": 75,
+          "18a4c3f87d47b7be": 97,
+          "8ffc0d0a6b34d9d9": 1,
+          "720785bddfeafea6": 104,
+          "cef2441aa3ced6c5": 0,
+          "05ad0476c563c00b": 96,
+          "19cb22387d86a7a0": 93,
+          "392de3f3ce183933": 33,
+          "d385ed84787effc9": 55,
+          "6a34adb4871c621b": 72,
+          "129bd9d7ad60233f": 48,
+          "f74d5ecc5080fbf3": 89,
+          "d6e5e5d29ccf6807": 52,
+          "8ef4e9c58bc7ef76": 53,
+          "0203cb310f10289e": 36
+        }
+      },
+      "archive": {
+        "dim_x": 10,
+        "dim_y": 10,
+        "grid": {
+          "0,3": {
+            "capsule": {
+              "id": "f74d5ecc5080fbf3",
+              "name": "LLM-Seed-003-mut-g1-mut-g1-mut-g6-mut-g12",
+              "semantic_interface": "Mutated from parent 129bd9d7ad60233f at gen 12",
+              "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64) -> f64 {\n    let score = (node_residual_cpu + node_residual_ram) as f64;\n    score\n}",
+              "parent_ids": [
+                "129bd9d7ad60233f"
+              ],
+              "generation": 12,
+              "content_hash": "f74d5ecc5080fbf39b562edb1ee0cabe93a1d53e2aef7be9ec92874726a4ab46",
+              "created_at": "2026-11-10T16:40:41.839869200Z",
+              "metadata": {
+                "parent_hash": "129bd9d7ad60233fc4d4022c29d1e4f361388ba30139b7685961a0368fefb6eb",
+                "operator": "HttpLlamaOperator"
+              },
+              "interface_version": "ScorePolicyV1",
+              "policy_kind": "ScorePolicy",
+              "ast_fingerprint": {
+                "max_depth": 4,
+                "branch_count": 0,
+                "op_count": 1,
+                "statement_count": 2,
+                "ast_hash": "56d35a7bebd71a10d48b554cf55d1e67c8bfb7b7454f47cd745d7729d3053cd0"
+              },
+              "dependencies": [],
+              "validation": "PassedLevel2Computational",
+              "graft_manifest": null
+            },
+            "niche_coord": [
+              0,
+              3
+            ],
+            "behavior": {
+              "residual_variance": 14.164093501984128,
+              "new_bin_ratio": 0.1588,
+              "mean_fullness": 0.9677777777777777,
+              "dead_space_ratio": 0.16448412698412695
+            },
+            "fitness": {
+              "is_valid": true,
+              "total_bins": 397,
+              "total_theoretical_min_bins": 384,
+              "total_excess_bins": 13,
+              "mean_efficiency": 0.9677777777777777,
+              "total_fuel": 159190,
+              "solved_instances": 50,
+              "total_instances": 50,
+              "behavior": {
+                "residual_variance": 14.164093501984128,
+                "new_bin_ratio": 0.1588,
+                "mean_fullness": 0.9677777777777777,
+                "dead_space_ratio": 0.16448412698412695
+              },
+              "tldr_score": -0.1416409350198413,
+              "trajectory_metrics": null
+            },
+            "structural_fingerprint": {
+              "max_depth": 4,
+              "branch_count": 0,
+              "op_count": 1,
+              "statement_count": 2,
+              "ast_hash": "56d35a7bebd71a10d48b554cf55d1e67c8bfb7b7454f47cd745d7729d3053cd0"
+            },
+            "times_sampled": 98,
+            "times_replaced": 5
+          }
+        },
+        "total_samples": 98,
+        "ucb_exploration_factor": 1.414
+      },
+      "crossover_attempts": 0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    }
+  ]
+]

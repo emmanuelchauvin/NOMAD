@@ -14,11 +14,13 @@ $itemsToCopy = @(
     "SPECIFICATIONS.md",
     "TESTS.md",
     "RAPPORT_CAMPAGNE_30_SEEDS.md",
+    "RAPPORT_SCHEDULING_MULTI_RESSOURCES.md",
     "Cargo.toml",
     "Cargo.lock",
     "crates",
     "scripts",
-    "campaign_results"
+    "campaign_results",
+    "scheduling_results"
 )
 
 foreach ($item in $itemsToCopy) {
@@ -42,7 +44,7 @@ Write-Host "Archive nomad.zip générée avec succès ! (Code + Données du tir 
 # Concatène le code Rust, la documentation, le rapport de campagne et les statistiques JSON/CSV
 $filesForText = @()
 $filesForText += Get-ChildItem -Path crates -Recurse -Filter *.rs
-$filesForText += Get-Item -Path "README.md", "SPECIFICATIONS.md", "TESTS.md", "RAPPORT_CAMPAGNE_30_SEEDS.md" -ErrorAction SilentlyContinue
+$filesForText += Get-Item -Path "README.md", "SPECIFICATIONS.md", "TESTS.md", "RAPPORT_CAMPAGNE_30_SEEDS.md", "RAPPORT_SCHEDULING_MULTI_RESSOURCES.md" -ErrorAction SilentlyContinue
 $filesForText += Get-Item -Path "campaign_results\stats.json", "campaign_results\stats.csv" -ErrorAction SilentlyContinue
 
 $filesForText | ForEach-Object {

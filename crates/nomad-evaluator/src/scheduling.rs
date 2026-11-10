@@ -490,8 +490,11 @@ impl SchedulingOracle {
     ) -> Result<ValidationStatus, String> {
         // Niveau 1 : Survie structurelle
         if child.graft_manifest.is_some() {
-            verify_level1_structural_survival(child)
-                .map_err(|e| format!("Level 1 Structural failed: {}", e))?;
+            if let Err(e) = verify_level1_structural_survival(child) {
+                let err_msg = format!("Level 1 Structural failed: {}", e);
+                child.validation = ValidationStatus::Failed(err_msg.clone());
+                return Err(err_msg);
+            }
         }
 
         // Niveau 2 : Survie computationnelle (évaluation partielle)
@@ -519,15 +522,24 @@ impl SchedulingOracle {
             }
         };
 
-        // Comparaison décisionnelle différentielle sur un jeu de sondes
+        // Comparaison décisionnelle différentielle sur un jeu de sondes (4 In-Dist + 1 OOD-2 Asymétrique)
         let mut divergent_decisions = 0usize;
         let mut null_nodes_total = 0usize;
         let mut orig_nodes_total = 0usize;
+        let mut null_imbalance_total = 0.0f64;
+        let mut orig_imbalance_total = 0.0f64;
 
-        for inst in self.in_distribution.instances.iter().take(5) {
-            let (eval_c, _, _) =
+        let probes = self
+            .in_distribution
+            .instances
+            .iter()
+            .take(4)
+            .chain(self.ood2_skewed.instances.iter().take(1));
+
+        for inst in probes {
+            let (eval_c, imb_c, _) =
                 self.evaluate_instance_with_lookahead(inst, child, sandbox, fuel_limit, lookahead);
-            let (eval_null, _, _) =
+            let (eval_null, imb_null, _) =
                 self.evaluate_instance_with_lookahead(inst, &c_null_capsule, sandbox, fuel_limit, lookahead);
 
             if !eval_null.is_valid {
@@ -540,6 +552,8 @@ impl SchedulingOracle {
 
             orig_nodes_total += eval_c.bins_used;
             null_nodes_total += eval_null.bins_used;
+            orig_imbalance_total += imb_c;
+            null_imbalance_total += imb_null;
 
             if eval_c.bins_used != eval_null.bins_used || eval_c.trajectory != eval_null.trajectory
             {
@@ -547,14 +561,39 @@ impl SchedulingOracle {
             }
         }
 
-        if null_nodes_total < orig_nodes_total {
+        child.metadata.insert(
+            "ablation_nodes_diff".to_string(),
+            format!("{:+}", null_nodes_total as i64 - orig_nodes_total as i64),
+        );
+        child.metadata.insert(
+            "ablation_imbalance_diff".to_string(),
+            format!("{:+.4}", null_imbalance_total - orig_imbalance_total),
+        );
+        child.metadata.insert(
+            "ablation_divergent_instances".to_string(),
+            divergent_decisions.to_string(),
+        );
+
+        let epsilon = 1e-4;
+        let nodes_degraded = null_nodes_total > orig_nodes_total;
+        let imbalance_degraded = null_nodes_total == orig_nodes_total
+            && null_imbalance_total > orig_imbalance_total + epsilon;
+        let behavior_diverged = null_nodes_total == orig_nodes_total
+            && (null_imbalance_total - orig_imbalance_total).abs() <= epsilon
+            && divergent_decisions > 0;
+
+        let nodes_improved = null_nodes_total < orig_nodes_total;
+        let imbalance_improved = null_nodes_total == orig_nodes_total
+            && null_imbalance_total < orig_imbalance_total - epsilon;
+
+        if nodes_improved || imbalance_improved {
             let status = ValidationStatus::GraftHarmful(format!(
-                "Scheduling ablation improved nodes used (null: {}, orig: {})",
-                null_nodes_total, orig_nodes_total
+                "Scheduling ablation improved performance (null nodes: {}, orig nodes: {}, imb diff: {:+.4})",
+                null_nodes_total, orig_nodes_total, null_imbalance_total - orig_imbalance_total
             ));
             child.validation = status.clone();
             Ok(status)
-        } else if divergent_decisions > 0 && null_nodes_total > orig_nodes_total {
+        } else if nodes_degraded || imbalance_degraded || behavior_diverged {
             child.validation = ValidationStatus::PassedLevel3Behavioral;
             Ok(ValidationStatus::PassedLevel3Behavioral)
         } else {
