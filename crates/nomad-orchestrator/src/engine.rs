@@ -8,7 +8,7 @@ use nomad_core::{
     ProblemDomain, SkillCapsule,
 };
 use nomad_evaluator::{
-    validate_anti_dead_code_3levels_with_epsilon, OracleEvaluator, SchedulingOracle,
+    validate_anti_dead_code_3levels_with_score, OracleEvaluator, SchedulingOracle,
 };
 use nomad_genome::PhylogenyGraph;
 use nomad_operator::SkillOperator;
@@ -352,23 +352,8 @@ impl<'a> EvolutionEngine<'a> {
             self.budget.record_llm_call();
             self.throttle_cooldown();
 
-            let (mut capsule, mut score) = self.evaluate_and_validate(capsule);
-            if self.config.domain == ProblemDomain::BinPacking1D
-                && score.is_valid
-                && score.total_bins <= 1266
-            {
-                let (opt_cap, opt_score) = nomad_evaluator::optimize_capsule_constants(
-                    &capsule,
-                    self.oracle,
-                    self.sandbox,
-                    self.config.fuel_limit_per_call,
-                    12,
-                    seed,
-                );
-                self.budget.record_executions(12);
-                capsule = opt_cap;
-                score = opt_score;
-            }
+            let (capsule, score) = self.evaluate_and_validate(capsule);
+            let (capsule, score) = self.maybe_optimize_constants(capsule, score, seed);
             self.phylogeny.insert_capsule(&capsule);
             self.lineages.register_seed(capsule.id.clone());
             self.archive.insert(capsule.clone(), score.clone());
@@ -379,25 +364,28 @@ impl<'a> EvolutionEngine<'a> {
     }
 
     /// Evaluates a candidate capsule and runs the full 3-level Anti-Dead-Code verification pipeline.
+    /// Mutualizes the initial evaluation to eliminate redundant passes.
     fn evaluate_and_validate(
         &mut self,
         mut capsule: SkillCapsule,
     ) -> (SkillCapsule, BenchmarkScore) {
         if self.config.domain == ProblemDomain::MultiResourceScheduling {
             if let Some(sched) = self.scheduling_oracle {
-                let _ = sched.validate_anti_dead_code_scheduling_with_lookahead(
+                let score = match sched.validate_anti_dead_code_scheduling_with_score(
                     &mut capsule,
                     self.sandbox,
                     self.config.fuel_limit_per_call,
                     self.config.lookahead,
-                );
-                let score = sched.evaluate_dataset_with_lookahead(
-                    &sched.in_distribution,
-                    &capsule,
-                    self.sandbox,
-                    self.config.fuel_limit_per_call,
-                    self.config.lookahead,
-                );
+                ) {
+                    Ok((_, score)) => score,
+                    Err(_) => sched.evaluate_dataset_with_lookahead(
+                        &sched.in_distribution,
+                        &capsule,
+                        self.sandbox,
+                        self.config.fuel_limit_per_call,
+                        self.config.lookahead,
+                    ),
+                };
                 self.budget
                     .record_executions(sched.in_distribution.instances.len());
                 return (capsule, score);
@@ -410,7 +398,7 @@ impl<'a> EvolutionEngine<'a> {
                 .record_executions(self.oracle.in_distribution.instances.len());
         }
 
-        let _ = validate_anti_dead_code_3levels_with_epsilon(
+        let score = match validate_anti_dead_code_3levels_with_score(
             &mut capsule,
             self.oracle,
             self.sandbox,
@@ -418,17 +406,53 @@ impl<'a> EvolutionEngine<'a> {
             self.config.fuel_limit_per_call,
             self.config.tldr_epsilon,
             self.config.lookahead,
-        );
-
-        let score = self.oracle.evaluate_dataset_with_lookahead(
-            &self.oracle.in_distribution,
-            &capsule,
-            self.sandbox,
-            self.config.fuel_limit_per_call,
-            self.config.lookahead,
-        );
+        ) {
+            Ok((_, score)) => score,
+            Err(_) => self.oracle.evaluate_dataset_with_lookahead(
+                &self.oracle.in_distribution,
+                &capsule,
+                self.sandbox,
+                self.config.fuel_limit_per_call,
+                self.config.lookahead,
+            ),
+        };
         self.budget
             .record_executions(self.oracle.in_distribution.instances.len());
+
+        capsule.metadata.insert("mean_efficiency".to_string(), format!("{:.4}", score.mean_efficiency));
+        capsule.metadata.insert("tldr_score".to_string(), format!("{:.4}", score.tldr_score));
+        if let Some(ref tm) = score.trajectory_metrics {
+            capsule.metadata.insert("beta1_slope".to_string(), format!("{:.4}", tm.beta1_slope));
+            capsule.metadata.insert("sigma_res".to_string(), format!("{:.4}", tm.sigma_res));
+        }
+
+        (capsule, score)
+    }
+
+    /// Optional symmetric local hill-climbing optimization of AST constants based on relative theoretical minimum.
+    fn maybe_optimize_constants(
+        &mut self,
+        mut capsule: SkillCapsule,
+        mut score: BenchmarkScore,
+        seed: u64,
+    ) -> (SkillCapsule, BenchmarkScore) {
+        if self.config.enable_constant_optimization
+            && self.config.domain == ProblemDomain::BinPacking1D
+            && score.is_valid
+            && score.total_excess_bins <= self.config.constant_opt_excess_threshold
+        {
+            let (opt_cap, opt_score) = nomad_evaluator::optimize_capsule_constants(
+                &capsule,
+                self.oracle,
+                self.sandbox,
+                self.config.fuel_limit_per_call,
+                12,
+                seed,
+            );
+            self.budget.record_executions(12);
+            capsule = opt_cap;
+            score = opt_score;
+        }
         (capsule, score)
     }
 
@@ -449,15 +473,17 @@ impl<'a> EvolutionEngine<'a> {
 
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
                     let seed = rand::Rng::gen(rng);
+                    let lineage = self.lineages.get_lineage(&current_best.capsule.id);
                     let (mutated, _) = self
                         .operator
-                        .mutate(&current_best.capsule, next_gen_idx, seed)
+                        .mutate_with_lineage(&current_best.capsule, next_gen_idx, seed, lineage)
                         .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
                     self.budget.record_llm_call();
                     self.throttle_cooldown();
 
                     let (mutated, score) = self.evaluate_and_validate(mutated);
+                    let (mutated, score) = self.maybe_optimize_constants(mutated, score, seed);
                     self.phylogeny.insert_capsule(&mutated);
                     next_population.push(EvaluatedIndividual::new(mutated, score));
                 }
@@ -472,15 +498,17 @@ impl<'a> EvolutionEngine<'a> {
                         break;
                     }
                     let seed = rand::Rng::gen(rng);
+                    let lineage = self.lineages.get_lineage(&ind.capsule.id);
                     let (mutated, _) = self
                         .operator
-                        .mutate(&ind.capsule, next_gen_idx, seed)
+                        .mutate_with_lineage(&ind.capsule, next_gen_idx, seed, lineage)
                         .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
                     self.budget.record_llm_call();
                     self.throttle_cooldown();
 
                     let (mutated, score) = self.evaluate_and_validate(mutated);
+                    let (mutated, score) = self.maybe_optimize_constants(mutated, score, seed);
                     self.phylogeny.insert_capsule(&mutated);
                     next_population.push(EvaluatedIndividual::new(mutated, score));
                 }
@@ -506,17 +534,33 @@ impl<'a> EvolutionEngine<'a> {
                         .select_parent_ucb(rng)
                         .unwrap_or_else(|| current_pop[0].capsule.clone());
                     let seed = rand::Rng::gen(rng);
+                    let lineage = self.lineages.get_lineage(&parent.id);
 
                     let (mutated, _) = self
                         .operator
-                        .mutate(&parent, next_gen_idx, seed)
+                        .mutate_with_lineage(&parent, next_gen_idx, seed, lineage)
                         .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
                     self.budget.record_llm_call();
                     self.throttle_cooldown();
 
                     let (mutated, score) = self.evaluate_and_validate(mutated);
+                    let (mutated, score) = self.maybe_optimize_constants(mutated, score, seed);
                     self.phylogeny.insert_capsule(&mutated);
+
+                    let is_improved = if let Some(elite) = self.archive.best_elite() {
+                        score < elite.fitness
+                    } else {
+                        true
+                    };
+                    self.lineages.record_evolution(
+                        mutated.id.clone(),
+                        &parent.id,
+                        None,
+                        mutated.semantic_interface.clone(),
+                        is_improved && score.is_valid,
+                    );
+
                     self.archive.insert(mutated.clone(), score.clone());
                     next_population.push(EvaluatedIndividual::new(mutated, score));
                 }
@@ -669,8 +713,10 @@ impl<'a> EvolutionEngine<'a> {
                             .select_parent_ucb(rng)
                             .unwrap_or_else(|| current_pop[0].capsule.clone());
 
-                        let (c, _) = self.operator
-                            .mutate(&parent, next_gen_idx, seed)
+                        let lineage = self.lineages.get_lineage(&parent.id);
+                        let (c, _) = self
+                            .operator
+                            .mutate_with_lineage(&parent, next_gen_idx, seed, lineage)
                             .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
                         (c, false)
                     };
@@ -678,23 +724,9 @@ impl<'a> EvolutionEngine<'a> {
                     self.budget.record_llm_call();
                     self.throttle_cooldown();
 
-                    let (mut child_capsule, mut score) = self.evaluate_and_validate(child_capsule);
-                    if self.config.domain == ProblemDomain::BinPacking1D
-                        && score.is_valid
-                        && score.total_bins <= 1266
-                    {
-                        let (opt_cap, opt_score) = nomad_evaluator::optimize_capsule_constants(
-                            &child_capsule,
-                            self.oracle,
-                            self.sandbox,
-                            self.config.fuel_limit_per_call,
-                            12,
-                            seed,
-                        );
-                        self.budget.record_executions(12);
-                        child_capsule = opt_cap;
-                        score = opt_score;
-                    }
+                    let (child_capsule, score) = self.evaluate_and_validate(child_capsule);
+                    let (child_capsule, score) =
+                        self.maybe_optimize_constants(child_capsule, score, seed);
                     self.phylogeny.insert_capsule(&child_capsule);
 
                     // Validation bloquante Anti-Dead-Code :

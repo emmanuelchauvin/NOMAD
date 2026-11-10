@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 use crate::meta::ReproducibilityAudit;
-use nomad_core::{PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus};
+use nomad_core::{
+    LineageEvolutionState, PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus,
+};
 use nomad_genome::{
     compute_structural_fingerprint, deterministic_ast_crossover, multi_locus_ast_crossover,
     parse_score_bin,
@@ -34,6 +36,17 @@ pub trait SkillOperator: Send + Sync {
         parent: &SkillCapsule,
         generation: usize,
         seed: u64,
+    ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
+        self.mutate_with_lineage(parent, generation, seed, None)
+    }
+
+    /// Mutates an existing capsule with optional AgentPSO lineage and momentum guidance.
+    fn mutate_with_lineage(
+        &self,
+        parent: &SkillCapsule,
+        generation: usize,
+        seed: u64,
+        lineage: Option<&LineageEvolutionState>,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError>;
 
     /// Performs horizontal Swarm Crossover between two parent capsules (Group C only).
@@ -165,11 +178,12 @@ impl SkillOperator for DeterministicMockOperator {
         Ok((capsule, audit))
     }
 
-    fn mutate(
+    fn mutate_with_lineage(
         &self,
         parent: &SkillCapsule,
         generation: usize,
         seed: u64,
+        _lineage: Option<&LineageEvolutionState>,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let penalty_val: f64 = rng.gen_range(50.0..120.0);

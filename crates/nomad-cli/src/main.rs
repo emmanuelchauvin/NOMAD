@@ -197,6 +197,10 @@ enum Commands {
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         lookahead: bool,
 
+        /// Enable local AST constant hill-climbing optimization (default: false).
+        #[arg(long, default_value_t = false)]
+        enable_constant_opt: bool,
+
         #[arg(short, long, default_value = "run_report.json")]
         output: PathBuf,
     },
@@ -218,6 +222,10 @@ enum Commands {
         /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         lookahead: bool,
+
+        /// Enable local AST constant hill-climbing optimization (default: false).
+        #[arg(long, default_value_t = false)]
+        enable_constant_opt: bool,
 
         #[arg(long, value_enum, default_value_t = OperatorArg::Ollama)]
         operator: OperatorArg,
@@ -254,6 +262,10 @@ enum Commands {
         /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         lookahead: bool,
+
+        /// Enable local AST constant hill-climbing optimization (default: false).
+        #[arg(long, default_value_t = false)]
+        enable_constant_opt: bool,
 
         #[arg(long, value_enum, default_value_t = OperatorArg::Ollama)]
         operator: OperatorArg,
@@ -1131,6 +1143,7 @@ fn main() -> Result<()> {
             model,
             cooldown_ms,
             lookahead,
+            enable_constant_opt,
             output,
         } => {
             let exp_group: ExperimentalGroup = group.into();
@@ -1143,6 +1156,7 @@ fn main() -> Result<()> {
             config.max_generations = generations;
             config.cooldown_ms = cooldown_ms;
             config.lookahead = lookahead;
+            config.enable_constant_optimization = enable_constant_opt;
 
             let oracle = OracleEvaluator::new(seed);
             let sched_oracle = SchedulingOracle::new(seed);
@@ -1249,6 +1263,7 @@ fn main() -> Result<()> {
             pop_size,
             generations,
             lookahead,
+            enable_constant_opt,
             operator,
             ollama_url,
             model,
@@ -1260,6 +1275,7 @@ fn main() -> Result<()> {
             println!(" Running Paired Study: Group C (Swarm) vs Group D (Mutation)");
             println!(" Target Domain        : {:?}", prob_domain);
             println!(" Lookahead (k=2)      : {}", lookahead);
+            println!(" Constant Opt Hill-Cl : {}", enable_constant_opt);
             println!(" Number of Paired Runs: {}", runs);
             if cooldown_ms > 0 {
                 println!(" Thermal Cooldown: {} ms between LLM calls", cooldown_ms);
@@ -1302,6 +1318,7 @@ fn main() -> Result<()> {
                 config_d.max_generations = generations;
                 config_d.cooldown_ms = cooldown_ms;
                 config_d.lookahead = lookahead;
+                config_d.enable_constant_optimization = enable_constant_opt;
                 let mut engine_d =
                     EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
                         .with_scheduling_oracle(&sched_oracle);
@@ -1319,6 +1336,7 @@ fn main() -> Result<()> {
                 config_c.max_generations = generations;
                 config_c.cooldown_ms = cooldown_ms;
                 config_c.lookahead = lookahead;
+                config_c.enable_constant_optimization = enable_constant_opt;
                 let mut engine_c =
                     EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
                         .with_scheduling_oracle(&sched_oracle);
@@ -1371,6 +1389,7 @@ fn main() -> Result<()> {
             pop_size,
             generations,
             lookahead,
+            enable_constant_opt,
             operator,
             ollama_url,
             model,
@@ -1384,6 +1403,7 @@ fn main() -> Result<()> {
             println!(" Target Domain   : {:?}", prob_domain);
             println!(" Paired Seeds    : {}", seeds);
             println!(" Lookahead (k=2) : {}", lookahead);
+            println!(" Constant Opt    : {}", enable_constant_opt);
             println!(" Output Directory: {}", output_dir.display());
             println!("============================================================");
 
@@ -1423,6 +1443,7 @@ fn main() -> Result<()> {
                 config_d.max_generations = generations;
                 config_d.cooldown_ms = cooldown_ms;
                 config_d.lookahead = lookahead;
+                config_d.enable_constant_optimization = enable_constant_opt;
 
                 let mut engine_d =
                     EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
@@ -1446,6 +1467,7 @@ fn main() -> Result<()> {
                 config_c.max_generations = generations;
                 config_c.cooldown_ms = cooldown_ms;
                 config_c.lookahead = lookahead;
+                config_c.enable_constant_optimization = enable_constant_opt;
 
                 let mut engine_c =
                     EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())

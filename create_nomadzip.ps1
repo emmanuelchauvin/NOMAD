@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # Script de packaging NOMAD V2 pour audit et revue par IA externe
 # Inclut le code source, la documentation, et les résultats complets du tir (30 seeds)
 # ==============================================================================

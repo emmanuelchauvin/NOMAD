@@ -11,7 +11,9 @@ use std::time::Duration;
 
 use crate::meta::ReproducibilityAudit;
 use crate::operator::{OperatorError, SkillOperator};
-use nomad_core::{PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus};
+use nomad_core::{
+    LineageEvolutionState, MomentumAction, PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus,
+};
 use nomad_genome::{
     compute_structural_fingerprint, deterministic_ast_crossover, multi_locus_ast_crossover,
     parse_heuristic_fn, parse_score_bin,
@@ -462,14 +464,70 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block wit
         Ok((capsule, audit))
     }
 
-    fn mutate(
+    fn mutate_with_lineage(
         &self,
         parent: &SkillCapsule,
         generation: usize,
         seed: u64,
+        lineage: Option<&LineageEvolutionState>,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let is_sched = parent.logic_code.contains("score_node")
             || self.domain == ProblemDomain::MultiResourceScheduling;
+
+        let mut guidance_section = String::new();
+        if let Some(lin) = lineage {
+            guidance_section.push_str("\n\n--- AGENT-PSO LINEAGE GUIDANCE ---");
+            if let Some(v) = &lin.v_previous {
+                match v.momentum_action {
+                    MomentumAction::ContinueDirection => {
+                        guidance_section.push_str(
+                            "\nMOMENTUM ACTION: ContinueDirection\n\
+The previous mutation/graft succeeded and improved performance. Reinforce and refine the current mathematical logic, fine-tuning thresholds or adding mild complementary terms in the same direction.",
+                        );
+                    }
+                    MomentumAction::Pivot => {
+                        guidance_section.push_str(
+                            "\nMOMENTUM ACTION: Pivot\n\
+The previous modification stagnated or degraded performance. PIVOT to an alternate algorithmic strategy: explore a different trade-off, alter conditional branches, or introduce a novel non-linear weighting.",
+                        );
+                    }
+                    MomentumAction::Combine => {
+                        guidance_section.push_str(
+                            "\nMOMENTUM ACTION: Combine\n\
+Synthesize multiple complementary features: combine fine-grained residual fitting with lookahead anticipation.",
+                        );
+                    }
+                }
+                if !v.weakness_diagnosed.is_empty() {
+                    guidance_section.push_str(&format!("\nDiagnosed Weakness: {}", v.weakness_diagnosed));
+                }
+            }
+            if let Some(ref partner) = lin.g_best_partner {
+                guidance_section.push_str(&format!("\nBest Cross-Niche Partner: {}", partner));
+            }
+        }
+
+        let mut profile_lines = Vec::new();
+        if let Some(eff) = parent.metadata.get("mean_efficiency") {
+            profile_lines.push(format!("Mean Packing Efficiency: {}", eff));
+        }
+        if let Some(tldr) = parent.metadata.get("tldr_score") {
+            profile_lines.push(format!("Lyapunov tLDR Score: {}", tldr));
+        }
+        if let Some(beta1) = parent.metadata.get("beta1_slope") {
+            profile_lines.push(format!("Beta_1 Trajectory Slope: {}", beta1));
+        }
+        if let Some(sigma) = parent.metadata.get("sigma_res") {
+            profile_lines.push(format!("Residual Variance Sigma_res: {}", sigma));
+        }
+
+        if !profile_lines.is_empty() {
+            guidance_section.push_str("\n\n--- PARENT BEHAVIORAL PROFILE ---");
+            for line in profile_lines {
+                guidance_section.push_str(&format!("\n- {}", line));
+            }
+        }
+
         let (system_prompt, user_prompt) = if is_sched {
             (
                 "You are an evolutionary code optimizer for Multi-Resource Cloud Job Scheduling heuristics in Rust.\n\
@@ -480,8 +538,8 @@ The candidate node with the MINIMUM score is selected.\n\
 Use ONLY signature variables. Do NOT declare pseudo-random seeds or mock constants.\n\
 Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!(
-                    "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.",
-                    parent.id, parent.logic_code, parent.semantic_interface, generation
+                    "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.{}",
+                    parent.id, parent.logic_code, parent.semantic_interface, generation, guidance_section
                 )
             )
         } else {
@@ -494,8 +552,8 @@ Search for effective variable couplings, non-linear conditionals, fine-tuned thr
 Invent your own logic and calibrated constants. Do NOT declare pseudo-random seeds or mock constants. Do NOT copy preset templates.\n\
 Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
                 format!(
-                    "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.",
-                    parent.id, parent.logic_code, parent.semantic_interface, generation
+                    "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.{}",
+                    parent.id, parent.logic_code, parent.semantic_interface, generation, guidance_section
                 )
             )
         };
@@ -527,6 +585,11 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
         let mut metadata = HashMap::new();
         metadata.insert("operator".to_string(), "HttpLlamaOperator".to_string());
         metadata.insert("parent_hash".to_string(), parent.content_hash.clone());
+        if let Some(lin) = lineage {
+            if let Some(v) = &lin.v_previous {
+                metadata.insert("lineage_momentum".to_string(), format!("{:?}", v.momentum_action));
+            }
+        }
 
         let capsule = SkillCapsule::new_v2(
             name,

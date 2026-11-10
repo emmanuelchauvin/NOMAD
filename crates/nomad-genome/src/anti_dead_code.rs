@@ -39,6 +39,17 @@ fn extract_defined_ident(stmt: &Stmt) -> Option<String> {
             Expr::Path(path) => path.path.get_ident().map(|i| i.to_string()),
             _ => None,
         },
+        Stmt::Expr(Expr::Binary(bin), _) => match bin.op {
+            syn::BinOp::AddAssign(_)
+            | syn::BinOp::SubAssign(_)
+            | syn::BinOp::MulAssign(_)
+            | syn::BinOp::DivAssign(_)
+            | syn::BinOp::RemAssign(_) => match &*bin.left {
+                Expr::Path(path) => path.path.get_ident().map(|i| i.to_string()),
+                _ => None,
+            },
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -54,7 +65,72 @@ fn collect_read_dependencies(stmt: &Stmt) -> Vec<String> {
             }
         }
         Stmt::Expr(Expr::Assign(assign), _) => collect_expr_dependencies(&assign.right),
+        Stmt::Expr(Expr::Binary(bin), _) => match bin.op {
+            syn::BinOp::AddAssign(_)
+            | syn::BinOp::SubAssign(_)
+            | syn::BinOp::MulAssign(_)
+            | syn::BinOp::DivAssign(_)
+            | syn::BinOp::RemAssign(_) => collect_expr_dependencies(&bin.right),
+            _ => collect_dependencies(stmt),
+        },
         _ => collect_dependencies(stmt),
+    }
+}
+
+fn expr_if_modifies_needed_vars(if_expr: &syn::ExprIf, needed_vars: &HashSet<String>) -> bool {
+    if block_modifies_needed_vars(&if_expr.then_branch, needed_vars) {
+        return true;
+    }
+    if let Some((_, else_expr)) = &if_expr.else_branch {
+        return expr_modifies_needed_vars(else_expr, needed_vars);
+    }
+    false
+}
+
+fn block_modifies_needed_vars(block: &syn::Block, needed_vars: &HashSet<String>) -> bool {
+    for stmt in &block.stmts {
+        if stmt_modifies_needed_vars(stmt, needed_vars) {
+            return true;
+        }
+    }
+    false
+}
+
+fn stmt_modifies_needed_vars(stmt: &Stmt, needed_vars: &HashSet<String>) -> bool {
+    match stmt {
+        Stmt::Expr(expr, _) => expr_modifies_needed_vars(expr, needed_vars),
+        _ => false,
+    }
+}
+
+fn expr_modifies_needed_vars(expr: &Expr, needed_vars: &HashSet<String>) -> bool {
+    match expr {
+        Expr::Assign(assign) => {
+            if let Expr::Path(path) = &*assign.left {
+                if let Some(ident) = path.path.get_ident() {
+                    return needed_vars.contains(&ident.to_string());
+                }
+            }
+            false
+        }
+        Expr::Binary(bin) => match bin.op {
+            syn::BinOp::AddAssign(_)
+            | syn::BinOp::SubAssign(_)
+            | syn::BinOp::MulAssign(_)
+            | syn::BinOp::DivAssign(_)
+            | syn::BinOp::RemAssign(_) => {
+                if let Expr::Path(path) = &*bin.left {
+                    if let Some(ident) = path.path.get_ident() {
+                        return needed_vars.contains(&ident.to_string());
+                    }
+                }
+                false
+            }
+            _ => false,
+        },
+        Expr::If(nested_if) => expr_if_modifies_needed_vars(nested_if, needed_vars),
+        Expr::Block(b) => block_modifies_needed_vars(&b.block, needed_vars),
+        _ => false,
     }
 }
 
@@ -94,10 +170,10 @@ pub fn compute_liveness(item_fn: &ItemFn) -> Vec<bool> {
                     if needed_vars.contains(&var) {
                         is_live[i] = true;
                         needed_vars.remove(&var); // Définition : tue le besoin aval
-                        for d in deps {
-                            if d != var {
-                                needed_vars.insert(d);
-                            }
+                        // Les variables lues dans l'initialisation sont requises en amont
+                        // (y compris si `var` est référencée sur le membre droit via shadowing)
+                        for d in collect_read_dependencies(stmt) {
+                            needed_vars.insert(d);
                         }
                     } else {
                         // Dead store : variable assignée mais jamais lue en aval
@@ -110,7 +186,19 @@ pub fn compute_liveness(item_fn: &ItemFn) -> Vec<bool> {
                     }
                 }
             }
-            Stmt::Expr(Expr::Assign(_), _) => {
+            Stmt::Expr(Expr::Assign(_), _)
+            | Stmt::Expr(
+                Expr::Binary(syn::ExprBinary {
+                    op:
+                        syn::BinOp::AddAssign(_)
+                        | syn::BinOp::SubAssign(_)
+                        | syn::BinOp::MulAssign(_)
+                        | syn::BinOp::DivAssign(_)
+                        | syn::BinOp::RemAssign(_),
+                    ..
+                }),
+                _,
+            ) => {
                 if let Some(var) = defined {
                     if needed_vars.contains(&var) {
                         is_live[i] = true;
@@ -127,8 +215,19 @@ pub fn compute_liveness(item_fn: &ItemFn) -> Vec<bool> {
                     }
                 }
             }
+            Stmt::Expr(Expr::If(if_expr), _) => {
+                if expr_if_modifies_needed_vars(if_expr, &needed_vars) {
+                    is_live[i] = true;
+                    for d in deps {
+                        needed_vars.insert(d);
+                    }
+                } else {
+                    // Branchement conditionnel sans impact sur les variables requises (dead code)
+                    is_live[i] = false;
+                }
+            }
             _ => {
-                // Branchements if, blocs : considérés vivants
+                // Autres blocs ou instructions générales
                 is_live[i] = true;
                 for d in deps {
                     needed_vars.insert(d);
@@ -200,7 +299,7 @@ pub fn verify_level1_structural_survival(
     // 1. Vérification de la présence structurelle du fragment
     let fragment_found = if manifest.grafted_fragment_hash.contains(':') {
         let parts: Vec<&str> = manifest.grafted_fragment_hash.split(':').collect();
-        parts.len() == 2
+        parts.len() >= 2
             && parts.iter().all(|h| {
                 units
                     .iter()
@@ -232,11 +331,9 @@ pub fn verify_level1_structural_survival(
         }
     } else if let Some(loci_str) = manifest.host_locus.strip_prefix("multi_loci_") {
         let parts: Vec<&str> = loci_str.split('_').collect();
-        if parts.len() == 2 {
-            if let (Ok(idx1), Ok(idx2)) = (parts[0].parse::<usize>(), parts[1].parse::<usize>()) {
-                if (idx1 < liveness.len() && !liveness[idx1])
-                    || (idx2 < liveness.len() && !liveness[idx2])
-                {
+        for p in &parts {
+            if let Ok(idx) = p.parse::<usize>() {
+                if idx < liveness.len() && !liveness[idx] {
                     return Err(AntiDeadCodeError::FragmentNeutralized);
                 }
             }
@@ -380,5 +477,56 @@ mod tests {
         assert!(
             matches!(res, Err(AntiDeadCodeError::UnproductiveShadowing(v)) if v == "horizon_factor")
         );
+    }
+
+    #[test]
+    fn test_compute_liveness_conditional_branches() {
+        let active_if_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let mut score = bin_residual as f64;
+            if bin_residual < 10 {
+                score = score + 50.0;
+            }
+            score
+        }
+        "#;
+        let fn_active = parse_score_bin(active_if_code).unwrap();
+        let liveness_active = compute_liveness(&fn_active);
+        // stmt 0: let mut score ... (live)
+        // stmt 1: if bin_residual < 10 { score = score + 50.0; } (live)
+        // stmt 2: score (live)
+        assert_eq!(liveness_active, vec![true, true, true]);
+
+        let dead_if_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let mut score = bin_residual as f64;
+            if bin_residual < 10 {
+                let dummy = 42.0;
+            }
+            score
+        }
+        "#;
+        let fn_dead = parse_score_bin(dead_if_code).unwrap();
+        let liveness_dead = compute_liveness(&fn_dead);
+        // stmt 0: let mut score ... (live)
+        // stmt 1: if bin_residual < 10 { let dummy = 42.0; } (DEAD!)
+        // stmt 2: score (live)
+        assert_eq!(liveness_dead, vec![true, false, true]);
     }
 }

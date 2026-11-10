@@ -165,6 +165,29 @@ pub fn validate_anti_dead_code_3levels_with_epsilon(
     epsilon: f64,
     lookahead: bool,
 ) -> Result<ValidationStatus, AntiDeadCodeEvalError> {
+    validate_anti_dead_code_3levels_with_score(
+        capsule,
+        oracle,
+        sandbox,
+        probes_dataset,
+        fuel_limit,
+        epsilon,
+        lookahead,
+    )
+    .map(|(status, _)| status)
+}
+
+/// Version avancée retournant simultanément le statut de validation et le BenchmarkScore calculé au Niveau 2,
+/// éliminant ainsi toute réévaluation redondante sur le dataset complet dans le moteur évolutif.
+pub fn validate_anti_dead_code_3levels_with_score(
+    capsule: &mut SkillCapsule,
+    oracle: &OracleEvaluator,
+    sandbox: &dyn HeuristicSandbox,
+    probes_dataset: &Dataset,
+    fuel_limit: u64,
+    epsilon: f64,
+    lookahead: bool,
+) -> Result<(ValidationStatus, BenchmarkScore), AntiDeadCodeEvalError> {
     // 1. Level 1: Structural verification
     if capsule.graft_manifest.is_some() {
         if let Err(e) = verify_level1_structural_survival(capsule) {
@@ -183,9 +206,9 @@ pub fn validate_anti_dead_code_3levels_with_epsilon(
     }
     capsule.validation = ValidationStatus::PassedLevel1Structural;
 
-    // 2. Level 2: Computational verification on probe dataset
-    let score_original: BenchmarkScore =
-        oracle.evaluate_dataset_with_lookahead(probes_dataset, capsule, sandbox, fuel_limit, lookahead);
+    // 2. Level 2: Computational verification on probe dataset (calcul unique mutualisé)
+    let (score_original, orig_evals) =
+        oracle.evaluate_dataset_with_evals(probes_dataset, capsule, sandbox, fuel_limit, lookahead);
 
     if !score_original.is_valid || score_original.total_fuel == 0 {
         let status = ValidationStatus::Failed(
@@ -198,7 +221,7 @@ pub fn validate_anti_dead_code_3levels_with_epsilon(
 
     // 3. Level 3: Behavioral verification against ablation C_null
     if capsule.graft_manifest.is_none() {
-        return Ok(ValidationStatus::PassedLevel2Computational);
+        return Ok((ValidationStatus::PassedLevel2Computational, score_original));
     }
 
     let c_null = match create_ablation_capsule_res(capsule) {
@@ -206,12 +229,12 @@ pub fn validate_anti_dead_code_3levels_with_epsilon(
         Err(e) => {
             let status = ValidationStatus::NotEvaluable(format!("Ablation failed: {}", e));
             capsule.validation = status.clone();
-            return Ok(status);
+            return Ok((status, score_original));
         }
     };
 
-    let score_null: BenchmarkScore =
-        oracle.evaluate_dataset_with_lookahead(probes_dataset, &c_null, sandbox, fuel_limit, lookahead);
+    let (score_null, null_evals) =
+        oracle.evaluate_dataset_with_evals(probes_dataset, &c_null, sandbox, fuel_limit, lookahead);
 
     // Rejeter les C_null invalides : une erreur d'exécution n'est JAMAIS une preuve causale
     if !score_null.is_valid {
@@ -219,26 +242,21 @@ pub fn validate_anti_dead_code_3levels_with_epsilon(
             "Ablation C_null execution failed or was penalized as invalid".to_string(),
         );
         capsule.validation = status.clone();
-        return Ok(status);
+        return Ok((status, score_original));
     }
 
-    // Comparaison des décisions instance par instance
+    // Comparaison des décisions instance par instance (RÉUTILISATION DIRECTE, ZÉRO RÉÉVALUATION)
     let mut divergent_decisions_count = 0usize;
     let mut total_decisions = 0usize;
     let mut divergent_instances_count = 0usize;
 
-    for inst in &probes_dataset.instances {
-        let (eval_orig, _, _) =
-            oracle.evaluate_single_instance_with_lookahead(inst, &capsule.logic_code, sandbox, fuel_limit, lookahead);
-        let (eval_null, _, _) =
-            oracle.evaluate_single_instance_with_lookahead(inst, &c_null.logic_code, sandbox, fuel_limit, lookahead);
-
+    for (eval_orig, eval_null) in orig_evals.iter().zip(null_evals.iter()) {
         if !eval_null.is_valid {
             let status = ValidationStatus::NotEvaluable(
                 "Ablation C_null failed on individual probe instance".to_string(),
             );
             capsule.validation = status.clone();
-            return Ok(status);
+            return Ok((status, score_original));
         }
 
         if eval_orig.bins_used != eval_null.bins_used
@@ -299,17 +317,17 @@ pub fn validate_anti_dead_code_3levels_with_epsilon(
             score_null.mean_efficiency - score_original.mean_efficiency
         ));
         capsule.validation = status.clone();
-        Ok(status)
+        Ok((status, score_original))
     } else if is_degraded && (decision_divergence_ratio > 0.0 || divergent_instances_count > 0) {
         // Preuve causale stricte : la suppression de la greffe DÉGRADE les décisions et la performance
         let status = ValidationStatus::PassedLevel3Behavioral;
         capsule.validation = status.clone();
-        Ok(status)
+        Ok((status, score_original))
     } else {
         // Greffe neutre ou sans impact mesurable : computationnellement active (Niveau 2), mais causalité non établie
         let status = ValidationStatus::PassedLevel2Computational;
         capsule.validation = status.clone();
-        Ok(status)
+        Ok((status, score_original))
     }
 }
 

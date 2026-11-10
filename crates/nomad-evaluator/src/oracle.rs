@@ -4,6 +4,7 @@ use nomad_core::{
     TrajectoryMetrics,
 };
 use nomad_sandbox::{DeterministicSandbox, HeuristicSandbox};
+use rayon::prelude::*;
 
 /// ============================================================================
 /// compute_trajectory_tldr : Algorithme Mathématique du tLDR (Sections 6.4 & 6.5)
@@ -233,6 +234,18 @@ impl OracleEvaluator {
         fuel_limit_per_call: u64,
         lookahead: bool,
     ) -> BenchmarkScore {
+        self.evaluate_dataset_with_evals(dataset, capsule, sandbox, fuel_limit_per_call, lookahead).0
+    }
+
+    /// Évalue une capsule sur un dataset et retourne à la fois le BenchmarkScore et les évaluations d'instances.
+    pub fn evaluate_dataset_with_evals(
+        &self,
+        dataset: &Dataset,
+        capsule: &SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+        lookahead: bool,
+    ) -> (BenchmarkScore, Vec<InstanceEvaluation>) {
         let mut total_bins = 0usize;
         let mut total_theoretical = 0usize;
         let mut total_fuel = 0u64;
@@ -249,17 +262,27 @@ impl OracleEvaluator {
         let mut sum_sigma_res = 0.0f64;
         let mut sample_prefix_waste = Vec::new();
 
-        for inst in &dataset.instances {
-            let (eval, behavior, traj_metrics) = self.evaluate_single_instance_with_lookahead(
-                inst,
-                &capsule.logic_code,
-                sandbox,
-                fuel_limit_per_call,
-                lookahead,
-            );
+        let results: Vec<_> = dataset
+            .instances
+            .par_iter()
+            .map(|inst| {
+                self.evaluate_single_instance_with_lookahead(
+                    inst,
+                    &capsule.logic_code,
+                    sandbox,
+                    fuel_limit_per_call,
+                    lookahead,
+                )
+            })
+            .collect();
+
+        let mut instance_evals = Vec::with_capacity(results.len());
+
+        for (eval, behavior, traj_metrics) in results {
             if !eval.is_valid {
+                instance_evals.push(eval);
                 // Fatal penalty: Any failure disqualifies the entire run on this dataset
-                return BenchmarkScore::fatal_penalty(dataset.instances.len());
+                return (BenchmarkScore::fatal_penalty(dataset.instances.len()), instance_evals);
             }
 
             total_bins += eval.bins_used;
@@ -278,6 +301,7 @@ impl OracleEvaluator {
             sum_mean_fullness += behavior.mean_fullness;
             sum_dead_space_ratio += behavior.dead_space_ratio;
 
+            instance_evals.push(eval);
             solved_instances += 1;
         }
 
@@ -323,7 +347,7 @@ impl OracleEvaluator {
             prefix_waste: sample_prefix_waste,
         };
 
-        BenchmarkScore {
+        let score = BenchmarkScore {
             is_valid: true,
             total_bins,
             total_theoretical_min_bins: total_theoretical,
@@ -335,7 +359,9 @@ impl OracleEvaluator {
             behavior: mean_behavior,
             tldr_score: mean_tldr,
             trajectory_metrics: Some(trajectory_metrics),
-        }
+        };
+
+        (score, instance_evals)
     }
 
     /// Evaluates a single online bin packing instance sequentially, computing trajectory, tLDR and behavior.

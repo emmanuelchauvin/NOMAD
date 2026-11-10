@@ -2,7 +2,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use thiserror::Error;
 
 use nomad_core::{GraftManifest, PolicyKind, SkillCapsule, ValidationStatus};
@@ -18,6 +18,121 @@ pub enum CrossoverError {
     NoExtractableUnits(String),
     #[error("Host capsule {0} has an empty function body")]
     EmptyHostBody(String),
+}
+
+fn is_builtin_or_method(name: &str) -> bool {
+    matches!(
+        name,
+        "f64"
+            | "f32"
+            | "u32"
+            | "u64"
+            | "usize"
+            | "i32"
+            | "i64"
+            | "bool"
+            | "min"
+            | "max"
+            | "abs"
+            | "sqrt"
+            | "powf"
+            | "floor"
+            | "ceil"
+            | "round"
+            | "Some"
+            | "None"
+            | "true"
+            | "false"
+            | "score"
+    )
+}
+
+fn extract_signature_params(item_fn: &syn::ItemFn) -> HashSet<String> {
+    let mut params = HashSet::new();
+    for input in &item_fn.sig.inputs {
+        if let syn::FnArg::Typed(pat_type) = input {
+            if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
+                params.insert(pat_ident.ident.to_string());
+            }
+        }
+    }
+    params
+}
+
+fn extract_in_scope_locals(stmts: &[syn::Stmt], locus_idx: usize) -> HashSet<String> {
+    let mut in_scope = HashSet::new();
+    let limit = locus_idx.min(stmts.len());
+    for s in &stmts[..limit] {
+        if let syn::Stmt::Local(l) = s {
+            if let syn::Pat::Ident(p) = &l.pat {
+                in_scope.insert(p.ident.to_string());
+            }
+        }
+    }
+    in_scope
+}
+
+fn find_donor_definition(donor_stmts: &[syn::Stmt], var: &str) -> Option<(usize, syn::Stmt)> {
+    for (idx, stmt) in donor_stmts.iter().enumerate() {
+        if let syn::Stmt::Local(local) = stmt {
+            if let syn::Pat::Ident(p) = &local.pat {
+                if p.ident == var {
+                    return Some((idx, stmt.clone()));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Backward program slicing syntaxique minimal :
+/// Vérifie que l'ensemble des identifiants requis par `stmt_to_insert` est couvert par la
+/// signature de la fonction hôte ou ses variables en portée. Si une variable locale donneuse
+/// est requise, extrait et inclut récursivement ses déclarations depuis le donneur.
+pub fn resolve_dependencies_with_backward_slice(
+    stmt_to_insert: &syn::Stmt,
+    donor_stmts: &[syn::Stmt],
+    host_stmts: &[syn::Stmt],
+    host_params: &HashSet<String>,
+    locus_idx: usize,
+) -> Option<Vec<syn::Stmt>> {
+    let mut in_scope = extract_in_scope_locals(host_stmts, locus_idx);
+    for p in host_params {
+        in_scope.insert(p.clone());
+    }
+
+    let mut needed_donor_indices = BTreeSet::new();
+    let mut worklist = collect_dependencies(stmt_to_insert);
+    let mut visited_vars = HashSet::new();
+
+    while let Some(var) = worklist.pop() {
+        if is_builtin_or_method(&var) || in_scope.contains(&var) {
+            continue;
+        }
+        if !visited_vars.insert(var.clone()) {
+            continue;
+        }
+
+        // Tenter de localiser la déclaration amont dans le donneur
+        if let Some((idx, def_stmt)) = find_donor_definition(donor_stmts, &var) {
+            needed_donor_indices.insert(idx);
+            for dep in collect_dependencies(&def_stmt) {
+                if !in_scope.contains(&dep) && !is_builtin_or_method(&dep) {
+                    worklist.push(dep);
+                }
+            }
+        } else {
+            // Variable non résolue (incompatible ou absente des deux organismes)
+            return None;
+        }
+    }
+
+    let mut full_slice = Vec::new();
+    for idx in needed_donor_indices {
+        full_slice.push(donor_stmts[idx].clone());
+    }
+    full_slice.push(stmt_to_insert.clone());
+    Some(full_slice)
 }
 
 /// ============================================================================
@@ -52,7 +167,7 @@ pub fn deterministic_ast_crossover(
     }
 
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
-    let chosen_unit: &LogicalUnit = donor_units.choose(&mut rng).unwrap();
+    let host_params = extract_signature_params(&host_fn);
 
     let mut hybrid_fn = host_fn.clone();
     let stmts = &mut hybrid_fn.block.stmts;
@@ -63,55 +178,86 @@ pub fn deterministic_ast_crossover(
     // Determine insertion locus: right before the final return/expression statement
     let locus_idx = if stmts.len() > 1 { stmts.len() - 1 } else { 0 };
 
-    let mut stmt_to_insert = chosen_unit.stmt.clone();
+    let mut candidate_units: Vec<&LogicalUnit> = donor_units.iter().collect();
+    candidate_units.shuffle(&mut rng);
 
-    // Règle d'accumulation et protection anti-shadowing / anti-dead-store:
-    if let syn::Stmt::Local(local) = &chosen_unit.stmt {
-        if let syn::Pat::Ident(pat_ident) = &local.pat {
-            let var_name = pat_ident.ident.to_string();
-            let already_defined = stmts.iter().any(|s| {
-                if let syn::Stmt::Local(l) = s {
-                    if let syn::Pat::Ident(p) = &l.pat {
-                        return p.ident == var_name;
+    let mut chosen_unit = candidate_units[0];
+    let mut resolved_graft: Option<Vec<syn::Stmt>> = None;
+
+    for cand in &candidate_units {
+        let mut cand_stmt = cand.stmt.clone();
+        if let syn::Stmt::Local(local) = &cand.stmt {
+            if let syn::Pat::Ident(pat_ident) = &local.pat {
+                let var_name = pat_ident.ident.to_string();
+                let already_defined = stmts.iter().any(|s| {
+                    if let syn::Stmt::Local(l) = s {
+                        if let syn::Pat::Ident(p) = &l.pat {
+                            return p.ident == var_name;
+                        }
                     }
-                }
-                false
-            });
+                    false
+                });
 
-            if let Some(init) = &local.init {
-                let init_expr = &init.expr;
-                if var_name == "score" {
-                    // Recombinaison convexe par Shadowing Rust strict (compatible rustc)
-                    stmt_to_insert = syn::parse_quote! {
-                        let score = score * 0.70 + ((#init_expr) as f64) * 0.30;
-                    };
-                } else {
-                    // Vérifier si la variable est lue dans la suite du code hôte
-                    let downstream_deps: Vec<String> = stmts[locus_idx..]
-                        .iter()
-                        .flat_map(collect_dependencies)
-                        .collect();
-                    if already_defined || !downstream_deps.contains(&var_name) {
-                        // Modulation causale directe du score avec le fragment donneur
-                        stmt_to_insert = syn::parse_quote! {
-                            let score = score * 0.95 + ((#init_expr) as f64) * 0.05;
+                if let Some(init) = &local.init {
+                    let init_expr = &init.expr;
+                    if var_name == "score" {
+                        cand_stmt = syn::parse_quote! {
+                            let score = score * 0.70 + ((#init_expr) as f64) * 0.30;
                         };
+                    } else {
+                        let downstream_deps: Vec<String> = stmts[locus_idx..]
+                            .iter()
+                            .flat_map(collect_dependencies)
+                            .collect();
+                        if already_defined || !downstream_deps.contains(&var_name) {
+                            cand_stmt = syn::parse_quote! {
+                                let score = score * 0.95 + ((#init_expr) as f64) * 0.05;
+                            };
+                        }
                     }
                 }
             }
         }
+
+        if let Some(slice) = resolve_dependencies_with_backward_slice(
+            &cand_stmt,
+            &donor_fn.block.stmts,
+            stmts,
+            &host_params,
+            locus_idx,
+        ) {
+            resolved_graft = Some(slice);
+            chosen_unit = cand;
+            break;
+        }
     }
 
-    stmts.insert(locus_idx, stmt_to_insert.clone());
+    let graft_stmts = resolved_graft.unwrap_or_else(|| vec![chosen_unit.stmt.clone()]);
 
-    // Compute exact fragment hash of the statement actually inserted
-    let inserted_repr = quote::quote!(#stmt_to_insert).to_string();
-    let mut fragment_hasher = Sha256::new();
-    fragment_hasher.update(inserted_repr.as_bytes());
-    let fragment_hash = hex::encode(fragment_hasher.finalize());
+    for (offset, stmt) in graft_stmts.iter().enumerate() {
+        stmts.insert(locus_idx + offset, stmt.clone());
+    }
 
-    // Generate GraftManifest
-    let inserted_deps = collect_dependencies(&stmt_to_insert);
+    let mut fragment_hashes = Vec::new();
+    let mut inserted_deps = Vec::new();
+    let mut loci_indices = Vec::new();
+
+    for (offset, stmt) in graft_stmts.iter().enumerate() {
+        let inserted_repr = quote::quote!(#stmt).to_string();
+        let mut fragment_hasher = Sha256::new();
+        fragment_hasher.update(inserted_repr.as_bytes());
+        fragment_hashes.push(hex::encode(fragment_hasher.finalize()));
+        inserted_deps.extend(collect_dependencies(stmt));
+        loci_indices.push((locus_idx + offset).to_string());
+    }
+
+    let fragment_hash = fragment_hashes.join(":");
+    let locus_desc = if loci_indices.len() == 1 {
+        format!("body_stmt_index_{}", locus_idx)
+    } else {
+        format!("multi_loci_{}", loci_indices.join("_"))
+    };
+
     let mut dep_hasher = Sha256::new();
     for d in &inserted_deps {
         dep_hasher.update(d.as_bytes());
@@ -124,8 +270,6 @@ pub fn deterministic_ast_crossover(
     graft_hasher.update(fragment_hash.as_bytes());
     graft_hasher.update(seed.to_le_bytes());
     let graft_id = format!("graft-{}", &hex::encode(graft_hasher.finalize())[..12]);
-
-    let locus_desc = format!("body_stmt_index_{}", locus_idx);
 
     let manifest = GraftManifest {
         graft_id: graft_id.clone(),
@@ -202,6 +346,8 @@ pub fn multi_locus_ast_crossover(
     }
 
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    let host_params = extract_signature_params(&host_fn);
+
     let mut indices: Vec<usize> = (0..donor_units.len()).collect();
     indices.shuffle(&mut rng);
     let unit1 = &donor_units[indices[0]];
@@ -213,8 +359,8 @@ pub fn multi_locus_ast_crossover(
         return Err(CrossoverError::EmptyHostBody(host.id.0.clone()));
     }
 
-    // Locus 1: début du corps (index 0 ou 1)
-    let locus1 = if stmts.len() > 2 { 1 } else { 0 };
+    // Locus 1: début du corps (immédiatement après l'initialisation du score à l'index 0)
+    let locus1 = if stmts.len() > 1 { 1 } else { 0 };
     let mut stmt1 = unit1.stmt.clone();
     if let syn::Stmt::Local(local) = &unit1.stmt {
         if let syn::Pat::Ident(pat_ident) = &local.pat {
@@ -234,16 +380,46 @@ pub fn multi_locus_ast_crossover(
                     stmt1 = syn::parse_quote! {
                         let score = score * 0.80 + ((#init_expr) as f64) * 0.20;
                     };
-                } else if already_defined {
-                    // Anti-shadowing : fusion causale légère pour ne pas écraser une variable locale
-                    stmt1 = syn::parse_quote! {
-                        let score = score + ((#init_expr) as f64) * 0.02;
-                    };
+                } else {
+                    let downstream_deps: Vec<String> = stmts[locus1..]
+                        .iter()
+                        .flat_map(collect_dependencies)
+                        .collect();
+                    if already_defined || !downstream_deps.contains(&var_name) {
+                        // Anti-shadowing & anti-dead-store : modulation causale directe du score
+                        stmt1 = syn::parse_quote! {
+                            let score = score * 0.95 + ((#init_expr) as f64) * 0.05;
+                        };
+                    }
                 }
             }
         }
     }
-    stmts.insert(locus1, stmt1.clone());
+
+    let slice1 = resolve_dependencies_with_backward_slice(
+        &stmt1,
+        &donor_fn.block.stmts,
+        stmts,
+        &host_params,
+        locus1,
+    )
+    .unwrap_or_else(|| vec![stmt1.clone()]);
+
+    let mut loci_indices = Vec::new();
+    let mut fragment_hashes = Vec::new();
+    let mut combined_deps = Vec::new();
+
+    for (offset, s) in slice1.iter().enumerate() {
+        let actual_idx = locus1 + offset;
+        stmts.insert(actual_idx, s.clone());
+        loci_indices.push(actual_idx.to_string());
+
+        let repr = quote::quote!(#s).to_string();
+        let mut hasher = Sha256::new();
+        hasher.update(repr.as_bytes());
+        fragment_hashes.push(hex::encode(hasher.finalize()));
+        combined_deps.extend(collect_dependencies(s));
+    }
 
     // Locus 2: fin du corps (juste avant return)
     let locus2 = stmts.len().saturating_sub(1);
@@ -317,22 +493,32 @@ pub fn multi_locus_ast_crossover(
             }
         }
     }
-    stmts.insert(locus2, stmt2.clone());
 
-    // Hachage combiné individuel des fragments greffés (format hash1:hash2 pour traçabilité multi-loci)
-    let repr1 = quote::quote!(#stmt1).to_string();
-    let repr2 = quote::quote!(#stmt2).to_string();
-    let mut h1 = Sha256::new();
-    h1.update(repr1.as_bytes());
-    let hash1 = hex::encode(h1.finalize());
-    let mut h2 = Sha256::new();
-    h2.update(repr2.as_bytes());
-    let hash2 = hex::encode(h2.finalize());
-    let fragment_hash = format!("{}:{}", hash1, hash2);
+    let slice2 = resolve_dependencies_with_backward_slice(
+        &stmt2,
+        &donor_fn.block.stmts,
+        stmts,
+        &host_params,
+        locus2,
+    )
+    .unwrap_or_else(|| vec![stmt2.clone()]);
+
+    for (offset, s) in slice2.iter().enumerate() {
+        let actual_idx = locus2 + offset;
+        stmts.insert(actual_idx, s.clone());
+        loci_indices.push(actual_idx.to_string());
+
+        let repr = quote::quote!(#s).to_string();
+        let mut hasher = Sha256::new();
+        hasher.update(repr.as_bytes());
+        fragment_hashes.push(hex::encode(hasher.finalize()));
+        combined_deps.extend(collect_dependencies(s));
+    }
+
+    let fragment_hash = fragment_hashes.join(":");
+    let locus_desc = format!("multi_loci_{}", loci_indices.join("_"));
 
     let mut dep_hasher = Sha256::new();
-    let mut combined_deps = collect_dependencies(&stmt1);
-    combined_deps.extend(collect_dependencies(&stmt2));
     for d in &combined_deps {
         dep_hasher.update(d.as_bytes());
     }
@@ -354,7 +540,7 @@ pub fn multi_locus_ast_crossover(
         host_capsule: host.id.clone(),
         donor_ast_hash: donor_fingerprint.ast_hash,
         grafted_fragment_hash: fragment_hash,
-        host_locus: format!("multi_loci_{}_{}", locus1, locus2),
+        host_locus: locus_desc,
         dependency_hash,
         repair_version: None,
         repair_diff_hash: None,
@@ -524,5 +710,58 @@ mod tests {
             child_convex.metadata.get("crossover_mode").unwrap(),
             "convex_combination"
         );
+    }
+
+    #[test]
+    fn test_crossover_backward_program_slicing() {
+        let host_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let mut score = bin_residual as f64;
+            score
+        }
+        "#;
+
+        let donor_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let mut score = bin_residual as f64;
+            let custom_scale = (bin_capacity as f64) * 0.15;
+            if bin_residual < 10 {
+                score = score + custom_scale;
+            }
+            score
+        }
+        "#;
+
+        let host = SkillCapsule::new("Host", "desc", host_code, vec![], 1, HashMap::new());
+        let donor = SkillCapsule::new("Donor", "desc", donor_code, vec![], 1, HashMap::new());
+
+        let (child, manifest) = deterministic_ast_crossover(&host, &donor, 42, 1)
+            .expect("Crossover with backward program slicing should succeed");
+
+        assert!(child.is_crossover());
+        // Verify backward slice pulled `custom_scale` declaration into child logic code
+        if child.logic_code.contains("score = score + custom_scale") {
+            assert!(
+                child.logic_code.contains("let custom_scale ="),
+                "Child must contain sliced definition of custom_scale"
+            );
+        }
+        assert!(manifest.host_capsule == host.id);
     }
 }

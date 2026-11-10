@@ -21,6 +21,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_constant_opt_excess() -> usize {
+    50
+}
+
 /// Configuration for an evolutionary run according to the pre-registered protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExperimentConfig {
@@ -65,6 +69,12 @@ pub struct ExperimentConfig {
     /// Option d'évaluation lookahead (k=2) : si faux, les données d'anticipation sont masquées (défaut: true).
     #[serde(default = "default_true")]
     pub lookahead: bool,
+    /// Activation de l'optimisation locale des constantes AST par Hill-Climbing (défaut: false pour pureté comparative).
+    #[serde(default)]
+    pub enable_constant_optimization: bool,
+    /// Seuil maximal d'excès de bacs par rapport au minimum théorique pour déclencher l'optimisation des constantes.
+    #[serde(default = "default_constant_opt_excess")]
+    pub constant_opt_excess_threshold: usize,
 }
 
 impl Default for ExperimentConfig {
@@ -87,6 +97,8 @@ impl Default for ExperimentConfig {
             anti_dead_code_epsilon: 1e-4,
             tldr_epsilon: 1e-4,
             lookahead: true,
+            enable_constant_optimization: false,
+            constant_opt_excess_threshold: 50,
         }
     }
 }

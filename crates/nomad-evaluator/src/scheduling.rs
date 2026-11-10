@@ -11,6 +11,7 @@ use nomad_core::{
 };
 use nomad_genome::verify_level1_structural_survival;
 use nomad_sandbox::HeuristicSandbox;
+use rayon::prelude::*;
 
 /// ============================================================================
 /// JobRequest : Requête de Tâche de Calcul Multi-Ressources
@@ -394,19 +395,29 @@ impl SchedulingOracle {
         let mut sum_imbalance = 0.0f64;
         let mut sum_tight = 0.0f64;
 
-        for inst in &dataset.instances {
-            let (eval, imb, tight) = self.evaluate_instance_with_lookahead(
-                inst,
-                capsule,
-                sandbox,
-                fuel_limit_per_call,
-                lookahead,
-            );
+        let results: Vec<_> = dataset
+            .instances
+            .par_iter()
+            .map(|inst| {
+                (
+                    inst.theoretical_min_nodes(),
+                    self.evaluate_instance_with_lookahead(
+                        inst,
+                        capsule,
+                        sandbox,
+                        fuel_limit_per_call,
+                        lookahead,
+                    ),
+                )
+            })
+            .collect();
+
+        for (theo_min, (eval, imb, tight)) in results {
             if !eval.is_valid {
                 return BenchmarkScore {
                     is_valid: false,
                     total_bins: total_nodes + 9999,
-                    total_theoretical_min_bins: total_theoretical + inst.theoretical_min_nodes(),
+                    total_theoretical_min_bins: total_theoretical + theo_min,
                     total_excess_bins: 9999,
                     mean_efficiency: 0.0,
                     total_fuel,
@@ -488,6 +499,19 @@ impl SchedulingOracle {
         fuel_limit: u64,
         lookahead: bool,
     ) -> Result<ValidationStatus, String> {
+        self.validate_anti_dead_code_scheduling_with_score(child, sandbox, fuel_limit, lookahead)
+            .map(|(s, _)| s)
+    }
+
+    /// Version avancée retournant à la fois le statut et le BenchmarkScore précalculé sur In-Distribution,
+    /// évitant toute double évaluation du dataset complet lors de l'admission dans le moteur évolutif.
+    pub fn validate_anti_dead_code_scheduling_with_score(
+        &self,
+        child: &mut SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit: u64,
+        lookahead: bool,
+    ) -> Result<(ValidationStatus, BenchmarkScore), String> {
         // Niveau 1 : Survie structurelle
         if child.graft_manifest.is_some() {
             if let Err(e) = verify_level1_structural_survival(child) {
@@ -497,19 +521,25 @@ impl SchedulingOracle {
             }
         }
 
-        // Niveau 2 : Survie computationnelle (évaluation partielle)
-        let probe_instance = &self.in_distribution.instances[0];
-        let (eval_child, _, _) =
-            self.evaluate_instance_with_lookahead(probe_instance, child, sandbox, fuel_limit, lookahead);
-        if !eval_child.is_valid || eval_child.fuel_consumed == 0 {
+        // Niveau 2 : Survie computationnelle sur le jeu In-Distribution complet (calcul unique mutualisé)
+        let score_original = self.evaluate_dataset_with_lookahead(
+            &self.in_distribution,
+            child,
+            sandbox,
+            fuel_limit,
+            lookahead,
+        );
+
+        if !score_original.is_valid || score_original.total_fuel == 0 {
             child.validation = ValidationStatus::Failed("Level 2 Computational failed".to_string());
             return Err("Level 2 Computational failed: fuel is 0 or execution invalid".to_string());
         }
+        child.validation = ValidationStatus::PassedLevel2Computational;
 
         // Niveau 3 : Ablation Causale C_null
         if child.graft_manifest.is_none() {
             child.validation = ValidationStatus::PassedLevel2Computational;
-            return Ok(ValidationStatus::PassedLevel2Computational);
+            return Ok((ValidationStatus::PassedLevel2Computational, score_original));
         }
 
         let c_null_capsule = match create_ablation_capsule_res(child) {
@@ -518,7 +548,7 @@ impl SchedulingOracle {
                 let status =
                     ValidationStatus::NotEvaluable(format!("Scheduling ablation failed: {}", e));
                 child.validation = status.clone();
-                return Ok(status);
+                return Ok((status, score_original));
             }
         };
 
@@ -547,7 +577,7 @@ impl SchedulingOracle {
                     "Scheduling ablation produced invalid execution on probe instance".to_string(),
                 );
                 child.validation = status.clone();
-                return Ok(status);
+                return Ok((status, score_original));
             }
 
             orig_nodes_total += eval_c.bins_used;
@@ -592,13 +622,13 @@ impl SchedulingOracle {
                 null_nodes_total, orig_nodes_total, null_imbalance_total - orig_imbalance_total
             ));
             child.validation = status.clone();
-            Ok(status)
+            Ok((status, score_original))
         } else if nodes_degraded || imbalance_degraded || behavior_diverged {
             child.validation = ValidationStatus::PassedLevel3Behavioral;
-            Ok(ValidationStatus::PassedLevel3Behavioral)
+            Ok((ValidationStatus::PassedLevel3Behavioral, score_original))
         } else {
             child.validation = ValidationStatus::PassedLevel2Computational;
-            Ok(ValidationStatus::PassedLevel2Computational)
+            Ok((ValidationStatus::PassedLevel2Computational, score_original))
         }
     }
 }
