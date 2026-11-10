@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Script de packaging NOMAD V2 pour audit et revue par IA externe
 # Inclut le code source, la documentation, et les résultats complets du tir (30 seeds)
 # ==============================================================================
@@ -46,6 +46,7 @@ $filesForText = @()
 $filesForText += Get-ChildItem -Path crates -Recurse -Filter *.rs
 $filesForText += Get-Item -Path "README.md", "SPECIFICATIONS.md", "TESTS.md", "RAPPORT_CAMPAGNE_30_SEEDS.md", "RAPPORT_SCHEDULING_MULTI_RESSOURCES.md" -ErrorAction SilentlyContinue
 $filesForText += Get-Item -Path "campaign_results\stats.json", "campaign_results\stats.csv" -ErrorAction SilentlyContinue
+$filesForText += Get-Item -Path "scheduling_results\scheduling_runs3.json", "scheduling_results\scheduling_rebirth.json", "scheduling_results\scheduling_step4_oodprobe.json" -ErrorAction SilentlyContinue
 
 $filesForText | ForEach-Object {
     "`n================================================================================"
