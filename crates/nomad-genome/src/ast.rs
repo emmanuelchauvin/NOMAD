@@ -49,7 +49,9 @@ pub fn score_node(\
     total_jobs: usize, \
     active_nodes_count: usize, \
     mean_cpu_residual: f64, \
-    mean_ram_residual: f64\
+    mean_ram_residual: f64, \
+    next_job_cpu: u32, \
+    next_job_ram: u32\
 ) -> f64";
 
 /// ============================================================================

@@ -233,8 +233,15 @@ pub fn validate_anti_dead_code_3levels_with_score(
         }
     };
 
+    let probe_count = 5.min(probes_dataset.instances.len());
+    let probe_dataset = Dataset {
+        name: format!("{}_ablation_probes", probes_dataset.name),
+        instances: probes_dataset.instances[..probe_count].to_vec(),
+        dataset_hash: String::new(),
+    };
+
     let (score_null, null_evals) =
-        oracle.evaluate_dataset_with_evals(probes_dataset, &c_null, sandbox, fuel_limit, lookahead);
+        oracle.evaluate_dataset_with_evals(&probe_dataset, &c_null, sandbox, fuel_limit, lookahead);
 
     // Rejeter les C_null invalides : une erreur d'exécution n'est JAMAIS une preuve causale
     if !score_null.is_valid {
@@ -245,12 +252,12 @@ pub fn validate_anti_dead_code_3levels_with_score(
         return Ok((status, score_original));
     }
 
-    // Comparaison des décisions instance par instance (RÉUTILISATION DIRECTE, ZÉRO RÉÉVALUATION)
+    // Comparaison des décisions instance par instance sur le sous-ensemble de sondes (RÉUTILISATION DIRECTE)
     let mut divergent_decisions_count = 0usize;
     let mut total_decisions = 0usize;
     let mut divergent_instances_count = 0usize;
 
-    for (eval_orig, eval_null) in orig_evals.iter().zip(null_evals.iter()) {
+    for (eval_orig, eval_null) in orig_evals[..probe_count].iter().zip(null_evals.iter()) {
         if !eval_null.is_valid {
             let status = ValidationStatus::NotEvaluable(
                 "Ablation C_null failed on individual probe instance".to_string(),
@@ -280,6 +287,31 @@ pub fn validate_anti_dead_code_3levels_with_score(
         0.0
     };
 
+    let orig_probe_bins: usize = orig_evals[..probe_count].iter().map(|e| e.bins_used).sum();
+    let null_probe_bins: usize = score_null.total_bins;
+
+    let orig_probe_eff: f64 = if probe_count > 0 {
+        orig_evals[..probe_count]
+            .iter()
+            .map(|e| e.efficiency_ratio())
+            .sum::<f64>()
+            / probe_count as f64
+    } else {
+        0.0
+    };
+    let null_probe_eff: f64 = score_null.mean_efficiency;
+
+    let orig_probe_tldr: f64 = if probe_count > 0 {
+        orig_evals[..probe_count]
+            .iter()
+            .map(|e| e.tldr_score)
+            .sum::<f64>()
+            / probe_count as f64
+    } else {
+        0.0
+    };
+    let null_probe_tldr: f64 = score_null.tldr_score;
+
     capsule.metadata.insert(
         "ablation_decision_diff_ratio".to_string(),
         format!("{:.4}", decision_divergence_ratio),
@@ -288,23 +320,23 @@ pub fn validate_anti_dead_code_3levels_with_score(
         "ablation_bins_diff".to_string(),
         format!(
             "{:+}",
-            score_null.total_bins as i64 - score_original.total_bins as i64
+            null_probe_bins as i64 - orig_probe_bins as i64
         ),
     );
 
     // Test directionnel avec seuil epsilon configurable (défaut documenté 1e-4 / config.tldr_epsilon)
-    let bins_degraded = score_null.total_bins > score_original.total_bins;
-    let eff_degraded = score_null.total_bins == score_original.total_bins
-        && score_null.mean_efficiency < score_original.mean_efficiency - epsilon;
-    let tldr_degraded = score_null.total_bins == score_original.total_bins
-        && (score_original.mean_efficiency - score_null.mean_efficiency).abs() <= epsilon
-        && score_null.tldr_score < score_original.tldr_score - epsilon;
+    let bins_degraded = null_probe_bins > orig_probe_bins;
+    let eff_degraded = null_probe_bins == orig_probe_bins
+        && null_probe_eff < orig_probe_eff - epsilon;
+    let tldr_degraded = null_probe_bins == orig_probe_bins
+        && (orig_probe_eff - null_probe_eff).abs() <= epsilon
+        && null_probe_tldr < orig_probe_tldr - epsilon;
 
     let is_degraded = bins_degraded || eff_degraded || tldr_degraded;
 
-    let bins_improved = score_null.total_bins < score_original.total_bins;
-    let eff_improved = score_null.total_bins == score_original.total_bins
-        && score_null.mean_efficiency > score_original.mean_efficiency + epsilon;
+    let bins_improved = null_probe_bins < orig_probe_bins;
+    let eff_improved = null_probe_bins == orig_probe_bins
+        && null_probe_eff > orig_probe_eff + epsilon;
 
     let is_improved = bins_improved || eff_improved;
 
@@ -312,9 +344,9 @@ pub fn validate_anti_dead_code_3levels_with_score(
         // Si l'ablation améliore la performance, la greffe était nocive !
         let status = ValidationStatus::GraftHarmful(format!(
             "Ablation improved performance (null bins: {}, orig bins: {}, eff diff: {:.4})",
-            score_null.total_bins,
-            score_original.total_bins,
-            score_null.mean_efficiency - score_original.mean_efficiency
+            null_probe_bins,
+            orig_probe_bins,
+            null_probe_eff - orig_probe_eff
         ));
         capsule.validation = status.clone();
         Ok((status, score_original))

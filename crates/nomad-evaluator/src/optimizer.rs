@@ -1,6 +1,7 @@
 use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use sha2::{Digest, Sha256};
 use syn::visit::Visit;
 use syn::visit_mut::VisitMut;
 use syn::{Expr, ExprLit, ItemFn, Lit, LitFloat, LitInt};
@@ -189,6 +190,51 @@ pub fn optimize_capsule_constants(
     }
 
     if improved {
+        let mut updated_manifest = capsule.graft_manifest.clone();
+        if let Some(ref mut manifest) = updated_manifest {
+            let mut indices = Vec::new();
+            if let Some(idx_str) = manifest.host_locus.strip_prefix("body_stmt_index_") {
+                if let Ok(idx) = idx_str.parse::<usize>() {
+                    indices.push(idx);
+                }
+            } else if let Some(loci_str) = manifest.host_locus.strip_prefix("multi_loci_") {
+                for part in loci_str.split('_') {
+                    if let Ok(idx) = part.parse::<usize>() {
+                        indices.push(idx);
+                    }
+                }
+            }
+
+            if !indices.is_empty() {
+                let mut fragment_hashes = Vec::new();
+                let mut combined_deps = Vec::new();
+                let mut all_valid = true;
+
+                for &idx in &indices {
+                    if idx < best_item_fn.block.stmts.len() {
+                        let stmt = &best_item_fn.block.stmts[idx];
+                        let repr = quote::quote!(#stmt).to_string();
+                        let mut hasher = Sha256::new();
+                        hasher.update(repr.as_bytes());
+                        fragment_hashes.push(hex::encode(hasher.finalize()));
+                        combined_deps.extend(nomad_genome::collect_dependencies(stmt));
+                    } else {
+                        all_valid = false;
+                        break;
+                    }
+                }
+
+                if all_valid && !fragment_hashes.is_empty() {
+                    manifest.grafted_fragment_hash = fragment_hashes.join(":");
+                    let mut dep_hasher = Sha256::new();
+                    for d in &combined_deps {
+                        dep_hasher.update(d.as_bytes());
+                    }
+                    manifest.dependency_hash = hex::encode(dep_hasher.finalize());
+                }
+            }
+        }
+
         let optimized_code = quote::quote!(#best_item_fn).to_string();
         let fp = Some(compute_structural_fingerprint(&best_item_fn));
         let mut metadata = capsule.metadata.clone();
@@ -205,7 +251,7 @@ pub fn optimize_capsule_constants(
             fp,
             capsule.dependencies.clone(),
             capsule.validation.clone(),
-            capsule.graft_manifest.clone(),
+            updated_manifest,
         );
         (opt_capsule, best_score)
     } else {
@@ -270,5 +316,99 @@ mod tests {
             assert_eq!(optimized.parent_ids, vec![capsule.id.clone()]);
             assert!(optimized.name.ends_with("_opt"));
         }
+    }
+
+    #[test]
+    fn test_optimize_capsule_constants_updates_graft_manifest_hash() {
+        use crate::anti_dead_code::create_ablation_capsule_res;
+        use nomad_genome::deterministic_ast_crossover;
+
+        let host_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+            next_item_size: u32,
+            post_residual: u32,
+            fitting_bins_count: usize,
+        ) -> f64 {
+            let mut score = post_residual as f64 * 1.2;
+            score
+        }
+        "#;
+
+        let donor_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+            next_item_size: u32,
+            post_residual: u32,
+            fitting_bins_count: usize,
+        ) -> f64 {
+            let mut score = post_residual as f64;
+            if post_residual < 10 {
+                score = score + 50.0;
+            }
+            score
+        }
+        "#;
+
+        let host = SkillCapsule::new_v2(
+            "Host",
+            "Host heuristic",
+            host_code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            nomad_core::ValidationStatus::PassedLevel1Structural,
+            None,
+        );
+
+        let donor = SkillCapsule::new_v2(
+            "Donor",
+            "Donor heuristic",
+            donor_code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            nomad_core::ValidationStatus::PassedLevel1Structural,
+            None,
+        );
+
+        let (child, _manifest) = deterministic_ast_crossover(&host, &donor, 42, 2).unwrap();
+        assert!(child.graft_manifest.is_some());
+
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+
+        let (optimized, score) =
+            optimize_capsule_constants(&child, &oracle, &sandbox, 50_000, 20, 42);
+        assert!(score.is_valid);
+        assert!(optimized.graft_manifest.is_some());
+
+        // Crucial test: ablation resolution MUST succeed without AblationError::FragmentNotFound
+        let ablation_res = create_ablation_capsule_res(&optimized);
+        assert!(
+            ablation_res.is_ok(),
+            "Ablation capsule generation failed after constant optimization: {:?}",
+            ablation_res.err()
+        );
     }
 }

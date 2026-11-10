@@ -393,9 +393,9 @@ impl<'a> EvolutionEngine<'a> {
         }
 
         if capsule.graft_manifest.is_some() {
-            // Record ablation probe evaluations for C_null
-            self.budget
-                .record_executions(self.oracle.in_distribution.instances.len());
+            // Record ablation probe evaluations for C_null (limited to 5 probe instances)
+            let probe_count = 5.min(self.oracle.in_distribution.instances.len());
+            self.budget.record_executions(probe_count);
         }
 
         let score = match validate_anti_dead_code_3levels_with_score(
@@ -721,8 +721,16 @@ impl<'a> EvolutionEngine<'a> {
                         (c, false)
                     };
 
-                    self.budget.record_llm_call();
-                    self.throttle_cooldown();
+                    let is_ast_crossover = is_crossover && child_capsule.graft_manifest.is_some();
+                    if !is_ast_crossover {
+                        self.budget.record_llm_call();
+                        self.throttle_cooldown();
+                    } else {
+                        tracing::debug!(
+                            "Local AST crossover for child {} executed with zero LLM budget consumption",
+                            child_capsule.name
+                        );
+                    }
 
                     let (child_capsule, score) = self.evaluate_and_validate(child_capsule);
                     let (child_capsule, score) =
