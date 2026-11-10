@@ -202,7 +202,7 @@ pub fn execute_rebirth_protocol_extended(
 
     // Seed the Read-Only Cultural Archive of Population A with validated heritage capsules
     // ET pré-ensemence l'archive active MAP-Elites de l'Époque Héritière (avec is_heritage = true)
-    let mut cultural_archive = MapElitesArchive::new(10, 10);
+    let mut cultural_archive = MapElitesArchive::new_with_domain(10, 10, base_config.domain);
     for cap in &heritage.validated_capsules {
         let score = if base_config.domain == ProblemDomain::MultiResourceScheduling {
             if let Some(sched) = sched_oracle {
@@ -287,7 +287,7 @@ pub fn execute_rebirth_protocol_extended(
         if let Some(sched) = sched_oracle {
             engine_heritage3 = engine_heritage3.with_scheduling_oracle(sched);
         }
-        let mut cultural_archive3 = MapElitesArchive::new(10, 10);
+        let mut cultural_archive3 = MapElitesArchive::new_with_domain(10, 10, base_config.domain);
         for cap in &validated_ep2 {
             let score = if base_config.domain == ProblemDomain::MultiResourceScheduling {
                 if let Some(sched) = sched_oracle {

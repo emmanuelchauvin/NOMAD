@@ -3,7 +3,7 @@ use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use nomad_core::{BehaviorDescriptor, BenchmarkScore, SkillCapsule, StructuralFingerprint};
+use nomad_core::{BehaviorDescriptor, BenchmarkScore, ProblemDomain, SkillCapsule, StructuralFingerprint};
 
 /// ============================================================================
 /// ArchiveEntry : Représentant Élite d'une Niche Comportementale
@@ -41,9 +41,9 @@ pub struct ArchiveEntry {
 /// (mode collapse) et préserve les solutions "tremplins génétiques" (Section 3).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MapElitesArchive {
-    /// Résolution de l'axe X (espace mort).
+    /// Résolution de l'axe X (espace mort ou nœuds denses).
     pub dim_x: usize,
-    /// Résolution de l'axe Y (ouverture de bacs).
+    /// Résolution de l'axe Y (entropie ou déséquilibre CPU/RAM).
     pub dim_y: usize,
     /// Grille associative indexée par coordonnées "x,y".
     pub grid: HashMap<String, ArchiveEntry>,
@@ -51,6 +51,9 @@ pub struct MapElitesArchive {
     pub total_samples: usize,
     /// Facteur d'exploration de la curiosité UCB (typiquement sqrt(2) ≈ 1.414).
     pub ucb_exploration_factor: f64,
+    /// Domaine du problème combinatoire pour le calibrage de l'espace des niches.
+    #[serde(default)]
+    pub domain: ProblemDomain,
 }
 
 impl Default for MapElitesArchive {
@@ -60,14 +63,20 @@ impl Default for MapElitesArchive {
 }
 
 impl MapElitesArchive {
-    /// Initialise une nouvelle grille MAP-Elites aux dimensions spécifiées (ex: 10x10 = 100 niches).
+    /// Initialise une nouvelle grille MAP-Elites aux dimensions spécifiées (défaut BinPacking1D).
     pub fn new(dim_x: usize, dim_y: usize) -> Self {
+        Self::new_with_domain(dim_x, dim_y, ProblemDomain::BinPacking1D)
+    }
+
+    /// Initialise une nouvelle grille MAP-Elites avec un domaine combinatoire explicite.
+    pub fn new_with_domain(dim_x: usize, dim_y: usize, domain: ProblemDomain) -> Self {
         Self {
             dim_x: dim_x.max(1),
             dim_y: dim_y.max(1),
             grid: HashMap::new(),
             total_samples: 0,
             ucb_exploration_factor: 1.414,
+            domain,
         }
     }
 
@@ -75,29 +84,51 @@ impl MapElitesArchive {
     /// coord_for_behavior : Algorithme de Projection Continue -> Discrète
     /// ========================================================================
     /// Projette le vecteur de comportement continu d'une heuristique dans les indices
-    /// discrets (x, y) de la grille de niches.
+    /// discrets (x, y) de la grille de niches en utilisant des fonctions de compression
+    /// logarithmiques adaptées aux plages physiques réelles pour éviter la saturation.
     pub fn coord_for_behavior(&self, b: &BehaviorDescriptor) -> (usize, usize) {
-        // Axe X : Dead space ratio critique [1..15] normalisé sur [0.15, 0.75].
-        let norm_x = ((b.dead_space_ratio - 0.15) / 0.60).clamp(0.0, 0.999);
-        let x = (norm_x * self.dim_x as f64).floor() as usize;
+        let is_scheduling =
+            self.domain == ProblemDomain::MultiResourceScheduling || b.residual_variance > 2.5;
 
-        // Axe Y : Entropie de Shannon composite mi/fin de parcours (ou Imbalance en scheduling)
-        // Normalisation continue et monotone évitant les collisions de métriques et discontinuités de seuils
-        let norm_y = if b.residual_variance > 0.0 {
-            if b.residual_variance <= 2.5 {
-                // Bin Packing : Entropie de Shannon composite canonique [0.20, 2.00]
-                ((b.residual_variance - 0.20) / 1.80).clamp(0.0, 0.999)
-            } else {
-                // Scheduling : Déséquilibre CPU/RAM normalisé continu [2.5, 40.0]
-                ((b.residual_variance - 2.5) / 37.5).clamp(0.0, 0.999)
-            }
+        let (norm_x, norm_y) = if is_scheduling {
+            // ================================================================
+            // Domaine Multi-Resource Scheduling
+            // ================================================================
+            // Axe X : Ratio de nœuds denses (< 2 CPU et < 4 RAM).
+            // Plage observée [0.0, 0.40] comprimée logarithmiquement pour étaler les faibles et forts ratios
+            let nx = ((1.0 + b.dead_space_ratio.max(0.0) / 0.04).ln() / (11.0f64).ln())
+                .clamp(0.0, 0.999);
+
+            // Axe Y : Déséquilibre moyen CPU/RAM (mean_imbalance * 100).
+            // Plage observée [1.0, 40.0] comprimée logarithmiquement pour discriminer les heuristiques équilibrées
+            let ny = ((1.0 + b.residual_variance.max(0.0) / 4.0).ln() / (11.0f64).ln())
+                .clamp(0.0, 0.999);
+
+            (nx, ny)
         } else {
-            // Repli déterministe sur le ratio d'ouverture de bacs [0.30, 0.70]
-            ((b.new_bin_ratio - 0.30) / 0.40).clamp(0.0, 0.999)
-        };
-        let y = (norm_y * self.dim_y as f64).floor() as usize;
+            // ================================================================
+            // Domaine 1D Bin Packing
+            // ================================================================
+            // Axe X : Ratio d'espace mort critique [1..15] sur les bacs ouverts.
+            // Les heuristiques performantes convergent sous 0.08. Découpage logarithmique adapté à [0.0, 0.15]
+            let nx = ((1.0 + b.dead_space_ratio.max(0.0) / 0.015).ln() / (11.0f64).ln())
+                .clamp(0.0, 0.999);
 
-        (x.min(self.dim_x - 1), y.min(self.dim_y - 1))
+            // Axe Y : Entropie de Shannon composite du remplissage [0.0, 2.5].
+            // Maximum théorique ln(10) ≈ 2.3025. Découpage régulier sur [0.0, 2.40]
+            let ny = if b.residual_variance > 0.0 {
+                (b.residual_variance / 2.40).clamp(0.0, 0.999)
+            } else {
+                ((b.new_bin_ratio - 0.30).max(0.0) / 0.40).clamp(0.0, 0.999)
+            };
+
+            (nx, ny)
+        };
+
+        let x = ((norm_x * self.dim_x as f64).floor() as usize).min(self.dim_x - 1);
+        let y = ((norm_y * self.dim_y as f64).floor() as usize).min(self.dim_y - 1);
+
+        (x, y)
     }
 
     /// Convertit des coordonnées (x, y) en clé de hashage textuelle sérialisable "x,y".
@@ -224,6 +255,7 @@ impl MapElitesArchive {
         rng: &mut ChaCha8Rng,
     ) -> Option<SkillCapsule> {
         let host_hash = host.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+        let host_coord = self.coord_for_behavior(&host_score.behavior);
 
         if self.grid.len() < 2 {
             // If only 1 elite exists, return it ONLY if different from host in ID and AST hash
@@ -245,6 +277,8 @@ impl MapElitesArchive {
 
         let mut best_partner = None;
         let mut best_score = f64::NEG_INFINITY;
+        let max_niche_dist =
+            ((self.dim_x * self.dim_x + self.dim_y * self.dim_y) as f64).sqrt().max(1.0);
 
         for entry in self.grid.values() {
             if entry.capsule.id == host.id {
@@ -261,12 +295,18 @@ impl MapElitesArchive {
 
             let q_b = entry.fitness.mean_efficiency;
 
-            // Complementarity: difference in dead space behavior and new bin opening
+            // Distance euclidienne normalisée entre niches dans la grille MAP-Elites
+            let dx = host_coord.0 as f64 - entry.niche_coord.0 as f64;
+            let dy = host_coord.1 as f64 - entry.niche_coord.1 as f64;
+            let niche_dist = (dx * dx + dy * dy).sqrt() / max_niche_dist;
+
+            // Complémentarité comportementale directe combinant l'écart de niche et les descripteurs
             let dead_space_diff =
                 (host_score.behavior.dead_space_ratio - entry.behavior.dead_space_ratio).abs();
             let bin_ratio_diff =
                 (host_score.behavior.new_bin_ratio - entry.behavior.new_bin_ratio).abs();
-            let c_complement = dead_space_diff + bin_ratio_diff;
+            let c_complement =
+                0.60 * niche_dist + 0.40 * (dead_space_diff + bin_ratio_diff).min(1.0);
 
             // Structural distance: difference in AST statement and branch counts
             let d_ast = match (&host.ast_fingerprint, &entry.structural_fingerprint) {
@@ -274,7 +314,7 @@ impl MapElitesArchive {
                     let diff_stmts =
                         (fp_a.statement_count as f64 - fp_b.statement_count as f64).abs();
                     let diff_branches = (fp_a.branch_count as f64 - fp_b.branch_count as f64).abs();
-                    (diff_stmts + diff_branches) / 10.0
+                    ((diff_stmts + diff_branches) / 10.0).min(1.0)
                 }
                 _ => 0.5,
             };
@@ -432,5 +472,181 @@ mod tests {
             archive.best_elite().unwrap().capsule.id,
             cap_parsimonious.id
         );
+    }
+
+    #[test]
+    fn test_bin_packing_niche_dispersion() {
+        let mut archive =
+            MapElitesArchive::new_with_domain(10, 10, ProblemDomain::BinPacking1D);
+
+        for i in 0..50 {
+            let name = format!("Heuristic-BP-{:03}", i);
+            let cap = SkillCapsule::new(name, "desc", "code", vec![], 1, HashMap::new());
+
+            // Variations réalistes observées en Bin Packing :
+            // dead_space_ratio entre 0.003 et 0.12
+            // Shannon entropy entre 0.25 et 2.25
+            let ds = 0.003 + (i as f64 * 0.0022) + ((i % 5) as f64 * 0.004);
+            let ent = 0.25 + (((i * 13) % 200) as f64) / 100.0;
+
+            let score = BenchmarkScore {
+                is_valid: true,
+                total_bins: 500 - (i % 20),
+                total_theoretical_min_bins: 480,
+                total_excess_bins: 20,
+                mean_efficiency: 0.96,
+                total_fuel: 10_000,
+                solved_instances: 50,
+                total_instances: 50,
+                behavior: BehaviorDescriptor {
+                    residual_variance: ent,
+                    new_bin_ratio: 0.45,
+                    mean_fullness: 0.90,
+                    dead_space_ratio: ds,
+                },
+                tldr_score: 0.80,
+                trajectory_metrics: None,
+            };
+
+            let coord = archive.coord_for_behavior(&score.behavior);
+            assert!(coord.0 < 10, "Axe X doit être dans [0..9]");
+            assert!(coord.1 < 10, "Axe Y doit être dans [0..9]");
+
+            archive.insert(cap, score);
+        }
+
+        let occupied = archive.occupied_niches_count();
+        let coverage = archive.coverage();
+        println!(
+            "Bin Packing MAP-Elites dispersion: {}/100 niches (Coverage: {:.1}%)",
+            occupied,
+            coverage * 100.0
+        );
+
+        // Garantie formelle : dispersion sur au moins 25% des niches (résout le verrou 1-2%)
+        assert!(
+            occupied >= 25,
+            "La couverture Bin Packing ({}) doit être >= 25 niches",
+            occupied
+        );
+    }
+
+    #[test]
+    fn test_scheduling_niche_dispersion() {
+        let mut archive = MapElitesArchive::new_with_domain(
+            10,
+            10,
+            ProblemDomain::MultiResourceScheduling,
+        );
+
+        for i in 0..50 {
+            let name = format!("Heuristic-Sched-{:03}", i);
+            let cap = SkillCapsule::new(name, "desc", "code", vec![], 1, HashMap::new());
+
+            // Variations réalistes observées en Scheduling :
+            // dense node ratio entre 0.01 et 0.35
+            // mean_imbalance * 100 entre 1.0 et 36.0
+            let tight = 0.01 + (i as f64 * 0.0065) + ((i % 4) as f64 * 0.015);
+            let imb = 1.0 + (((i * 17) % 350) as f64) / 10.0;
+
+            let score = BenchmarkScore {
+                is_valid: true,
+                total_bins: 80 - (i % 15),
+                total_theoretical_min_bins: 65,
+                total_excess_bins: 15,
+                mean_efficiency: 0.85,
+                total_fuel: 20_000,
+                solved_instances: 50,
+                total_instances: 50,
+                behavior: BehaviorDescriptor {
+                    residual_variance: imb,
+                    new_bin_ratio: 0.40,
+                    mean_fullness: 0.85,
+                    dead_space_ratio: tight,
+                },
+                tldr_score: -imb / 100.0,
+                trajectory_metrics: None,
+            };
+
+            let coord = archive.coord_for_behavior(&score.behavior);
+            assert!(coord.0 < 10, "Axe X doit être dans [0..9]");
+            assert!(coord.1 < 10, "Axe Y doit être dans [0..9]");
+
+            archive.insert(cap, score);
+        }
+
+        let occupied = archive.occupied_niches_count();
+        let coverage = archive.coverage();
+        println!(
+            "Scheduling MAP-Elites dispersion: {}/100 niches (Coverage: {:.1}%)",
+            occupied,
+            coverage * 100.0
+        );
+
+        // Garantie formelle : dispersion sur au moins 25% des niches
+        assert!(
+            occupied >= 25,
+            "La couverture Scheduling ({}) doit être >= 25 niches",
+            occupied
+        );
+    }
+
+    #[test]
+    fn test_complementary_partner_selection_favors_distant_niches() {
+        let mut archive =
+            MapElitesArchive::new_with_domain(10, 10, ProblemDomain::BinPacking1D);
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+
+        // Host in low dead space, low entropy niche
+        let host = SkillCapsule::new("Host", "desc", "host_code", vec![], 1, HashMap::new());
+        let host_score = BenchmarkScore {
+            is_valid: true,
+            total_bins: 500,
+            total_theoretical_min_bins: 480,
+            total_excess_bins: 20,
+            mean_efficiency: 0.96,
+            total_fuel: 10_000,
+            solved_instances: 50,
+            total_instances: 50,
+            behavior: BehaviorDescriptor {
+                residual_variance: 0.3,
+                new_bin_ratio: 0.40,
+                mean_fullness: 0.90,
+                dead_space_ratio: 0.005,
+            },
+            tldr_score: 0.80,
+            trajectory_metrics: None,
+        };
+
+        // Neighbor 1: close niche (0.01, 0.4)
+        let cap_close =
+            SkillCapsule::new("ClosePartner", "desc", "close_code", vec![], 1, HashMap::new());
+        let mut score_close = host_score.clone();
+        score_close.behavior.dead_space_ratio = 0.008;
+        score_close.behavior.residual_variance = 0.35;
+        score_close.mean_efficiency = 0.90;
+        archive.insert(cap_close.clone(), score_close);
+
+        // Neighbor 2: distant complementary niche with high quality (0.12, 2.1)
+        let cap_distant = SkillCapsule::new(
+            "DistantPartner",
+            "desc",
+            "distant_code",
+            vec![],
+            1,
+            HashMap::new(),
+        );
+        let mut score_distant = host_score.clone();
+        score_distant.behavior.dead_space_ratio = 0.12;
+        score_distant.behavior.residual_variance = 2.1;
+        score_distant.mean_efficiency = 0.95;
+        archive.insert(cap_distant.clone(), score_distant);
+
+        let partner = archive
+            .select_complementary_partner(&host, &host_score, &mut rng)
+            .expect("Must select partner");
+
+        // The partner chosen should be the distant complementary one
+        assert_eq!(partner.id, cap_distant.id);
     }
 }

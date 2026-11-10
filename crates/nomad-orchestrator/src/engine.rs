@@ -113,6 +113,7 @@ impl<'a> EvolutionEngine<'a> {
         sandbox: &'a dyn HeuristicSandbox,
         operator: &'a dyn SkillOperator,
     ) -> Self {
+        let domain = config.domain;
         Self {
             config,
             oracle,
@@ -121,7 +122,7 @@ impl<'a> EvolutionEngine<'a> {
             operator,
             phylogeny: PhylogenyGraph::new(),
             budget: BudgetTracker::default(),
-            archive: MapElitesArchive::new(10, 10),
+            archive: MapElitesArchive::new_with_domain(10, 10, domain),
             cultural_archive: None,
             lineages: LineageManager::new(),
             adaptive_crossover_rate: 0.60,
@@ -134,6 +135,7 @@ impl<'a> EvolutionEngine<'a> {
     /// Associe un oracle de scheduling multi-ressources au moteur d'évolution.
     pub fn with_scheduling_oracle(mut self, sched_oracle: &'a SchedulingOracle) -> Self {
         self.scheduling_oracle = Some(sched_oracle);
+        self.archive.domain = nomad_core::ProblemDomain::MultiResourceScheduling;
         self
     }
 
