@@ -7,7 +7,9 @@ use nomad_core::{
     BenchmarkScore, BudgetTracker, EvaluatedIndividual, ExperimentConfig, ExperimentalGroup,
     ProblemDomain, SkillCapsule,
 };
-use nomad_evaluator::{validate_anti_dead_code_3levels, OracleEvaluator, SchedulingOracle};
+use nomad_evaluator::{
+    validate_anti_dead_code_3levels_with_epsilon, OracleEvaluator, SchedulingOracle,
+};
 use nomad_genome::PhylogenyGraph;
 use nomad_operator::SkillOperator;
 use nomad_sandbox::HeuristicSandbox;
@@ -39,6 +41,10 @@ pub struct GenerationRecord {
     pub occupied_niches: usize,
     #[serde(default = "default_crossover_rate")]
     pub crossover_rate: f64,
+    #[serde(default)]
+    pub crossover_not_evaluable_count: usize,
+    #[serde(default)]
+    pub crossover_rejected_count: usize,
 }
 
 /// The complete final output of an experimental run for scientific analysis.
@@ -63,6 +69,12 @@ pub struct ExperimentRunReport {
     pub phylogeny: PhylogenyGraph,
     #[serde(default)]
     pub archive: MapElitesArchive,
+    #[serde(default)]
+    pub crossover_attempts: usize,
+    #[serde(default)]
+    pub crossover_not_evaluable_count: usize,
+    #[serde(default)]
+    pub crossover_rejected_count: usize,
 }
 
 /// ============================================================================
@@ -88,6 +100,9 @@ pub struct EvolutionEngine<'a> {
     pub cultural_archive: Option<MapElitesArchive>,
     pub lineages: LineageManager,
     pub adaptive_crossover_rate: f64,
+    pub crossover_attempts: usize,
+    pub crossover_not_evaluable_count: usize,
+    pub crossover_rejected_count: usize,
 }
 
 impl<'a> EvolutionEngine<'a> {
@@ -110,6 +125,9 @@ impl<'a> EvolutionEngine<'a> {
             cultural_archive: None,
             lineages: LineageManager::new(),
             adaptive_crossover_rate: 0.60,
+            crossover_attempts: 0,
+            crossover_not_evaluable_count: 0,
+            crossover_rejected_count: 0,
         }
     }
 
@@ -207,6 +225,8 @@ impl<'a> EvolutionEngine<'a> {
                 } else {
                     self.adaptive_crossover_rate
                 },
+                crossover_not_evaluable_count: self.crossover_not_evaluable_count,
+                crossover_rejected_count: self.crossover_rejected_count,
             };
             generation_records.push(record);
 
@@ -307,6 +327,9 @@ impl<'a> EvolutionEngine<'a> {
             total_lineage_edges: self.phylogeny.edge_count(),
             phylogeny: self.phylogeny.clone(),
             archive: self.archive.clone(),
+            crossover_attempts: self.crossover_attempts,
+            crossover_not_evaluable_count: self.crossover_not_evaluable_count,
+            crossover_rejected_count: self.crossover_rejected_count,
         })
     }
 
@@ -362,10 +385,11 @@ impl<'a> EvolutionEngine<'a> {
     ) -> (SkillCapsule, BenchmarkScore) {
         if self.config.domain == ProblemDomain::MultiResourceScheduling {
             if let Some(sched) = self.scheduling_oracle {
-                let _ = sched.validate_anti_dead_code_scheduling(
+                let _ = sched.validate_anti_dead_code_scheduling_with_lookahead(
                     &mut capsule,
                     self.sandbox,
                     self.config.fuel_limit_per_call,
+                    self.config.lookahead,
                 );
                 let score = sched.evaluate_dataset_with_lookahead(
                     &sched.in_distribution,
@@ -386,12 +410,14 @@ impl<'a> EvolutionEngine<'a> {
                 .record_executions(self.oracle.in_distribution.instances.len());
         }
 
-        let _ = validate_anti_dead_code_3levels(
+        let _ = validate_anti_dead_code_3levels_with_epsilon(
             &mut capsule,
             self.oracle,
             self.sandbox,
             &self.oracle.in_distribution,
             self.config.fuel_limit_per_call,
+            self.config.tldr_epsilon,
+            self.config.lookahead,
         );
 
         let score = self.oracle.evaluate_dataset_with_lookahead(
@@ -519,7 +545,7 @@ impl<'a> EvolutionEngine<'a> {
                             || current_pop.len() >= 2
                             || self.cultural_archive.is_some());
 
-                    let (child_capsule, _) = if should_crossover {
+                    let (child_capsule, is_crossover) = if should_crossover {
                         // 1. Quality-Diversity Parent A Selection via UCB curiosity
                         let parent_a = self
                             .archive
@@ -609,27 +635,31 @@ impl<'a> EvolutionEngine<'a> {
                                     || (parent_a_hash.is_some() && parent_a_hash == p_b_hash)
                                 {
                                     // Biais d'auto-croisement détecté : repli immédiat sur la mutation pure
-                                    self.operator
+                                    let (c, _) = self.operator
                                         .mutate(&parent_a, next_gen_idx, seed)
                                         .map_err(|e| {
                                             OrchestratorError::OperatorError(e.to_string())
-                                        })?
+                                        })?;
+                                    (c, false)
                                 } else {
+                                    self.crossover_attempts += 1;
                                     *ancestral_usage_counts
                                         .entry(parent_b.id.0.clone())
                                         .or_insert(0) += 1;
-                                    self.operator
+                                    let (c, _) = self.operator
                                         .crossover(&parent_a, &parent_b, next_gen_idx, seed)
                                         .map_err(|e| {
                                             OrchestratorError::OperatorError(e.to_string())
-                                        })?
+                                        })?;
+                                    (c, true)
                                 }
                             }
                             None => {
                                 // Aucun partenaire dissemblable disponible : repli sur la mutation
-                                self.operator
+                                let (c, _) = self.operator
                                     .mutate(&parent_a, next_gen_idx, seed)
-                                    .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
+                                    .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
+                                (c, false)
                             }
                         }
                     } else {
@@ -639,9 +669,10 @@ impl<'a> EvolutionEngine<'a> {
                             .select_parent_ucb(rng)
                             .unwrap_or_else(|| current_pop[0].capsule.clone());
 
-                        self.operator
+                        let (c, _) = self.operator
                             .mutate(&parent, next_gen_idx, seed)
-                            .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?
+                            .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
+                        (c, false)
                     };
 
                     self.budget.record_llm_call();
@@ -672,10 +703,35 @@ impl<'a> EvolutionEngine<'a> {
                     let is_validation_passed = match &child_capsule.validation {
                         nomad_core::ValidationStatus::PassedLevel3Behavioral => true,
                         nomad_core::ValidationStatus::PassedLevel2Computational => {
-                            !should_crossover
+                            if is_crossover {
+                                self.crossover_rejected_count += 1;
+                                tracing::info!(
+                                    "Crossover child {} rejected: only reached Level 2 Computational",
+                                    child_capsule.name
+                                );
+                            }
+                            !is_crossover
                         }
-                        nomad_core::ValidationStatus::PassedLevel1Structural => !should_crossover,
+                        nomad_core::ValidationStatus::PassedLevel1Structural => {
+                            if is_crossover {
+                                self.crossover_rejected_count += 1;
+                                tracing::info!(
+                                    "Crossover child {} rejected: only reached Level 1 Structural",
+                                    child_capsule.name
+                                );
+                            }
+                            !is_crossover
+                        }
                         nomad_core::ValidationStatus::NotEvaluable(reason) => {
+                            if is_crossover {
+                                self.crossover_not_evaluable_count += 1;
+                                self.crossover_rejected_count += 1;
+                                tracing::info!(
+                                    "Crossover attrition monitor: child {} marked NotEvaluable: {}",
+                                    child_capsule.name,
+                                    reason
+                                );
+                            }
                             tracing::warn!(
                                 "Rejet bloquant Anti-Dead-Code (Non Évaluable) de {} : {}",
                                 child_capsule.name,
@@ -684,6 +740,14 @@ impl<'a> EvolutionEngine<'a> {
                             false
                         }
                         nomad_core::ValidationStatus::GraftHarmful(reason) => {
+                            if is_crossover {
+                                self.crossover_rejected_count += 1;
+                                tracing::info!(
+                                    "Crossover attrition monitor: child {} rejected as GraftHarmful: {}",
+                                    child_capsule.name,
+                                    reason
+                                );
+                            }
                             tracing::warn!(
                                 "Rejet bloquant Anti-Dead-Code (Greffe Nocive) de {} : {}",
                                 child_capsule.name,
@@ -692,6 +756,14 @@ impl<'a> EvolutionEngine<'a> {
                             false
                         }
                         nomad_core::ValidationStatus::Failed(reason) => {
+                            if is_crossover {
+                                self.crossover_rejected_count += 1;
+                                tracing::info!(
+                                    "Crossover attrition monitor: child {} rejected as Failed: {}",
+                                    child_capsule.name,
+                                    reason
+                                );
+                            }
                             tracing::warn!(
                                 "Rejet bloquant Anti-Dead-Code de {} : {}",
                                 child_capsule.name,
@@ -699,7 +771,12 @@ impl<'a> EvolutionEngine<'a> {
                             );
                             false
                         }
-                        nomad_core::ValidationStatus::Unvalidated => !should_crossover,
+                        nomad_core::ValidationStatus::Unvalidated => {
+                            if is_crossover {
+                                self.crossover_rejected_count += 1;
+                            }
+                            !is_crossover
+                        }
                     };
 
                     // Record in AgentPSO lineage state
@@ -729,7 +806,7 @@ impl<'a> EvolutionEngine<'a> {
                     }
 
                     // Adaptive Operator Selection: self-tune crossover probability based on success
-                    if should_crossover {
+                    if is_crossover {
                         if is_improved && is_validation_passed {
                             self.adaptive_crossover_rate =
                                 (self.adaptive_crossover_rate + 0.02).min(0.85);

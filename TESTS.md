@@ -9,9 +9,9 @@
 
 L'ensemble des exigences techniques et des protocoles scientifiques prescrits par `SPECIFICATIONS.md` (Sections 0 à 14) est **validé à 100%** :
 
-* **Validation Technique (Workspace Rust) :** **41 tests automatisés sur 41 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec support complet des méthodes mathématiques et puissances (`powi`, `powf`, `sqrt`, `min`, `max`), la limitation de profondeur de récursion (max 48) et de mémoire (max 128 vars), le rejet précoce d'entrées pathologiques, le Lookahead $k=2$, l'Oracle souverain avec jeu de validation indépendant, le pipeline Anti-Dead-Code bloquant à 3 niveaux par neutralisation et dégradation directionnelle, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques dégroupé et l'Ordonnancement Cloud Multi-Ressources.
+* **Validation Technique (Workspace Rust) :** **45 tests automatisés sur 45 réussis** (0 échec, 0 warning), couvrant l'analyse syntaxique AST, le crossover déterministe et multi-loci, les opérateurs LLM & Mock, le Sandbox fuel-metered avec support complet des méthodes mathématiques et puissances (`powi`, `powf`, `sqrt`, `min`, `max`), la limitation de profondeur de récursion (max 48) et de mémoire (max 128 vars), le rejet précoce d'entrées pathologiques, le Lookahead $k=2$, l'Oracle souverain avec jeu de validation indépendant, le pipeline Anti-Dead-Code bloquant à 3 niveaux par neutralisation et dégradation directionnelle, l'archive MAP-Elites calibrée, AgentPSO, l'ajustement adaptatif d'opérateur (AOS), le protocole de Rebirth multi-époques dégroupé et l'Ordonnancement Cloud Multi-Ressources.
 * **Validation Scientifique (Les 4 Tests d'Acceptation) :**
-  1. **Test 1 (Performance 1265 bacs & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux. Un gain marginal exploratoire a été observé à 1 264 bacs (gain de 1 bac / 50 000 objets, -0.08 %) dans un run de 12 générations (`run_report_qwen_v2.json`) avec lookahead $k=2$. Non reproduit dans le protocole d'ablation à 15 générations (qui converge à 1 265 bacs pour les Groupes C et D) ; ce résultat requiert une réplication statistique multi-graines.
+  1. **Test 1 (Performance 1265 bacs & Crossover AST) :** Pipeline de greffe AST opérationnel avec génération externe de `GraftManifest` et validation Anti-Dead-Code à 3 niveaux. Un gain marginal exploratoire a été observé à 1 264 bacs (gain de 1 bac sur 2 500 objets [50 instances de 50 objets], -0.08 %) dans un run de 12 générations (`run_report_qwen_v2.json`) avec lookahead $k=2$. Non reproduit dans le protocole d'ablation à 15 générations (qui converge à 1 265 bacs pour les Groupes C et D) ; ce résultat requiert une réplication statistique multi-graines.
   2. **Test 2 (Résilience Génétique & MAP-Elites) :** Résolution prouvée du mode collapse de la V1. Maintien pérenne d'un front de Pareto multi-niches actives avec réduction de l'espace mort.
   3. **Test 3 (Dynamique Temporelle $tLDR$ & OOD) :** Modélisation mathématique rigoureuse du potentiel de Lyapunov $V(t)$, régression linéaire $\beta_1$ et $\sigma_{\text{res}}$, et sanctuarisation stricte des benchmarks OOD-1 et OOD-2 (efficacité $> 95\%$).
   4. **Test 4 (Transmission Cumulative "Mort et Renaissance") :** **Observation préliminaire : $CIF_{\text{QD}} = 1.004\text{x}$ (et jusqu'à 7 niches préservées vs 1 en Tabula Rasa, $R_{\text{herit}} = 71.4\%$)**. L'écart de 0.4 % restant dans la marge de variabilité stochastique, il ne constitue pas une preuve définitive sans réplication. En ordonnancement, la population héritière subit même une légère régression hors-distribution (1 745 vs 1 731 serveurs Tabula Rasa), illustrant que l'hérédité phylogénétique ($R_{\text{herit}} = 100\%$) ne garantit pas à elle seule une supériorité systématique de performance.
@@ -27,7 +27,7 @@ Pour garantir une intégrité scientifique sans équivoque face aux comités de 
 | **`run_report_qwen_v2.json`** | V2.0 | Bin Packing 1D (Groupe C) | $N=12$ gens, $\text{Pop}=8$ | **1 264 bacs** (`SwarmCross-g8-0f25-039a-mut-g8`) | **Run Exploratoire Graine Unique :** Gain marginal observé (1265 $\to$ 1264, -0.08%) avec lookahead $k=2$. |
 | **`rebirth_qwen_v2.json`** | V2.0 | Bin Packing 1D (Rebirth) | 2 époques, $N=6$ gens, $\text{Pop}=8$ | **$CIF = 1.000\text{x}$**, $R_{\text{herit}} = 71.4\%$ (7 niches) | **Run Rebirth V2 :** Preuve de diversité héritée (7 niches vs 1 niche Tabula Rasa). |
 | **`run_sched_qwen.json`** | V2.0 | Cloud Scheduling (Groupe C) | $N=8$ gens, $\text{Pop}=8$ | **1 731 serveurs** (OOD-2, +16 économisés vs baselines) | **Multi-Domaines :** Validation de l'allocation vectorielle 2D CPU/RAM. |
-| **`grand_rebirth_sched.json`**| V2.0 | Cloud Scheduling (Rebirth 3E) | 3 époques, $N=4$ gens, $\text{Pop}=6$ | **391 serveurs** à l'Époque 3 (gain net vs 392 Époque 1) | **Rebirth Multi-Époques :** Amélioration cumulative inter-extinctions. |
+| **`grand_rebirth_sched.json`**| V2.0 | Cloud Scheduling (Rebirth 3E) | 3 époques, $N=4$ gens, $\text{Pop}=6$ | **391 serveurs** à l'Époque 3 (gain exploratoire unitaire vs 392 Époque 1) | **Rebirth Multi-Époques :** Amélioration cumulative inter-extinctions sur graine unique. |
 | **`grand_run_bp_v2_6.json`** | V2.6 | Bin Packing 1D (Groupe C) | $N=5$ gens, $\text{Pop}=8$ | **1 265 bacs**, QD-Score = 4.414 (5 niches actives) | **Run Débogage V2.6 :** Validation de l'ascent de constantes & MAP-Elites. |
 | **`grand_rebirth_bp_v2_6.json`**| V2.6 | Bin Packing 1D (Rebirth) | 2 époques, $N=5$ gens, $\text{Pop}=8$ | **$CIF = 1.004\text{x}$**, $R_{\text{herit}} = 50.0\%$, $R_{\text{innov}} = 1.538$ | **Run V2.6 Rebirth :** Test de non-régression du pré-ensemencement culturel. |
 | **`ablation_group_c.json`** | V2.6 | Bin Packing 1D (Groupe C) | $N=15$ gens, $\text{Pop}=10$ | **1 265 bacs**, Fuel: **703 568**, Champion: `SwarmCross-g6` | **Ablation Swarm Crossover :** Le crossover AST produit le champion final (QD 8.770, 10 niches). |
@@ -53,25 +53,42 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 | **`nomad-operator`** | `test_http_llama_operator_ast_normalization` | Normalisation multi-domaine (Bin Packing & Ordonnancement Cloud) et templates de repli AST. | ✅ PASS |
 | **`nomad-sandbox`** | `test_sandbox_first_fit_and_best_fit` | Exécution exacte des heuristiques canoniques de Bin Packing. | ✅ PASS |
 | **`nomad-sandbox`** | `test_sandbox_overflow_protection` | Protection contre les débordements de bacs et rejets immédiats des violations. | ✅ PASS |
+| **`nomad-sandbox`** | `test_sandbox_baseline_exact_match_protection` | Comparaison exacte et stricte des baselines pour interdire toute interception accidentelle. | ✅ PASS |
 | **`nomad-sandbox`** | `test_sandbox_scheduling_execution` | Exécution et respect des contraintes multi-ressources (CPU/RAM) pour le Cloud. | ✅ PASS |
 | **`nomad-sandbox`** | `test_ast_interpreter_basic` | Interpréteur AST déterministe fuel-metered sous contrainte stricte de ressources. | ✅ PASS |
 | **`nomad-sandbox`** | `test_ast_interpreter_methods_and_powers` | Évaluation exacte des appels de méthodes non-linéaires (`powi`, `powf`, `sqrt`, `min`, `max`). | ✅ PASS |
+| **`nomad-sandbox`** | `test_ast_interpreter_recursion_depth_limit` | Protection contre les récursions et empilements profonds d'expressions AST. | ✅ PASS |
+| **`nomad-sandbox`** | `test_ast_interpreter_memory_limit_exceeded` | Plafond strict sur le nombre de variables et allocations dans l'environnement. | ✅ PASS |
+| **`nomad-sandbox`** | `test_ast_interpreter_pathological_inputs_rejected` | Rejet typé des entrées pathologiques (tailles nulles ou négatives). | ✅ PASS |
+| **`nomad-sandbox`** | `test_ast_interpreter_fuel_exhaustion_without_panic` | Interruption fuel-metered propre sans panique en cas d'épuisement. | ✅ PASS |
+| **`nomad-sandbox`** | `test_ast_interpreter_pathological_numerical_values` | Erreur typée `EvalError::PathologicalNumericalValue` sur les résultats `NaN`/Infinis. | ✅ PASS |
 | **`nomad-evaluator`** | `test_pre_registered_datasets_determinism` | Déterminisme et intégrité des empreintes SHA-256 des jeux ID, OOD-1, OOD-2. | ✅ PASS |
+| **`nomad-evaluator`** | `test_validation_dataset_integrity_and_separation` | Cloisonnement étanche et intégrité du jeu de validation vs recherche active. | ✅ PASS |
 | **`nomad-evaluator`** | `test_classical_baseline_evaluation` | Évaluation des références historiques (First-Fit, Best-Fit, Worst-Fit). | ✅ PASS |
 | **`nomad-evaluator`** | `test_scheduling_datasets_and_baselines` | Oracle d'ordonnancement multi-ressources, intégrité SHA-256 et baselines vecteur. | ✅ PASS |
+| **`nomad-evaluator`** | `test_best_fit_with_lookahead_baseline_and_toggle` | Évaluation exacte de la baseline Lookahead $k=2$ et toggle d'horizon. | ✅ PASS |
 | **`nomad-evaluator`** | `test_anti_dead_code_validation_pipeline` | Pipeline complet à 3 niveaux : structurel, computationnel et ablation $C_{\text{null}}$. | ✅ PASS |
 | **`nomad-evaluator`** | `test_multi_locus_anti_dead_code_validation` | Validation Anti-Dead-Code Niveau 3 sur crossover multi-loci (`multi_loci_X_Y` et hashes composés). | ✅ PASS |
+| **`nomad-evaluator`** | `test_ablation_neutral_graft_yields_level2` | Validation contrefactuelle structurelle : greffe neutre arrêtée au Niveau 2. | ✅ PASS |
+| **`nomad-evaluator`** | `test_ablation_harmful_graft_yields_graft_harmful` | Détection causale de greffe nocive (`ValidationStatus::GraftHarmful`). | ✅ PASS |
+| **`nomad-evaluator`** | `test_ablation_hash_mismatch_yields_not_evaluable` | Robustesse face aux anomalies de manifestes et rejet sécurisé. | ✅ PASS |
+| **`nomad-evaluator`** | `test_ablation_crash_yields_not_evaluable` | Traitement des échecs d'ablation en statut sécurisé `NotEvaluable`. | ✅ PASS |
+| **`nomad-evaluator`** | `test_anti_dead_code_with_lookahead_flag` | Contrôle strict du flag Lookahead dans les sondes Niveau 3 (divergence causale active). | ✅ PASS |
 | **`nomad-evaluator`** | `test_lookahead_bin_packing_combinations` | Évaluation comparative Lookahead $k=2$, dynamique d'horizon et Best Fit. | ✅ PASS |
 | **`nomad-evaluator`** | `test_optimize_capsule_constants_execution` | Optimisation continue locale des constantes AST par Nelder-Mead/Grid. | ✅ PASS |
+| **`nomad-evaluator`** | `test_measure_offline_ceiling` | Mesure exacte du plafond BFD/FFD hors-ligne vs borne $L_1$ sur les 30 seeds. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_map_elites_insertion_and_local_competition` | Grille 2D Quality-Diversity, compétition intra-niche et curiosité UCB. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_map_elites_fuel_parsimony_and_tldr_tie_breaking` | Règle de sélection intra-niche par parcimonie de fuel et $tLDR$. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_no_self_crossover_in_swarm_evolution` | Interdiction formelle de l'auto-croisement endogame hôte = donneur. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_adaptive_operator_crossover_bounds` | Méta-évolution : contrôle adaptatif du taux de croisement d'essaim (AOS) borné. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_evolutionary_run_group_c_swarm` | Simulation évolutionnaire complète du Groupe C (Swarm QD) sur 3 générations. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_evolutionary_run_scheduling_swarm` | Simulation évolutionnaire complète sur l'Ordonnancement Cloud Multi-Ressources. | ✅ PASS |
+| **`nomad-orchestrator`** | `test_validation_and_ood_do_not_contaminate_archive_or_selection_budget` | Étanchéité de l'archive et du budget de sélection face aux évaluations de validation/OOD. | ✅ PASS |
+| **`nomad-orchestrator`** | `test_paired_campaign_reproducibility_and_symmetry` | Reproductibilité et symétrie rigoureuse des campagnes appariées C vs D. | ✅ PASS |
 | **`nomad-orchestrator`** | `test_rebirth_protocol_execution` | Protocole complet "Mort et Renaissance" (Époque 1 $\rightarrow$ Extinction $\rightarrow$ Époque 2 $\rightarrow$ Époque 3). | ✅ PASS |
+| **`nomad-orchestrator`** | `test_crossover_acceptance_rate_and_not_evaluable_monitoring` | Suivi et monitoring strict de l'attrition des crossovers et du statut `NotEvaluable`. | ✅ PASS |
 
-**Bilan : 29 passed; 0 failed; 0 ignored; 0 warnings.**
+**Bilan : 46 passed; 0 failed; 0 ignored; 0 warnings.**
 
 ---
 
@@ -104,7 +121,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
 
 > [!IMPORTANT]
 > **Éclaircissement méthodologique sur l'écart 1 264 vs 1 265 bacs et équité du Lookahead :**
-> 1. **Écart 1 264 vs 1 265 bacs :** Le score de 1 264 bacs a été observé lors d'un run exploratoire prolongé de 12 générations (`run_report_qwen_v2.json`) avec une graine unique et un modèle spécifique. Dans les expériences d'ablation systématiques de 15 générations (`ablation_group_c.json` et `ablation_group_d.json`), les deux groupes (Crossover et Mutation seule) convergent à 1 265 bacs. L'écart d'un seul bac sur 50 000 objets (0.08 %) reflète une variation marginale non répliquée à ce stade sous le protocole d'ablation. Il ne saurait être qualifié de « rupture d'état de l'art » sans réplication sur une campagne multi-graines appariée.
+> 1. **Écart 1 264 vs 1 265 bacs :** Le score de 1 264 bacs a été observé lors d'un run exploratoire prolongé de 12 générations (`run_report_qwen_v2.json`) avec une graine unique et un modèle spécifique. Dans les expériences d'ablation systématiques de 15 générations (`ablation_group_c.json` et `ablation_group_d.json`), les deux groupes (Crossover et Mutation seule) convergent à 1 265 bacs. L'écart d'un seul bac sur les 50 instances de 50 objets (soit 2 500 objets au total, 0.08 %) reflète une variation marginale non répliquée à ce stade sous le protocole d'ablation. Il ne saurait être qualifié de « rupture d'état de l'art » sans réplication sur une campagne multi-graines appariée.
 > 2. **Équité du Lookahead :** Best-Fit standard n'a pas accès à l'objet suivant ($k=1$). La comparaison équitable nécessite d'évaluer la baseline avec le même horizon d'information, matérialisée par `BEST_FIT_LOOKAHEAD` ($k=2$), qui atteint 1 265 bacs. Le gain marginal de 1 bac dépend donc étroitement de l'exploitation conjointe du lookahead et de la politique non-linéaire.
 
 ---
@@ -210,7 +227,7 @@ Tous les tests unitaires et d'intégration s'exécutent de façon déterministe 
   * **Époque 2 (Héritière) :** Best In-Dist = 392 serveurs, 3 niches.
   * **Époque 3 (Héritière 2) :** **Best In-Dist = 391 serveurs (excess: +14, eff: 96.50%)** 🏆.
   * **Époque 3 (Tabula Rasa) :** Bloquée à 392 serveurs.
-  * **Facteur d'Amélioration Cumulée (CIF) :** **1.071x** ($> 1.0$, rupture nette de la barrière locale).
+  * **Facteur d'Amélioration Cumulée (CIF) :** **1.071x** ($> 1.0$, amélioration locale incrémentale de 392 à 391 serveurs sur graine unique, à consolider en campagne multi-graines).
   * **Hérédité Fonctionnelle ($R_{\text{herit}}$) :** **100.0%**.
   * **Visualisation :** [`grand_arbre_sched.html`](grand_arbre_sched.html).
 * **Résultats Expérimentaux en 1D Bin Packing (`grand_rebirth_bp_v2.json`) :**
@@ -327,7 +344,7 @@ cargo run --release --bin nomad -- graph --report grand_rebirth_bp_v2.json --for
 Afin de garantir une rigueur méthodologique irréprochable face aux exigences de publication scientifique, les résultats présentés doivent être interprétés à la lumière des limites structurelles suivantes :
 
 1. **Variabilité Stochastique & Taille d'Échantillon :**
-   Les scores phares (1 264 bacs en Bin Packing, 391 serveurs en Cloud Scheduling) ont été enregistrés sur des exécutions exploratoires isolées (seed 42). Le gain mesuré (1 bac sur 50 000 objets, soit 0.08 %) est marginal et n'a pas été répliqué dans le protocole d'ablation 15 générations (qui stabilise à 1 265 bacs pour les Groupes C et D). Aucune conclusion définitive sur la supériorité de l'approche ne peut être tirée sans mener la campagne complète pré-enregistrée de 30 graines appariées (`nomad campaign`) et soumettre les résultats aux tests de Wilcoxon et de permutation.
+   Les scores phares (1 264 bacs en Bin Packing, 391 serveurs en Cloud Scheduling) ont été enregistrés sur des exécutions exploratoires isolées (seed 42). Le gain mesuré (1 bac sur 2 500 objets [50 instances de 50 objets], soit 0.08 %) est marginal et n'a pas été répliqué dans le protocole d'ablation 15 générations (qui stabilise à 1 265 bacs pour les Groupes C et D). Aucune conclusion définitive sur la supériorité de l'approche ne peut être tirée sans mener la campagne complète pré-enregistrée de 30 graines appariées (`nomad campaign`) et soumettre les résultats aux tests de Wilcoxon et de permutation.
 2. **Équité du Comparateur (Lookahead Bounded) :**
    L'algorithme Best-Fit historique fonctionne sans vision de l'objet futur ($k=1$). La mise à disposition de `next_item_size` ($k=2$) aux capsules évolutives confère un avantage informationnel structurel. Toute affirmation de supériorité algorithmique doit obligatoirement être comparée à la baseline symétrique `BEST_FIT_LOOKAHEAD` ($k=2$), implémentée dans NOMAD V2.6, qui égalise le score à 1 265 bacs.
 3. **Causalité Anti-Dead-Code et Niveaux de Survie :**

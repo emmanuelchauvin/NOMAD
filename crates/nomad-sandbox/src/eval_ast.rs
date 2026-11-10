@@ -20,8 +20,19 @@ pub enum EvalError {
     MemoryLimitExceeded(String),
     #[error("Pathological input rejected: {0}")]
     InvalidInput(String),
+    #[error("Pathological numerical value encountered (NaN, Inf, or division by zero)")]
+    PathologicalNumericalValue,
     #[error("Unsupported AST expression: {0}")]
     UnsupportedExpr(String),
+}
+
+#[inline]
+fn check_finite(val: f64) -> Result<f64, EvalError> {
+    if val.is_finite() {
+        Ok(val)
+    } else {
+        Err(EvalError::PathologicalNumericalValue)
+    }
 }
 
 /// ============================================================================
@@ -181,6 +192,8 @@ impl<'a> AstInterpreter<'a> {
         let final_score = return_val
             .or_else(|| vars.get("score").copied())
             .unwrap_or(default_fallback);
+
+        check_finite(final_score)?;
 
         Ok(AstEvalOutcome {
             score: final_score,
@@ -368,21 +381,21 @@ impl<'a> AstInterpreter<'a> {
                 let l = self.eval_expr(left, vars, fuel, branches, mutations, depth + 1)?;
                 let r = self.eval_expr(right, vars, fuel, branches, mutations, depth + 1)?;
                 match op {
-                    BinOp::Add(_) => Ok(l + r),
-                    BinOp::Sub(_) => Ok(l - r),
-                    BinOp::Mul(_) => Ok(l * r),
+                    BinOp::Add(_) => check_finite(l + r),
+                    BinOp::Sub(_) => check_finite(l - r),
+                    BinOp::Mul(_) => check_finite(l * r),
                     BinOp::Div(_) => {
-                        if r != 0.0 {
-                            Ok(l / r)
+                        if r == 0.0 {
+                            Err(EvalError::PathologicalNumericalValue)
                         } else {
-                            Ok(0.0)
+                            check_finite(l / r)
                         }
                     }
                     BinOp::Rem(_) => {
-                        if r != 0.0 {
-                            Ok(l % r)
+                        if r == 0.0 {
+                            Err(EvalError::PathologicalNumericalValue)
                         } else {
-                            Ok(0.0)
+                            check_finite(l % r)
                         }
                     }
                     BinOp::Lt(_) => Ok(if l < r { 1.0 } else { 0.0 }),
@@ -403,22 +416,20 @@ impl<'a> AstInterpreter<'a> {
                                 let name = ident.to_string();
                                 let current = vars.get(&name).copied().unwrap_or(0.0);
                                 let updated = match op {
-                                    BinOp::AddAssign(_) => current + r,
-                                    BinOp::SubAssign(_) => current - r,
-                                    BinOp::MulAssign(_) => current * r,
+                                    BinOp::AddAssign(_) => check_finite(current + r)?,
+                                    BinOp::SubAssign(_) => check_finite(current - r)?,
+                                    BinOp::MulAssign(_) => check_finite(current * r)?,
                                     BinOp::DivAssign(_) => {
-                                        if r != 0.0 {
-                                            current / r
-                                        } else {
-                                            0.0
+                                        if r == 0.0 {
+                                            return Err(EvalError::PathologicalNumericalValue);
                                         }
+                                        check_finite(current / r)?
                                     }
                                     BinOp::RemAssign(_) => {
-                                        if r != 0.0 {
-                                            current % r
-                                        } else {
-                                            0.0
+                                        if r == 0.0 {
+                                            return Err(EvalError::PathologicalNumericalValue);
                                         }
+                                        check_finite(current % r)?
                                     }
                                     _ => unreachable!(),
                                 };
@@ -556,46 +567,48 @@ impl<'a> AstInterpreter<'a> {
                 match method_name.as_str() {
                     "powi" => {
                         let exp = eval_args.first().copied().unwrap_or(1.0) as i32;
-                        let res = recv_val.powi(exp);
-                        Ok(if res.is_finite() { res } else { 0.0 })
+                        check_finite(recv_val.powi(exp))
                     }
                     "powf" => {
                         let exp = eval_args.first().copied().unwrap_or(1.0);
-                        let res = recv_val.powf(exp);
-                        Ok(if res.is_finite() { res } else { 0.0 })
+                        check_finite(recv_val.powf(exp))
                     }
                     "sqrt" => {
-                        let res = recv_val.max(0.0).sqrt();
-                        Ok(if res.is_finite() { res } else { 0.0 })
+                        if recv_val < 0.0 {
+                            return Err(EvalError::PathologicalNumericalValue);
+                        }
+                        check_finite(recv_val.sqrt())
                     }
-                    "abs" => Ok(recv_val.abs()),
-                    "floor" => Ok(recv_val.floor()),
-                    "ceil" => Ok(recv_val.ceil()),
-                    "round" => Ok(recv_val.round()),
+                    "abs" => check_finite(recv_val.abs()),
+                    "floor" => check_finite(recv_val.floor()),
+                    "ceil" => check_finite(recv_val.ceil()),
+                    "round" => check_finite(recv_val.round()),
                     "min" => {
                         let other = eval_args.first().copied().unwrap_or(recv_val);
-                        Ok(recv_val.min(other))
+                        check_finite(recv_val.min(other))
                     }
                     "max" => {
                         let other = eval_args.first().copied().unwrap_or(recv_val);
-                        Ok(recv_val.max(other))
+                        check_finite(recv_val.max(other))
                     }
                     "clamp" => {
                         let min_val = eval_args.first().copied().unwrap_or(recv_val);
                         let max_val = eval_args.get(1).copied().unwrap_or(recv_val);
-                        if min_val <= max_val {
-                            Ok(recv_val.clamp(min_val, max_val))
+                        let clamped = if min_val <= max_val {
+                            recv_val.clamp(min_val, max_val)
                         } else {
-                            Ok(recv_val.clamp(max_val, min_val))
-                        }
+                            recv_val.clamp(max_val, min_val)
+                        };
+                        check_finite(clamped)
                     }
                     "ln" => {
-                        let res = recv_val.max(1e-9).ln();
-                        Ok(if res.is_finite() { res } else { 0.0 })
+                        if recv_val <= 0.0 {
+                            return Err(EvalError::PathologicalNumericalValue);
+                        }
+                        check_finite(recv_val.ln())
                     }
                     "exp" => {
-                        let res = recv_val.clamp(-50.0, 50.0).exp();
-                        Ok(if res.is_finite() { res } else { 0.0 })
+                        check_finite(recv_val.exp())
                     }
                     _ => Err(EvalError::UnsupportedExpr(format!(
                         "Unsupported method call: {}",
@@ -633,33 +646,33 @@ impl<'a> AstInterpreter<'a> {
                     "min" => {
                         let a = eval_args.first().copied().unwrap_or(0.0);
                         let b = eval_args.get(1).copied().unwrap_or(0.0);
-                        Ok(a.min(b))
+                        check_finite(a.min(b))
                     }
                     "max" => {
                         let a = eval_args.first().copied().unwrap_or(0.0);
                         let b = eval_args.get(1).copied().unwrap_or(0.0);
-                        Ok(a.max(b))
+                        check_finite(a.max(b))
                     }
                     "sqrt" => {
                         let a = eval_args.first().copied().unwrap_or(0.0);
-                        let res = a.max(0.0).sqrt();
-                        Ok(if res.is_finite() { res } else { 0.0 })
+                        if a < 0.0 {
+                            return Err(EvalError::PathologicalNumericalValue);
+                        }
+                        check_finite(a.sqrt())
                     }
                     "abs" => {
                         let a = eval_args.first().copied().unwrap_or(0.0);
-                        Ok(a.abs())
+                        check_finite(a.abs())
                     }
                     "powi" => {
                         let a = eval_args.first().copied().unwrap_or(0.0);
                         let b = eval_args.get(1).copied().unwrap_or(1.0) as i32;
-                        let res = a.powi(b);
-                        Ok(if res.is_finite() { res } else { 0.0 })
+                        check_finite(a.powi(b))
                     }
                     "powf" => {
                         let a = eval_args.first().copied().unwrap_or(0.0);
                         let b = eval_args.get(1).copied().unwrap_or(1.0);
-                        let res = a.powf(b);
-                        Ok(if res.is_finite() { res } else { 0.0 })
+                        check_finite(a.powf(b))
                     }
                     _ => Err(EvalError::UnsupportedExpr(format!(
                         "Unsupported function call: {}",
@@ -960,5 +973,39 @@ mod tests {
 
         let result = interpreter.eval(&ctx);
         assert_eq!(result, Err(EvalError::FuelExceeded));
+    }
+
+    #[test]
+    fn test_ast_interpreter_pathological_numerical_values() {
+        let ctx = ScorePolicyContext {
+            item_size: 10,
+            next_item_size: 10,
+            bin_residual: 50,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 10,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+            post_residual: 40,
+            fitting_bins_count: 1,
+        };
+
+        // Division by zero
+        let code_div_zero = "pub fn score_bin() -> f64 { 1.0 / 0.0 }";
+        let item_fn: ItemFn = syn::parse_str(code_div_zero).unwrap();
+        let interp = AstInterpreter::new(&item_fn, 50_000);
+        assert_eq!(interp.eval(&ctx), Err(EvalError::PathologicalNumericalValue));
+
+        // Negative sqrt method
+        let code_neg_sqrt = "pub fn score_bin() -> f64 { (-4.0).sqrt() }";
+        let item_fn: ItemFn = syn::parse_str(code_neg_sqrt).unwrap();
+        let interp = AstInterpreter::new(&item_fn, 50_000);
+        assert_eq!(interp.eval(&ctx), Err(EvalError::PathologicalNumericalValue));
+
+        // Negative sqrt function call
+        let code_neg_sqrt_fn = "pub fn score_bin() -> f64 { sqrt(-4.0) }";
+        let item_fn: ItemFn = syn::parse_str(code_neg_sqrt_fn).unwrap();
+        let interp = AstInterpreter::new(&item_fn, 50_000);
+        assert_eq!(interp.eval(&ctx), Err(EvalError::PathologicalNumericalValue));
     }
 }

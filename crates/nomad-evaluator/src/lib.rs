@@ -244,4 +244,92 @@ mod tests {
         );
         assert_eq!(bfla_no_la_score.total_bins, bf_score.total_bins, "When lookahead is disabled, BF_LA must produce identical bin count (1265) to standard Best-Fit");
     }
+
+    #[test]
+    fn test_measure_offline_ceiling() {
+        use crate::dataset::Dataset;
+
+        let seeds: Vec<u64> = (0..30).map(|i| 1000 + i * 17).collect();
+        println!("\n=== MESURE DU VRAI PLAFOND : FFD ET BFD HORS-LIGNE SUR LES 30 SEEDS ===");
+        println!("Seed | L1 Bound | FFD Offline | BFD Offline | Diff (BFD - L1)");
+
+        let mut total_l1 = 0;
+        let mut total_ffd = 0;
+        let mut total_bfd = 0;
+
+        for &seed in &seeds {
+            let ds = Dataset::generate_in_distribution(seed);
+            let mut l1_seed = 0;
+            let mut ffd_seed = 0;
+            let mut bfd_seed = 0;
+
+            for inst in &ds.instances {
+                let sum_items: u32 = inst.items.iter().sum();
+                let l1 = (sum_items as f64 / inst.capacity as f64).ceil() as usize;
+                l1_seed += l1;
+
+                // FFD (First-Fit Decreasing)
+                let mut sorted: Vec<u32> = inst.items.clone();
+                sorted.sort_by(|a: &u32, b: &u32| b.cmp(a)); // Descending
+                let mut bins_ffd: Vec<u32> = Vec::new();
+                for item in &sorted {
+                    let mut placed = false;
+                    for b in &mut bins_ffd {
+                        if *b >= *item {
+                            *b -= *item;
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if !placed {
+                        bins_ffd.push(inst.capacity - *item);
+                    }
+                }
+                ffd_seed += bins_ffd.len();
+
+                // BFD (Best-Fit Decreasing)
+                let mut bins_bfd: Vec<u32> = Vec::new();
+                for item in &sorted {
+                    let mut best_idx = None;
+                    let mut min_res = inst.capacity + 1;
+                    for (idx, &res) in bins_bfd.iter().enumerate() {
+                        if res >= *item && (res - *item) < min_res {
+                            min_res = res - *item;
+                            best_idx = Some(idx);
+                        }
+                    }
+                    match best_idx {
+                        Some(idx) => bins_bfd[idx] -= *item,
+                        None => bins_bfd.push(inst.capacity - *item),
+                    }
+                }
+                bfd_seed += bins_bfd.len();
+            }
+
+            println!(
+                "{:4} | {:8} | {:11} | {:11} | {:+15}",
+                seed,
+                l1_seed,
+                ffd_seed,
+                bfd_seed,
+                bfd_seed as i64 - l1_seed as i64
+            );
+            total_l1 += l1_seed;
+            total_ffd += ffd_seed;
+            total_bfd += bfd_seed;
+        }
+
+        println!("---------------------------------------------------------------");
+        println!(
+            "MOYENNE SUR 30 SEEDS : L1 = {:.1} | FFD = {:.1} | BFD = {:.1}",
+            total_l1 as f64 / 30.0,
+            total_ffd as f64 / 30.0,
+            total_bfd as f64 / 30.0
+        );
+        println!(
+            "EXCÈS MOYEN BFD HORS-LIGNE : +{:.2} bacs ({:.2}%) par rapport à L1",
+            (total_bfd - total_l1) as f64 / 30.0,
+            ((total_bfd - total_l1) as f64 / total_l1 as f64) * 100.0
+        );
+    }
 }

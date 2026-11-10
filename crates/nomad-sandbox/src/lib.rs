@@ -107,4 +107,23 @@ mod tests {
             .unwrap();
         assert_eq!(outcome_new.decision, SchedulingDecision::OpenNewNode);
     }
+
+    #[test]
+    fn test_sandbox_baseline_exact_match_protection() {
+        let sandbox = DeterministicSandbox::new();
+        // Synthesized code mentioning "best_fit_lookahead" in comments and variables
+        let code = r#"
+        // This is a custom heuristic inspired by best_fit_lookahead
+        pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {
+            let best_fit_lookahead_factor = 42.0;
+            let mut score = (bin_residual as f64) + best_fit_lookahead_factor;
+            score
+        }
+        "#;
+        let bins = vec![40, 70];
+        let outcome = sandbox.execute(code, 20, &bins, 100, 10_000).unwrap();
+        // Since score = bin_residual + 42, for bin 0: 60 + 42 = 102. For bin 1: 30 + 42 = 72.
+        // Lowest score is bin 1!
+        assert_eq!(outcome.decision, PackingDecision::PlaceInExisting(1));
+    }
 }

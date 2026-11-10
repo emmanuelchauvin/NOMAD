@@ -22,11 +22,13 @@ mod tests {
 
     #[test]
     fn test_evolutionary_run_group_c_swarm() {
-        let mut config = ExperimentConfig::default();
-        config.group = ExperimentalGroup::GroupC;
-        config.rng_seed = 42;
-        config.population_size = 6;
-        config.max_generations = 3;
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupC,
+            rng_seed: 42,
+            population_size: 6,
+            max_generations: 3,
+            ..Default::default()
+        };
 
         let oracle = OracleEvaluator::new(42);
         let sandbox = DeterministicSandbox::new();
@@ -64,18 +66,22 @@ mod tests {
         use nomad_core::ProblemDomain;
         use nomad_evaluator::SchedulingOracle;
 
-        let mut config = ExperimentConfig::default();
-        config.domain = ProblemDomain::MultiResourceScheduling;
-        config.group = ExperimentalGroup::GroupC;
-        config.rng_seed = 42;
-        config.population_size = 6;
-        config.max_generations = 3;
+        let config = ExperimentConfig {
+            domain: ProblemDomain::MultiResourceScheduling,
+            group: ExperimentalGroup::GroupC,
+            rng_seed: 42,
+            population_size: 6,
+            max_generations: 3,
+            ..Default::default()
+        };
 
         let oracle = OracleEvaluator::new(42);
         let sched_oracle = SchedulingOracle::new(42);
         let sandbox = DeterministicSandbox::new();
-        let mut operator = DeterministicMockOperator::default();
-        operator.domain = ProblemDomain::MultiResourceScheduling;
+        let operator = DeterministicMockOperator {
+            domain: ProblemDomain::MultiResourceScheduling,
+            ..Default::default()
+        };
 
         let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator)
             .with_scheduling_oracle(&sched_oracle);
@@ -98,11 +104,13 @@ mod tests {
 
     #[test]
     fn test_no_self_crossover_in_swarm_evolution() {
-        let mut config = ExperimentConfig::default();
-        config.group = ExperimentalGroup::GroupC;
-        config.rng_seed = 42;
-        config.population_size = 6;
-        config.max_generations = 2;
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupC,
+            rng_seed: 42,
+            population_size: 6,
+            max_generations: 2,
+            ..Default::default()
+        };
 
         let oracle = OracleEvaluator::new(42);
         let sandbox = DeterministicSandbox::new();
@@ -144,11 +152,13 @@ mod tests {
 
     #[test]
     fn test_validation_and_ood_do_not_contaminate_archive_or_selection_budget() {
-        let mut config = ExperimentConfig::default();
-        config.group = ExperimentalGroup::GroupC;
-        config.rng_seed = 42;
-        config.population_size = 6;
-        config.max_generations = 2;
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupC,
+            rng_seed: 42,
+            population_size: 6,
+            max_generations: 2,
+            ..Default::default()
+        };
 
         let oracle = OracleEvaluator::new(42);
         let sandbox = DeterministicSandbox::new();
@@ -191,20 +201,24 @@ mod tests {
         let operator = DeterministicMockOperator::default();
 
         // 1. Group D run (mutation-only)
-        let mut config_d = ExperimentConfig::default();
-        config_d.group = ExperimentalGroup::GroupD;
-        config_d.rng_seed = seed;
-        config_d.population_size = 6;
-        config_d.max_generations = 2;
+        let config_d = ExperimentConfig {
+            group: ExperimentalGroup::GroupD,
+            rng_seed: seed,
+            population_size: 6,
+            max_generations: 2,
+            ..Default::default()
+        };
         let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, &operator);
         let report_d = engine_d.execute_run().expect("Group D run should succeed");
 
         // 2. Group C run (swarm with crossover)
-        let mut config_c = ExperimentConfig::default();
-        config_c.group = ExperimentalGroup::GroupC;
-        config_c.rng_seed = seed;
-        config_c.population_size = 6;
-        config_c.max_generations = 2;
+        let config_c = ExperimentConfig {
+            group: ExperimentalGroup::GroupC,
+            rng_seed: seed,
+            population_size: 6,
+            max_generations: 2,
+            ..Default::default()
+        };
         let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, &operator);
         let report_c = engine_c.execute_run().expect("Group C run should succeed");
 
@@ -227,5 +241,56 @@ mod tests {
         );
         assert_eq!(report_d.total_generations, 2);
         assert_eq!(report_c.total_generations, 2);
+    }
+
+    #[test]
+    fn test_crossover_acceptance_rate_and_not_evaluable_monitoring() {
+        let seed = 42;
+        let oracle = OracleEvaluator::new(seed);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupC,
+            rng_seed: seed,
+            population_size: 8,
+            max_generations: 3,
+            ..Default::default()
+        };
+
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        let report = engine.execute_run().expect("Run execution should succeed");
+
+        // Verify that crossover attempts and rejections are actively tracked
+        assert!(
+            report.crossover_attempts > 0,
+            "Group C must attempt crossovers"
+        );
+        assert_eq!(report.crossover_attempts, engine.crossover_attempts);
+        assert_eq!(report.crossover_not_evaluable_count, engine.crossover_not_evaluable_count);
+        assert_eq!(report.crossover_rejected_count, engine.crossover_rejected_count);
+
+        let evaluable_crossovers = report.crossover_attempts.saturating_sub(report.crossover_not_evaluable_count);
+        let evaluable_rate = evaluable_crossovers as f64 / report.crossover_attempts as f64;
+
+        // Evaluable rate must remain optimal (> 80%, attrition strictly bounded)
+        assert!(
+            evaluable_rate >= 0.80,
+            "Crossover evaluable rate must remain optimal (> 80%), got {:.2}% (attempts: {}, not_evaluable: {})",
+            evaluable_rate * 100.0,
+            report.crossover_attempts,
+            report.crossover_not_evaluable_count
+        );
+
+        // Attrition due to ablation parsing/execution failure (NotEvaluable) must remain near zero
+        assert_eq!(
+            report.crossover_not_evaluable_count, 0,
+            "Structural ablation must cleanly delete fragments without inducing NotEvaluable runtime failures"
+        );
+
+        // Verify generation records reflect the metrics
+        for gen_rec in &report.generations_history {
+            assert!(gen_rec.crossover_rate >= 0.20);
+        }
     }
 }

@@ -71,40 +71,26 @@ pub fn create_ablation_capsule_res(capsule: &SkillCapsule) -> Result<SkillCapsul
         }
     }
 
-    // Traitement ordonné du plus grand indice au plus petit
+    // Traitement ordonné du plus grand indice au plus petit pour garantir la cohérence des indices lors du retrait
     target_indices.sort_unstable();
     target_indices.dedup();
     target_indices.reverse();
 
     for &idx in &target_indices {
-        let stmt = &null_fn.block.stmts[idx];
-        match stmt {
-            syn::Stmt::Local(local) => {
-                let pat_str = quote::quote!(#local.pat).to_string();
-                if pat_str == "score" || pat_str == "mut score" {
-                    // Neutralisation par identité : réaffectation sans modification
-                    null_fn.block.stmts[idx] = syn::parse_quote!(let score = score;);
-                } else {
-                    // Neutralisation par valeur par défaut neutre
-                    let pat = &local.pat;
-                    null_fn.block.stmts[idx] = syn::parse_quote!(let #pat = 0.0;);
-                }
-            }
-            syn::Stmt::Expr(_, _) => {
-                if null_fn.block.stmts.len() > 1 && idx < null_fn.block.stmts.len() - 1 {
-                    null_fn.block.stmts.remove(idx);
-                } else {
-                    null_fn.block.stmts[idx] = syn::parse_quote!({
-                        let _ = ();
-                    });
-                }
-            }
-            _ => {
-                null_fn.block.stmts[idx] = syn::parse_quote!({
-                    let _ = ();
-                });
-            }
+        // Retrait structurel propre du fragment greffé sans injection de valeur magique (0.0)
+        if null_fn.block.stmts.len() > 1 && idx < null_fn.block.stmts.len() {
+            null_fn.block.stmts.remove(idx);
+        } else if idx < null_fn.block.stmts.len() {
+            null_fn.block.stmts[idx] = syn::parse_quote!({
+                let _ = ();
+            });
         }
+    }
+
+    if null_fn.block.stmts.is_empty() {
+        null_fn.block.stmts.push(syn::parse_quote!({
+            let _ = ();
+        }));
     }
 
     let null_code = quote::quote!(#null_fn).to_string();
@@ -157,6 +143,28 @@ pub fn validate_anti_dead_code_3levels(
     probes_dataset: &Dataset,
     fuel_limit: u64,
 ) -> Result<ValidationStatus, AntiDeadCodeEvalError> {
+    validate_anti_dead_code_3levels_with_epsilon(
+        capsule,
+        oracle,
+        sandbox,
+        probes_dataset,
+        fuel_limit,
+        1e-4,
+        true,
+    )
+}
+
+/// Version configurable de la validation Anti-Dead-Code acceptant un seuil epsilon explicite (issu de `ExperimentConfig`)
+/// et le contrôle strict du régime Lookahead (`lookahead: bool`).
+pub fn validate_anti_dead_code_3levels_with_epsilon(
+    capsule: &mut SkillCapsule,
+    oracle: &OracleEvaluator,
+    sandbox: &dyn HeuristicSandbox,
+    probes_dataset: &Dataset,
+    fuel_limit: u64,
+    epsilon: f64,
+    lookahead: bool,
+) -> Result<ValidationStatus, AntiDeadCodeEvalError> {
     // 1. Level 1: Structural verification
     if capsule.graft_manifest.is_some() {
         if let Err(e) = verify_level1_structural_survival(capsule) {
@@ -177,7 +185,7 @@ pub fn validate_anti_dead_code_3levels(
 
     // 2. Level 2: Computational verification on probe dataset
     let score_original: BenchmarkScore =
-        oracle.evaluate_dataset(probes_dataset, capsule, sandbox, fuel_limit);
+        oracle.evaluate_dataset_with_lookahead(probes_dataset, capsule, sandbox, fuel_limit, lookahead);
 
     if !score_original.is_valid || score_original.total_fuel == 0 {
         let status = ValidationStatus::Failed(
@@ -203,7 +211,7 @@ pub fn validate_anti_dead_code_3levels(
     };
 
     let score_null: BenchmarkScore =
-        oracle.evaluate_dataset(probes_dataset, &c_null, sandbox, fuel_limit);
+        oracle.evaluate_dataset_with_lookahead(probes_dataset, &c_null, sandbox, fuel_limit, lookahead);
 
     // Rejeter les C_null invalides : une erreur d'exécution n'est JAMAIS une preuve causale
     if !score_null.is_valid {
@@ -221,9 +229,9 @@ pub fn validate_anti_dead_code_3levels(
 
     for inst in &probes_dataset.instances {
         let (eval_orig, _, _) =
-            oracle.evaluate_single_instance(inst, &capsule.logic_code, sandbox, fuel_limit);
+            oracle.evaluate_single_instance_with_lookahead(inst, &capsule.logic_code, sandbox, fuel_limit, lookahead);
         let (eval_null, _, _) =
-            oracle.evaluate_single_instance(inst, &c_null.logic_code, sandbox, fuel_limit);
+            oracle.evaluate_single_instance_with_lookahead(inst, &c_null.logic_code, sandbox, fuel_limit, lookahead);
 
         if !eval_null.is_valid {
             let status = ValidationStatus::NotEvaluable(
@@ -266,8 +274,7 @@ pub fn validate_anti_dead_code_3levels(
         ),
     );
 
-    // Test directionnel avec seuil epsilon (défaut documenté 1e-4)
-    let epsilon = 1e-4;
+    // Test directionnel avec seuil epsilon configurable (défaut documenté 1e-4 / config.tldr_epsilon)
     let bins_degraded = score_null.total_bins > score_original.total_bins;
     let eff_degraded = score_null.total_bins == score_original.total_bins
         && score_null.mean_efficiency < score_original.mean_efficiency - epsilon;
@@ -550,12 +557,11 @@ mod tests {
         let code = r#"
         pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {
             let mut score = bin_residual as f64;
-            let neutral_intron = 0.0;
-            let score = score + neutral_intron;
+            let score = score + 0.0;
             score
         }
         "#;
-        // Compute the hash of the second statement `let neutral_intron = 0.0;`
+        // Compute the hash of the second statement `let score = score + 0.0;`
         let item_fn = parse_score_bin(code).unwrap();
         let intron_stmt = &item_fn.block.stmts[1];
         let code_repr = quote::quote!(#intron_stmt).to_string();
@@ -598,7 +604,7 @@ mod tests {
             50_000,
         )
         .unwrap();
-        // Since neutral_intron removal produces 0 decision divergence, it must pass Level 2, not Level 3!
+        // Since neutral graft removal produces 0 decision divergence, it must pass Level 2, not Level 3!
         assert_eq!(status, ValidationStatus::PassedLevel2Computational);
     }
 
@@ -712,5 +718,110 @@ mod tests {
         if let Ok(st) = status {
             assert_ne!(st, ValidationStatus::PassedLevel3Behavioral);
         }
+    }
+
+    #[test]
+    fn test_anti_dead_code_with_lookahead_flag() {
+        let code = r#"
+        pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+            let mut score = bin_residual as f64;
+            let score = if post_residual < next_item_size { score + 100.0 } else { score };
+            score
+        }
+        "#;
+        let item_fn = parse_score_bin(code).unwrap();
+        let graft_stmt = &item_fn.block.stmts[1];
+        let code_repr = quote::quote!(#graft_stmt).to_string();
+        let h = hex::encode(Sha256::digest(code_repr.as_bytes()));
+
+        let manifest = nomad_core::GraftManifest {
+            graft_id: "lookahead_graft".to_string(),
+            donor_capsule: nomad_core::CapsuleId("donor".to_string()),
+            host_capsule: nomad_core::CapsuleId("host".to_string()),
+            donor_ast_hash: "none".to_string(),
+            grafted_fragment_hash: h,
+            host_locus: "body_stmt_index_1".to_string(),
+            dependency_hash: "none".to_string(),
+            repair_version: None,
+            repair_diff_hash: None,
+        };
+
+        let capsule = SkillCapsule::new_v2(
+            "LookaheadCapsule",
+            "Desc",
+            code,
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            Some(manifest),
+        );
+
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+
+        // 1. Validation with lookahead = false
+        // When lookahead is disabled, next_item_size is always passed as 0.0 to the sandbox.
+        // Therefore, the ablated code (without the graft) behaves identically to the original code:
+        // divergence is strictly 0 and the graft cannot pass Level 3 Behavioral.
+        let mut cap_no_lookahead = capsule.clone();
+        let status_no_lookahead = validate_anti_dead_code_3levels_with_epsilon(
+            &mut cap_no_lookahead,
+            &oracle,
+            &sandbox,
+            &oracle.in_distribution,
+            50_000,
+            1e-4,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            status_no_lookahead,
+            ValidationStatus::PassedLevel2Computational,
+            "Without lookahead, the next_item_size graft is computationally inactive (divergence = 0)"
+        );
+        assert_eq!(
+            cap_no_lookahead
+                .metadata
+                .get("ablation_decision_diff_ratio")
+                .map(|s| s.as_str()),
+            Some("0.0000"),
+            "Divergence ratio must be strictly 0 without lookahead"
+        );
+
+        // 2. Validation with lookahead = true
+        // When lookahead is enabled, next_item_size takes actual sizes (> 0), making the graft actively
+        // influence scoring and causing decisions to diverge between original and C_null!
+        let mut cap_lookahead = capsule.clone();
+        let status_lookahead = validate_anti_dead_code_3levels_with_epsilon(
+            &mut cap_lookahead,
+            &oracle,
+            &sandbox,
+            &oracle.in_distribution,
+            50_000,
+            1e-4,
+            true,
+        )
+        .unwrap();
+        assert_ne!(
+            status_lookahead,
+            ValidationStatus::PassedLevel2Computational,
+            "With lookahead enabled, the next_item_size graft must diverge and trigger Level 3 evaluation"
+        );
+        let div_ratio: f64 = cap_lookahead
+            .metadata
+            .get("ablation_decision_diff_ratio")
+            .expect("ablation_decision_diff_ratio must be present in metadata")
+            .parse()
+            .expect("ablation_decision_diff_ratio must parse as f64");
+        assert!(
+            div_ratio > 0.0,
+            "Ablation divergence ratio must be strictly positive under lookahead=true (got {})",
+            div_ratio
+        );
     }
 }

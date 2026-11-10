@@ -365,9 +365,28 @@ Chaque composant méthodologique est validé par isolement dans la matrice d'abl
   $$\text{Var}(W) = \frac{n(n+1)(2n+1) - \sum_{i} \frac{t_i^3 - t_i}{2}}{24}$$
   où $t_i$ est la taille du $i$-ème groupe d'ex æquo sur $|D - C|$ et $n$ est le nombre strict de paires **non nulles**.
 - **Taille d'effet :** $r = \frac{Z}{\sqrt{n_{\text{non-zéro}}}}$, accompagnée du $d$ de Cohen apparié et de la probabilité de supériorité (Common Language Effect Size).
-- **Contrôle du risque d'erreur de Type I (Multiplicité) :** Ajustement séquentiel de **Holm-Bonferroni** sur l'ensemble de la famille d'hypothèses ($H_1$ In-Distribution, $H_2$ OOD-1 Échelle, $H_2$ OOD-2 Loi de Puissance).
+- **Contrôle du risque d'erreur de Type I (Multiplicité) :** Ajustement séquentiel de **Holm-Bonferroni** sur la famille stricte des 3 hypothèses primaires non redondantes :
+  1. $H_1$ (Confirmatoire Primaire In-Distribution) : Excès relatif sur la borne théorique $L_1$ ($\Delta L_1$). C'est l'hypothèse confirmatoire cardinale du système.
+  2. $H_3$ (Confirmatoire Primaire Hors-Distribution) : Bacs totaux sur OOD-2 (Loi de puissance / Queue lourde). Elle valide la transférabilité structurelle des heuristiques sans surapprentissage.
+  3. $H_2$ (Confirmatoire Secondaire d'Extensibilité OOD-1) : Bacs totaux sur OOD-1 (Échelle $N=500$). Hypothèse confirmatoire secondaire mesurant la scalabilité temporelle, incluse dans la famille de Holm ($m=3$) par rigueur conservatrice.  
+  *Règle de succès global :* Le rejet formel de l'hypothèse nulle $H_0$ requiert la validation statistique d'au moins l'une des deux hypothèses confirmatoires majeures ($H_1$ ou $H_3$) après ajustement de Holm-Bonferroni sur la famille $m=3$.
+- **Règle décisionnelle de calcul de la p-value (Asymptotique vs Permutation Monte-Carlo) :**
+  Afin de prémunir l'analyse contre les limites de l'approximation normale sous grand nombre d'ex æquo (plateaux d'optimalité où de nombreuses seeds atteignent 1 265 bacs) :
+  - Si le nombre de paires non nulles $n_{\text{non-zéro}} \ge 20$ : Calcul de la $p$-value par approximation asymptotique normale avec correction exacte de variance pour les ex æquo et correction de continuité ($\pm 0.5$).
+  - Si $n_{\text{non-zéro}} < 20$ : Recours obligatoire et systématique à la $p$-value exacte issue du test de permutation apparié par Monte-Carlo (10 000 permutations aléatoires de signes sous $H_0$). Cette $p$-value exacte remplace la valeur asymptotique et est directement soumise au tri séquentiel de Holm-Bonferroni.
 - **Intervalles de confiance :** Bootstrap à 10 000 rééchantillonnages pour les moyennes et médianes des différences appariées (IC à 95 %).
-- **Métrique principale :** Bacs bruts et excès relatif normalisé sur la borne théorique $L_1$ : $\frac{\text{bins} - L_1}{L_1}$.
+- **Métrique primaire unique pré-enregistrée :** L'excès relatif normalisé sur la borne théorique $L_1$ en In-Distribution :
+  $$\Delta L_1 = \frac{\text{bins} - L_1}{L_1}$$
+  Le nombre brut de bacs est conservé comme métrique descriptive secondaire et expressément exclu de la correction de Holm-Bonferroni afin d'éviter toute inflation artificielle de la pénalité de multiplicité ($m$).
+- **Critère décisionnel d'acceptation formelle :**
+  Pour rejeter l'hypothèse nulle $H_0$ (absence de supériorité de l'hybridation horizontale sur la mutation pure), la métrique primaire $H_1$ ($\Delta L_1$) ou de généralisation OOD-2 ($H_3$) doit satisfaire simultanément :
+  1. $p_{\text{adj}} < 0.05$ après correction séquentielle de Holm-Bonferroni sur la famille $m=3$.
+  2. Taille d'effet non triviale $r = Z / \sqrt{n_{\text{non-zéro}}} \ge 0.20$ (ou probabilité de supériorité / Common Language Effect Size $> 55\%$).
+  3. **Directionalité et Robustesse aux plateaux d'optimalité :**
+     - *Critère principal :* Borne inférieure de l'intervalle de confiance bootstrap à 95 % sur la différence médiane $D - C$ strictement positive ($> 0$).
+     - *Critère secondaire de secours (Gestion des plateaux d'optimalité) :* Si une convergence massive des deux groupes vers le même optimum discret (ex: 1 265 bacs) produit une médiane des différences nulle ($\text{médiane}(D - C) = 0$), le critère de directionalité est formellement validé si la borne inférieure de l'IC bootstrap à 95 % sur la différence moyenne est strictement positive ($\text{IC}_{95\%}^{\text{mean}} > 0$) OU si la proportion de seeds où le Groupe C surpasse strictement le Groupe D est statistiquement supérieure à 50 % ($P(D > C) > P(D < C)$ avec test binomial unilatéral $p < 0.05$).
+- **Verrouillage anti-p-hacking pré-campagne :**
+  Aucune métrique secondaire (consommation de fuel, nombre de niches MAP-Elites, $tLDR$, comptage brut de bacs) ne pourra être substituée à la métrique primaire pré-enregistrée à l'issue de la campagne à 30 seeds. Tout résultat hors famille primaire sera étiqueté comme strictement exploratoire.
 
 ---
 

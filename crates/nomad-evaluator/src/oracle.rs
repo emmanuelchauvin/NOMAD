@@ -29,6 +29,16 @@ pub fn compute_trajectory_tldr(
     trajectory: &[usize],
     capacity: u32,
 ) -> (f64, TrajectoryMetrics) {
+    compute_trajectory_tldr_with_epsilon(items, trajectory, capacity, 1e-4)
+}
+
+/// Calcule le taux expérimental de décroissance de Lyapunov (tLDR) avec un paramètre epsilon configurable.
+pub fn compute_trajectory_tldr_with_epsilon(
+    items: &[u32],
+    trajectory: &[usize],
+    capacity: u32,
+    epsilon: f64,
+) -> (f64, TrajectoryMetrics) {
     let n = items.len();
     if n == 0 || trajectory.is_empty() {
         return (0.0, TrajectoryMetrics::default());
@@ -47,7 +57,6 @@ pub fn compute_trajectory_tldr(
 
     // Window [t0, N] with t0 = floor(N / 5) (Section 6.5)
     let t0 = (n / 5).max(1);
-    let epsilon = 1e-4;
     let lambda = 0.5;
 
     let mut taus = Vec::new();

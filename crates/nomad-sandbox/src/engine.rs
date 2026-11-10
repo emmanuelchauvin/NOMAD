@@ -117,6 +117,39 @@ pub trait HeuristicSandbox: Send + Sync {
     ) -> Result<SchedulingExecutionOutcome, SandboxError>;
 }
 
+/// Heuristiques classiques de référence pour le 1D Bin Packing,
+/// strictement identifiées par comparaison exacte (évite l'interception accidentelle de code synthétisé).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassicalBinPackingBaseline {
+    FirstFit,
+    BestFit,
+    BestFitLookahead,
+    WorstFit,
+    Harmonic,
+}
+
+impl ClassicalBinPackingBaseline {
+    pub fn parse_exact(code: &str) -> Option<Self> {
+        let trimmed = code.trim();
+        if trimmed.eq_ignore_ascii_case("FIRST_FIT") || trimmed == "first_fit" || trimmed == "FirstFit" {
+            Some(Self::FirstFit)
+        } else if trimmed.eq_ignore_ascii_case("BEST_FIT") || trimmed == "best_fit" || trimmed == "BestFit" {
+            Some(Self::BestFit)
+        } else if trimmed.eq_ignore_ascii_case("BEST_FIT_LOOKAHEAD")
+            || trimmed == "best_fit_lookahead"
+            || trimmed == "BestFitLookahead"
+        {
+            Some(Self::BestFitLookahead)
+        } else if trimmed.eq_ignore_ascii_case("WORST_FIT") || trimmed == "worst_fit" || trimmed == "WorstFit" {
+            Some(Self::WorstFit)
+        } else if trimmed.eq_ignore_ascii_case("HARMONIC") || trimmed == "harmonic" || trimmed == "Harmonic" {
+            Some(Self::Harmonic)
+        } else {
+            None
+        }
+    }
+}
+
 /// Deterministic, zero-dependency sandboxed evaluation engine with instruction-level fuel metering.
 #[derive(Debug, Default, Clone)]
 pub struct DeterministicSandbox;
@@ -246,150 +279,146 @@ impl HeuristicSandbox for DeterministicSandbox {
                 Some(idx) => PackingDecision::PlaceInExisting(idx),
                 None => PackingDecision::OpenNewBin,
             }
-        } else if trimmed_code.eq_ignore_ascii_case("FIRST_FIT")
-            || trimmed_code.contains("first_fit")
-            || trimmed_code.contains("FirstFit")
-        {
-            // First Fit: first bin where item fits
-            let mut chosen = None;
-            for (idx, &level) in bin_levels.iter().enumerate() {
-                fuel_consumed += 10;
-                if fuel_consumed > fuel_limit {
-                    return Err(SandboxError::FuelLimitExceeded {
-                        fuel_consumed,
-                        fuel_limit,
-                    });
-                }
-                if level + item_weight <= bin_capacity {
-                    chosen = Some(idx);
-                    break;
-                }
-            }
-            match chosen {
-                Some(idx) => PackingDecision::PlaceInExisting(idx),
-                None => PackingDecision::OpenNewBin,
-            }
-        } else if trimmed_code.eq_ignore_ascii_case("BEST_FIT")
-            || trimmed_code.contains("best_fit")
-            || trimmed_code.contains("BestFit")
-        {
-            // Best Fit: bin with minimum remaining space that fits item
-            let mut best_idx = None;
-            let mut min_remaining = u32::MAX;
-
-            for (idx, &level) in bin_levels.iter().enumerate() {
-                fuel_consumed += 15;
-                if fuel_consumed > fuel_limit {
-                    return Err(SandboxError::FuelLimitExceeded {
-                        fuel_consumed,
-                        fuel_limit,
-                    });
-                }
-                if level + item_weight <= bin_capacity {
-                    let remaining = bin_capacity - (level + item_weight);
-                    if remaining < min_remaining {
-                        min_remaining = remaining;
-                        best_idx = Some(idx);
+        } else if let Some(baseline) = ClassicalBinPackingBaseline::parse_exact(trimmed_code) {
+            match baseline {
+                ClassicalBinPackingBaseline::FirstFit => {
+                    // First Fit: first bin where item fits
+                    let mut chosen = None;
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 10;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            chosen = Some(idx);
+                            break;
+                        }
+                    }
+                    match chosen {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
                     }
                 }
-            }
-            match best_idx {
-                Some(idx) => PackingDecision::PlaceInExisting(idx),
-                None => PackingDecision::OpenNewBin,
-            }
-        } else if trimmed_code.eq_ignore_ascii_case("BEST_FIT_LOOKAHEAD")
-            || trimmed_code.contains("best_fit_lookahead")
-            || trimmed_code.contains("BestFitLookahead")
-        {
-            // Best Fit with lookahead k=2:
-            // Evaluates placing item in bin `idx`.
-            // If next_item_weight > 0 and placement leaves exact space for next item (post_residual == next_item_weight),
-            // grants strong exact-closure bonus (-1000.0) ensuring a 100% full bin.
-            // Otherwise scores purely by remaining space (Best Fit).
-            let mut best_idx = None;
-            let mut best_score = f64::MAX;
+                ClassicalBinPackingBaseline::BestFit => {
+                    // Best Fit: bin with minimum remaining space that fits item
+                    let mut best_idx = None;
+                    let mut min_remaining = u32::MAX;
 
-            for (idx, &level) in bin_levels.iter().enumerate() {
-                fuel_consumed += 18;
-                if fuel_consumed > fuel_limit {
-                    return Err(SandboxError::FuelLimitExceeded {
-                        fuel_consumed,
-                        fuel_limit,
-                    });
-                }
-                if level + item_weight <= bin_capacity {
-                    let post_residual = bin_capacity - (level + item_weight);
-                    let bonus = if next_item_weight > 0 && post_residual == next_item_weight {
-                        1000.0
-                    } else {
-                        0.0
-                    };
-                    let score = (post_residual as f64) - bonus;
-                    if score < best_score {
-                        best_score = score;
-                        best_idx = Some(idx);
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 15;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            let remaining = bin_capacity - (level + item_weight);
+                            if remaining < min_remaining {
+                                min_remaining = remaining;
+                                best_idx = Some(idx);
+                            }
+                        }
+                    }
+                    match best_idx {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
                     }
                 }
-            }
-            match best_idx {
-                Some(idx) => PackingDecision::PlaceInExisting(idx),
-                None => PackingDecision::OpenNewBin,
-            }
-        } else if trimmed_code.eq_ignore_ascii_case("WORST_FIT")
-            || trimmed_code.contains("worst_fit")
-            || trimmed_code.contains("WorstFit")
-        {
-            // Worst Fit: bin with maximum remaining space that fits item
-            let mut worst_idx = None;
-            let mut max_remaining = 0u32;
+                ClassicalBinPackingBaseline::BestFitLookahead => {
+                    // Best Fit with lookahead k=2:
+                    // Evaluates placing item in bin `idx`.
+                    // If next_item_weight > 0 and placement leaves exact space for next item (post_residual == next_item_weight),
+                    // grants strong exact-closure bonus (-1000.0) ensuring a 100% full bin.
+                    // Otherwise scores purely by remaining space (Best Fit).
+                    let mut best_idx = None;
+                    let mut best_score = f64::MAX;
 
-            for (idx, &level) in bin_levels.iter().enumerate() {
-                fuel_consumed += 15;
-                if fuel_consumed > fuel_limit {
-                    return Err(SandboxError::FuelLimitExceeded {
-                        fuel_consumed,
-                        fuel_limit,
-                    });
-                }
-                if level + item_weight <= bin_capacity {
-                    let remaining = bin_capacity - (level + item_weight);
-                    if remaining >= max_remaining {
-                        max_remaining = remaining;
-                        worst_idx = Some(idx);
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 18;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            let post_residual = bin_capacity - (level + item_weight);
+                            let bonus = if next_item_weight > 0 && post_residual == next_item_weight {
+                                1000.0
+                            } else {
+                                0.0
+                            };
+                            let score = (post_residual as f64) - bonus;
+                            if score < best_score {
+                                best_score = score;
+                                best_idx = Some(idx);
+                            }
+                        }
+                    }
+                    match best_idx {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
                     }
                 }
-            }
-            match worst_idx {
-                Some(idx) => PackingDecision::PlaceInExisting(idx),
-                None => PackingDecision::OpenNewBin,
-            }
-        } else if trimmed_code.contains("HARMONIC") || trimmed_code.contains("harmonic") {
-            // Harmonic grouping: item size intervals
-            let is_large = item_weight > bin_capacity / 2;
-            let mut selected = None;
+                ClassicalBinPackingBaseline::WorstFit => {
+                    // Worst Fit: bin with maximum remaining space that fits item
+                    let mut worst_idx = None;
+                    let mut max_remaining = 0u32;
 
-            for (idx, &level) in bin_levels.iter().enumerate() {
-                fuel_consumed += 20;
-                if fuel_consumed > fuel_limit {
-                    return Err(SandboxError::FuelLimitExceeded {
-                        fuel_consumed,
-                        fuel_limit,
-                    });
-                }
-                if level + item_weight <= bin_capacity {
-                    if (is_large && level == 0)
-                        || (!is_large && (level + item_weight) >= (bin_capacity * 8 / 10))
-                    {
-                        selected = Some(idx);
-                        break;
-                    } else if selected.is_none() {
-                        selected = Some(idx);
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 15;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            let remaining = bin_capacity - (level + item_weight);
+                            if remaining >= max_remaining {
+                                max_remaining = remaining;
+                                worst_idx = Some(idx);
+                            }
+                        }
+                    }
+                    match worst_idx {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
                     }
                 }
-            }
-            match selected {
-                Some(idx) => PackingDecision::PlaceInExisting(idx),
-                None => PackingDecision::OpenNewBin,
+                ClassicalBinPackingBaseline::Harmonic => {
+                    // Harmonic grouping: item size intervals
+                    let is_large = item_weight > bin_capacity / 2;
+                    let mut selected = None;
+
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 20;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            if (is_large && level == 0)
+                                || (!is_large && (level + item_weight) >= (bin_capacity * 8 / 10))
+                            {
+                                selected = Some(idx);
+                                break;
+                            } else if selected.is_none() {
+                                selected = Some(idx);
+                            }
+                        }
+                    }
+                    match selected {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
+                    }
+                }
             }
         } else {
             // Parameterized scoring function parser

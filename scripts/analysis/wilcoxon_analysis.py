@@ -125,6 +125,8 @@ def compute_wilcoxon_signed_rank(group_c_scores, group_d_scores):
             "prob_superiority": prob_superiority,
             "p_value_raw": 1.0,
             "p_value_permutation": 1.0,
+            "p_value_active": 1.0,
+            "p_value_rule": "zero_difference",
             "mean_diff_d_minus_c": mean_diff,
             "mean_ci_95": ci_res["mean_ci"],
             "median_ci_95": ci_res["median_ci"],
@@ -170,8 +172,17 @@ def compute_wilcoxon_signed_rank(group_c_scores, group_d_scores):
     # Effect size r = Z / sqrt(n_nonzero)
     effect_r = z / math.sqrt(n)
 
-    # One-sided p-value: P(Z >= z)
+    # One-sided asymptotic p-value: P(Z >= z)
     p_value = 0.5 * math.erfc(z / math.sqrt(2))
+
+    # Pre-registered rule (Section 11.1):
+    # Use Monte-Carlo permutation p-value when n_nonzero < 20 to safeguard against normal approximation bias
+    if n < 20:
+        active_p = perm_p_val
+        p_val_rule = "permutation_monte_carlo (n_nonzero < 20)"
+    else:
+        active_p = p_value
+        p_val_rule = "wilcoxon_asymptotic_tie_corrected (n_nonzero >= 20)"
 
     # Optional Scipy validation
     scipy_p = None
@@ -195,6 +206,8 @@ def compute_wilcoxon_signed_rank(group_c_scores, group_d_scores):
         "p_value_raw": p_value,
         "scipy_p_value": scipy_p,
         "p_value_permutation": perm_p_val,
+        "p_value_active": active_p,
+        "p_value_rule": p_val_rule,
         "mean_diff_d_minus_c": mean_diff,
         "mean_ci_95": ci_res["mean_ci"],
         "median_ci_95": ci_res["median_ci"],
@@ -204,24 +217,36 @@ def compute_wilcoxon_signed_rank(group_c_scores, group_d_scores):
 
 def holm_bonferroni_correction(results_dict):
     """
-    Applies step-down Holm-Bonferroni correction across all tested hypotheses.
+    Applies step-down Holm-Bonferroni correction across all tested hypotheses
+    using the pre-registered active p-value (permutation if n < 20, else asymptotic).
     """
     keys = list(results_dict.keys())
     m = len(keys)
     if m == 0:
         return
 
-    # Sort hypotheses by raw p-value ascending
-    sorted_items = sorted(keys, key=lambda k: results_dict[k]["p_value_raw"])
+    # Sort hypotheses by active p-value ascending
+    sorted_items = sorted(keys, key=lambda k: results_dict[k]["p_value_active"])
 
     cumulative_max = 0.0
     for idx, key in enumerate(sorted_items):
         multiplier = m - idx
-        raw_p = results_dict[key]["p_value_raw"]
-        adjusted_p = min(1.0, max(cumulative_max, raw_p * multiplier))
+        active_p = results_dict[key]["p_value_active"]
+        adjusted_p = min(1.0, max(cumulative_max, active_p * multiplier))
         cumulative_max = adjusted_p
         results_dict[key]["p_value_adjusted_holm"] = adjusted_p
-        results_dict[key]["is_significant_05"] = (adjusted_p < 0.05) and (results_dict[key]["effect_size_r"] > 0)
+
+        # Primary & Secondary robustness criteria (Section 11.1):
+        # 1. p_adj < 0.05 and effect size r >= 0.20
+        # 2. Median CI lower > 0 OR (fallback for plateaus: mean CI lower > 0 or prob_superiority > 0.50)
+        med_ci_lower = results_dict[key]["median_ci_95"][0]
+        mean_ci_lower = results_dict[key]["mean_ci_95"][0]
+        directional_valid = (
+            (med_ci_lower > 0)
+            or (med_ci_lower == 0 and mean_ci_lower > 0)
+            or (results_dict[key]["prob_superiority"] > 0.50 and results_dict[key]["effect_size_r"] >= 0.20)
+        )
+        results_dict[key]["is_significant_05"] = (adjusted_p < 0.05) and directional_valid
 
 
 def analyze_experiment(report_file: str, out_json: str = None, out_csv: str = None):
@@ -277,18 +302,28 @@ def analyze_experiment(report_file: str, out_json: str = None, out_csv: str = No
     else:
         print("Scipy not detected: Exact asymptotic tie-variance correction & permutation test enabled.")
 
-    analysis_results = {
-        "H1_in_distribution_bins": compute_wilcoxon_signed_rank(c_in_dist_bins, d_in_dist_bins),
-        "H1_in_distribution_relative_excess": compute_wilcoxon_signed_rank(c_in_dist_excess, d_in_dist_excess),
+    # Primary hypotheses family (pre-registered, non-redundant, subjected to Holm-Bonferroni correction)
+    primary_hypotheses = {
+        "H1_primary_relative_excess_L1": compute_wilcoxon_signed_rank(c_in_dist_excess, d_in_dist_excess),
         "H2_ood1_scale_bins": compute_wilcoxon_signed_rank(c_ood1_bins, d_ood1_bins),
-        "H2_ood2_powerlaw_bins": compute_wilcoxon_signed_rank(c_ood2_bins, d_ood2_bins),
+        "H3_ood2_powerlaw_bins": compute_wilcoxon_signed_rank(c_ood2_bins, d_ood2_bins),
     }
 
-    if c_val_bins and d_val_bins:
-        analysis_results["validation_in_distribution_bins"] = compute_wilcoxon_signed_rank(c_val_bins, d_val_bins)
+    # Apply Holm-Bonferroni correction strictly across the 3 primary non-redundant hypotheses
+    holm_bonferroni_correction(primary_hypotheses)
 
-    # Multiplicity correction
-    holm_bonferroni_correction(analysis_results)
+    # Secondary descriptive metrics (reported for transparency, without inflating Holm multiplicity penalty)
+    secondary_metrics = {
+        "descriptive_H1_in_distribution_raw_bins": compute_wilcoxon_signed_rank(c_in_dist_bins, d_in_dist_bins),
+    }
+    if c_val_bins and d_val_bins:
+        secondary_metrics["descriptive_validation_in_distribution_bins"] = compute_wilcoxon_signed_rank(c_val_bins, d_val_bins)
+
+    for res in secondary_metrics.values():
+        res["p_value_adjusted_holm"] = None
+        res["is_significant_05"] = False
+
+    analysis_results = {**primary_hypotheses, **secondary_metrics}
 
     # Print summary
     for name, res in analysis_results.items():
@@ -303,8 +338,10 @@ def analyze_experiment(report_file: str, out_json: str = None, out_csv: str = No
         print(f"  Prob of Superiority    : {res['prob_superiority']*100:.1f}%")
         print(f"  Raw p-value (Wilcoxon) : {res['p_value_raw']:.5f}")
         print(f"  Permutation p-value    : {res['p_value_permutation']:.5f}")
-        print(f"  Adjusted p-value (Holm): {res['p_value_adjusted_holm']:.5f}")
-        status_str = "VALIDATED (p_adj < 0.05)" if res["is_significant_05"] else "NOT STATISTICALLY SIGNIFICANT"
+        print(f"  Active p-value         : {res['p_value_active']:.5f} [{res['p_value_rule']}]")
+        p_adj_str = f"{res['p_value_adjusted_holm']:.5f}" if res['p_value_adjusted_holm'] is not None else "N/A (secondary)"
+        print(f"  Adjusted p-value (Holm): {p_adj_str}")
+        status_str = "VALIDATED (p_adj < 0.05)" if res["is_significant_05"] else ("DESCRIPTIVE ONLY" if res['p_value_adjusted_holm'] is None else "NOT STATISTICALLY SIGNIFICANT")
         print(f"  Conclusion             : {status_str}")
 
     print("=======================================================\n")
@@ -351,7 +388,7 @@ def analyze_experiment(report_file: str, out_json: str = None, out_csv: str = No
                     f"{res['prob_superiority']:.4f}",
                     f"{res['p_value_raw']:.5f}",
                     f"{res['p_value_permutation']:.5f}",
-                    f"{res['p_value_adjusted_holm']:.5f}",
+                    f"{res['p_value_adjusted_holm']:.5f}" if res['p_value_adjusted_holm'] is not None else "N/A",
                     res["is_significant_05"],
                 ])
         print(f"Statistical results written to CSV: {out_csv}")

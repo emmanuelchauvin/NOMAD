@@ -213,10 +213,22 @@ pub fn execute_rebirth_protocol_extended(
                     base_config.fuel_limit_per_call,
                 )
             } else {
-                oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
+                oracle.evaluate_dataset_with_lookahead(
+                    &oracle.in_distribution,
+                    cap,
+                    sandbox,
+                    base_config.fuel_limit_per_call,
+                    base_config.lookahead,
+                )
             }
         } else {
-            oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
+            oracle.evaluate_dataset_with_lookahead(
+                &oracle.in_distribution,
+                cap,
+                sandbox,
+                base_config.fuel_limit_per_call,
+                base_config.lookahead,
+            )
         };
         let n_instances = if base_config.domain == ProblemDomain::MultiResourceScheduling {
             sched_oracle
@@ -286,10 +298,22 @@ pub fn execute_rebirth_protocol_extended(
                         base_config.fuel_limit_per_call,
                     )
                 } else {
-                    oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
+                    oracle.evaluate_dataset_with_lookahead(
+                        &oracle.in_distribution,
+                        cap,
+                        sandbox,
+                        base_config.fuel_limit_per_call,
+                        base_config.lookahead,
+                    )
                 }
             } else {
-                oracle.evaluate_in_distribution(cap, sandbox, base_config.fuel_limit_per_call)
+                oracle.evaluate_dataset_with_lookahead(
+                    &oracle.in_distribution,
+                    cap,
+                    sandbox,
+                    base_config.fuel_limit_per_call,
+                    base_config.lookahead,
+                )
             };
             let n_instances = if base_config.domain == ProblemDomain::MultiResourceScheduling {
                 sched_oracle
@@ -532,11 +556,13 @@ mod tests {
 
     #[test]
     fn test_rebirth_protocol_execution() {
-        let mut config = ExperimentConfig::default();
-        config.group = ExperimentalGroup::GroupC;
-        config.rng_seed = 77;
-        config.population_size = 4;
-        config.max_generations = 2;
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupC,
+            rng_seed: 77,
+            population_size: 4,
+            max_generations: 2,
+            ..Default::default()
+        };
 
         let oracle = OracleEvaluator::new(77);
         let sandbox = DeterministicSandbox::new();

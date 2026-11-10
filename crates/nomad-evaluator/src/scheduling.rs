@@ -470,12 +470,23 @@ impl SchedulingOracle {
         self.evaluate_dataset(dataset, &capsule, sandbox, 50_000)
     }
 
-    /// Validation Anti-Dead-Code Niveau 2 et Niveau 3 pour le Scheduling
+    /// Validation Anti-Dead-Code Niveau 2 et Niveau 3 pour le Scheduling (avec lookahead par défaut = true)
     pub fn validate_anti_dead_code_scheduling(
         &self,
         child: &mut SkillCapsule,
         sandbox: &dyn HeuristicSandbox,
         fuel_limit: u64,
+    ) -> Result<ValidationStatus, String> {
+        self.validate_anti_dead_code_scheduling_with_lookahead(child, sandbox, fuel_limit, true)
+    }
+
+    /// Validation Anti-Dead-Code Niveau 2 et Niveau 3 pour le Scheduling avec contrôle strict du Lookahead
+    pub fn validate_anti_dead_code_scheduling_with_lookahead(
+        &self,
+        child: &mut SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit: u64,
+        lookahead: bool,
     ) -> Result<ValidationStatus, String> {
         // Niveau 1 : Survie structurelle
         if child.graft_manifest.is_some() {
@@ -485,7 +496,8 @@ impl SchedulingOracle {
 
         // Niveau 2 : Survie computationnelle (évaluation partielle)
         let probe_instance = &self.in_distribution.instances[0];
-        let (eval_child, _, _) = self.evaluate_instance(probe_instance, child, sandbox, fuel_limit);
+        let (eval_child, _, _) =
+            self.evaluate_instance_with_lookahead(probe_instance, child, sandbox, fuel_limit, lookahead);
         if !eval_child.is_valid || eval_child.fuel_consumed == 0 {
             child.validation = ValidationStatus::Failed("Level 2 Computational failed".to_string());
             return Err("Level 2 Computational failed: fuel is 0 or execution invalid".to_string());
@@ -513,9 +525,10 @@ impl SchedulingOracle {
         let mut orig_nodes_total = 0usize;
 
         for inst in self.in_distribution.instances.iter().take(5) {
-            let (eval_c, _, _) = self.evaluate_instance(inst, child, sandbox, fuel_limit);
+            let (eval_c, _, _) =
+                self.evaluate_instance_with_lookahead(inst, child, sandbox, fuel_limit, lookahead);
             let (eval_null, _, _) =
-                self.evaluate_instance(inst, &c_null_capsule, sandbox, fuel_limit);
+                self.evaluate_instance_with_lookahead(inst, &c_null_capsule, sandbox, fuel_limit, lookahead);
 
             if !eval_null.is_valid {
                 let status = ValidationStatus::NotEvaluable(
