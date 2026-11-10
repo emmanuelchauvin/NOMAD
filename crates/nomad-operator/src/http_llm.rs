@@ -440,6 +440,7 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block wit
             full_prompt: format!("{}\n{}", system_prompt, user_prompt),
             raw_response: raw_response.clone(),
             timestamp: Utc::now(),
+            is_network_call: true,
         };
 
         let mut metadata = HashMap::new();
@@ -580,6 +581,7 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
             full_prompt: format!("{}\n{}", system_prompt, user_prompt),
             raw_response: raw_response.clone(),
             timestamp: Utc::now(),
+            is_network_call: true,
         };
 
         let mut metadata = HashMap::new();
@@ -663,6 +665,7 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
                 ),
                 raw_response: child.logic_code.clone(),
                 timestamp: Utc::now(),
+                is_network_call: false,
             };
 
             return Ok((child, audit));
@@ -705,6 +708,7 @@ Return ONLY the hybrid Rust function in a ```rust ... ``` code block."
             full_prompt: format!("{}\n{}", system_prompt, user_prompt),
             raw_response: raw_response.clone(),
             timestamp: Utc::now(),
+            is_network_call: true,
         };
 
         let capsule = SkillCapsule::new_v2(

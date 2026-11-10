@@ -148,6 +148,7 @@ impl SkillOperator for DeterministicMockOperator {
             full_prompt: prompt,
             raw_response: code.to_string(),
             timestamp: Utc::now(),
+            is_network_call: false,
         };
 
         let mut metadata = HashMap::new();
@@ -245,6 +246,7 @@ impl SkillOperator for DeterministicMockOperator {
             full_prompt: prompt,
             raw_response: new_code.clone(),
             timestamp: Utc::now(),
+            is_network_call: false,
         };
 
         let mut metadata = HashMap::new();
@@ -305,6 +307,7 @@ impl SkillOperator for DeterministicMockOperator {
                     ),
                     raw_response: child.logic_code.clone(),
                     timestamp: Utc::now(),
+                    is_network_call: false,
                 };
                 let mut child_with_manifest = child;
                 child_with_manifest.graft_manifest = Some(manifest);
@@ -341,6 +344,7 @@ impl SkillOperator for DeterministicMockOperator {
             full_prompt: prompt,
             raw_response: recombined_code.clone(),
             timestamp: Utc::now(),
+            is_network_call: false,
         };
 
         let mut metadata = HashMap::new();

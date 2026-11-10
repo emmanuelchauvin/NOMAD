@@ -589,7 +589,7 @@ impl<'a> EvolutionEngine<'a> {
                             || current_pop.len() >= 2
                             || self.cultural_archive.is_some());
 
-                    let (child_capsule, is_crossover) = if should_crossover {
+                    let (child_capsule, is_crossover, is_network_call) = if should_crossover {
                         // 1. Quality-Diversity Parent A Selection via UCB curiosity
                         let parent_a = self
                             .archive
@@ -679,31 +679,31 @@ impl<'a> EvolutionEngine<'a> {
                                     || (parent_a_hash.is_some() && parent_a_hash == p_b_hash)
                                 {
                                     // Biais d'auto-croisement détecté : repli immédiat sur la mutation pure
-                                    let (c, _) = self.operator
+                                    let (c, audit) = self.operator
                                         .mutate(&parent_a, next_gen_idx, seed)
                                         .map_err(|e| {
                                             OrchestratorError::OperatorError(e.to_string())
                                         })?;
-                                    (c, false)
+                                    (c, false, audit.is_network_call)
                                 } else {
                                     self.crossover_attempts += 1;
                                     *ancestral_usage_counts
                                         .entry(parent_b.id.0.clone())
                                         .or_insert(0) += 1;
-                                    let (c, _) = self.operator
+                                    let (c, audit) = self.operator
                                         .crossover(&parent_a, &parent_b, next_gen_idx, seed)
                                         .map_err(|e| {
                                             OrchestratorError::OperatorError(e.to_string())
                                         })?;
-                                    (c, true)
+                                    (c, true, audit.is_network_call)
                                 }
                             }
                             None => {
                                 // Aucun partenaire dissemblable disponible : repli sur la mutation
-                                let (c, _) = self.operator
+                                let (c, audit) = self.operator
                                     .mutate(&parent_a, next_gen_idx, seed)
                                     .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
-                                (c, false)
+                                (c, false, audit.is_network_call)
                             }
                         }
                     } else {
@@ -714,14 +714,14 @@ impl<'a> EvolutionEngine<'a> {
                             .unwrap_or_else(|| current_pop[0].capsule.clone());
 
                         let lineage = self.lineages.get_lineage(&parent.id);
-                        let (c, _) = self
+                        let (c, audit) = self
                             .operator
                             .mutate_with_lineage(&parent, next_gen_idx, seed, lineage)
                             .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
-                        (c, false)
+                        (c, false, audit.is_network_call)
                     };
 
-                    let is_ast_crossover = is_crossover && child_capsule.graft_manifest.is_some();
+                    let is_ast_crossover = is_crossover && (!is_network_call || child_capsule.graft_manifest.is_some());
                     if !is_ast_crossover {
                         self.budget.record_llm_call();
                         self.throttle_cooldown();

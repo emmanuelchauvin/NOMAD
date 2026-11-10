@@ -1,10 +1,10 @@
-use nomad_core::{BenchmarkScore, PolicyKind, SkillCapsule, ValidationStatus};
+use nomad_core::{BenchmarkScore, InstanceEvaluation, PolicyKind, SkillCapsule, ValidationStatus};
 use nomad_genome::{parse_score_bin, verify_level1_structural_survival};
 use nomad_sandbox::HeuristicSandbox;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::dataset::Dataset;
+use crate::dataset::{BinPackingInstance, Dataset};
 use crate::oracle::OracleEvaluator;
 
 #[derive(Debug, Error)]
@@ -233,10 +233,39 @@ pub fn validate_anti_dead_code_3levels_with_score(
         }
     };
 
-    let probe_count = 5.min(probes_dataset.instances.len());
+    // Sélection d'un jeu représentatif de 5 sondes (4 instances In-Distribution + 1 instance de rupture OOD-2)
+    // identique à la politique éprouvée de scheduling.rs
+    let (probe_instances, orig_probe_evals): (Vec<BinPackingInstance>, Vec<InstanceEvaluation>) =
+        if probes_dataset.instances.len() >= 4 && !oracle.ood2_powerlaw.instances.is_empty() {
+            let mut instances: Vec<BinPackingInstance> =
+                probes_dataset.instances.iter().take(4).cloned().collect();
+            let mut evals: Vec<InstanceEvaluation> =
+                orig_evals.iter().take(4).cloned().collect();
+
+            let ood_inst = &oracle.ood2_powerlaw.instances[0];
+            instances.push(ood_inst.clone());
+
+            let (ood_eval, _, _) = oracle.evaluate_single_instance_with_lookahead(
+                ood_inst,
+                &capsule.logic_code,
+                sandbox,
+                fuel_limit,
+                lookahead,
+            );
+            evals.push(ood_eval);
+
+            (instances, evals)
+        } else {
+            let count = 5.min(probes_dataset.instances.len());
+            (
+                probes_dataset.instances[..count].to_vec(),
+                orig_evals[..count].to_vec(),
+            )
+        };
+
     let probe_dataset = Dataset {
         name: format!("{}_ablation_probes", probes_dataset.name),
-        instances: probes_dataset.instances[..probe_count].to_vec(),
+        instances: probe_instances,
         dataset_hash: String::new(),
     };
 
@@ -257,7 +286,7 @@ pub fn validate_anti_dead_code_3levels_with_score(
     let mut total_decisions = 0usize;
     let mut divergent_instances_count = 0usize;
 
-    for (eval_orig, eval_null) in orig_evals[..probe_count].iter().zip(null_evals.iter()) {
+    for (eval_orig, eval_null) in orig_probe_evals.iter().zip(null_evals.iter()) {
         if !eval_null.is_valid {
             let status = ValidationStatus::NotEvaluable(
                 "Ablation C_null failed on individual probe instance".to_string(),
@@ -287,11 +316,12 @@ pub fn validate_anti_dead_code_3levels_with_score(
         0.0
     };
 
-    let orig_probe_bins: usize = orig_evals[..probe_count].iter().map(|e| e.bins_used).sum();
+    let orig_probe_bins: usize = orig_probe_evals.iter().map(|e| e.bins_used).sum();
     let null_probe_bins: usize = score_null.total_bins;
 
+    let probe_count = orig_probe_evals.len();
     let orig_probe_eff: f64 = if probe_count > 0 {
-        orig_evals[..probe_count]
+        orig_probe_evals
             .iter()
             .map(|e| e.efficiency_ratio())
             .sum::<f64>()
@@ -302,7 +332,7 @@ pub fn validate_anti_dead_code_3levels_with_score(
     let null_probe_eff: f64 = score_null.mean_efficiency;
 
     let orig_probe_tldr: f64 = if probe_count > 0 {
-        orig_evals[..probe_count]
+        orig_probe_evals
             .iter()
             .map(|e| e.tldr_score)
             .sum::<f64>()
