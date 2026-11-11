@@ -145,7 +145,9 @@ impl BenchmarkScore {
 /// Comparison order according to the scientific specifications:
 /// 1. Validity (valid beats invalid)
 /// 2. Total bins used (fewer bins is better)
-/// 3. Total fuel consumed (lower gas is tie-breaker)
+/// 3. Dynamic Lyapunov / Imbalance Quality (higher tLDR / lower imbalance is better)
+/// 4. Mean efficiency (higher packing efficiency is better)
+/// 5. Fuel consumption (lower fuel/gas is ultimate parsimony tie-breaker)
 impl PartialOrd for BenchmarkScore {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -168,8 +170,26 @@ impl Ord for BenchmarkScore {
         match self.total_bins.cmp(&other.total_bins) {
             Ordering::Less => Ordering::Less,
             Ordering::Greater => Ordering::Greater,
-            // 3. Fuel consumption as tie-breaker (smaller is better)
-            Ordering::Equal => self.total_fuel.cmp(&other.total_fuel),
+            Ordering::Equal => {
+                // 3. Dynamic Lyapunov / Imbalance Quality (tLDR score: higher is better)
+                let tldr_diff = self.tldr_score - other.tldr_score;
+                if tldr_diff > 1e-4 {
+                    Ordering::Less // self is better
+                } else if tldr_diff < -1e-4 {
+                    Ordering::Greater // other is better
+                } else {
+                    // 4. Mean efficiency (higher is better)
+                    let eff_diff = self.mean_efficiency - other.mean_efficiency;
+                    if eff_diff > 1e-4 {
+                        Ordering::Less // self is better
+                    } else if eff_diff < -1e-4 {
+                        Ordering::Greater // other is better
+                    } else {
+                        // 5. Fuel consumption as parsimony tie-breaker (smaller is better)
+                        self.total_fuel.cmp(&other.total_fuel)
+                    }
+                }
+            }
         }
     }
 }

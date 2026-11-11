@@ -158,23 +158,8 @@ impl MapElitesArchive {
         match self.grid.get_mut(&k) {
             Some(existing) => {
                 // Compétition locale intra-niche :
-                // 1. Moins de bacs est toujours strictement meilleur (ou meilleure efficacité)
-                // 2. En cas d'égalité stricte sur total_bins, départager par tldr_score supérieur (stabilité de Lyapunov)
-                // 3. À égalité de total_bins et tldr_score proche (< 1e-3), départager par PARCIMONIE STRICTE : total_fuel inférieur
-                let is_strictly_better = if fitness.total_bins < existing.fitness.total_bins {
-                    true
-                } else if fitness.total_bins == existing.fitness.total_bins {
-                    let tldr_diff = fitness.tldr_score - existing.fitness.tldr_score;
-                    if tldr_diff > 1e-3 {
-                        true
-                    } else if tldr_diff < -1e-3 {
-                        false
-                    } else {
-                        fitness.total_fuel < existing.fitness.total_fuel
-                    }
-                } else {
-                    false
-                };
+                // Utilise l'ordre canonique BenchmarkScore (validité, bins, tldr, efficacité, fuel)
+                let is_strictly_better = fitness < existing.fitness;
 
                 if is_strictly_better {
                     existing.capsule = capsule;

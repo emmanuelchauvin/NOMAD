@@ -816,16 +816,11 @@ impl<'a> EvolutionEngine<'a> {
                 }
 
                 // 3. Compétition Élitiste par Pool Élargi :
-                // Trie tout le pool (élite + mutations valides + croisements certifiés Niveau 3)
+                // Trie tout le pool selon l'ordre canonique BenchmarkScore (validité, bins, tldr, efficacité, fuel)
+                // puis départage par concision du code source en cas d'égalité absolue.
                 candidate_pool.sort_by(|a, b| {
                     a.in_distribution_score
-                        .total_bins
-                        .cmp(&b.in_distribution_score.total_bins)
-                        .then_with(|| {
-                            a.in_distribution_score
-                                .total_fuel
-                                .cmp(&b.in_distribution_score.total_fuel)
-                        })
+                        .cmp(&b.in_distribution_score)
                         .then_with(|| {
                             a.capsule.logic_code.len().cmp(&b.capsule.logic_code.len())
                         })
