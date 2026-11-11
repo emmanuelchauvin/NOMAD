@@ -569,81 +569,112 @@ impl<'a> EvolutionEngine<'a> {
             }
 
             ExperimentalGroup::GroupC => {
-                // Group C (NOMAD V2 Swarm): Quality-Diversity MAP-Elites + AgentPSO Swarm Crossover
-                if let Some(elite) = self.archive.best_elite() {
-                    next_population.push(EvaluatedIndividual::new(
-                        elite.capsule.clone(),
-                        elite.fitness.clone(),
-                    ));
-                } else {
-                    next_population.push(current_pop[0].clone());
+                // Group C (NOMAD V2 Swarm): Quality-Diversity MAP-Elites + Broad Pool Elitist Competition
+                // Parité stricte du budget LLM avec le Groupe D + Quota de croisements AST gratuits (pop_size / 2)
+                let mut candidate_pool: Vec<EvaluatedIndividual> = Vec::with_capacity(pop_size * 2);
+
+                let elite = self
+                    .archive
+                    .best_elite()
+                    .map(|e| EvaluatedIndividual::new(e.capsule.clone(), e.fitness.clone()))
+                    .unwrap_or_else(|| current_pop[0].clone());
+                candidate_pool.push(elite);
+
+                // 1. Quota de mutations LLM (pop_size - 1 mutations pour parité stricte avec le Groupe D)
+                let target_mutations = pop_size.saturating_sub(1);
+                let mut mutations_done = 0;
+                while mutations_done < target_mutations && self.budget.can_invoke_llm(&self.config) {
+                    mutations_done += 1;
+                    let parent = self
+                        .archive
+                        .select_parent_ucb(rng)
+                        .unwrap_or_else(|| current_pop[0].capsule.clone());
+                    let seed = rand::Rng::gen(rng);
+                    let lineage = self.lineages.get_lineage(&parent.id);
+
+                    let (mutated, _) = self
+                        .operator
+                        .mutate_with_lineage(&parent, next_gen_idx, seed, lineage)
+                        .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
+
+                    self.budget.record_llm_call();
+                    self.throttle_cooldown();
+
+                    let (mutated, score) = self.evaluate_and_validate(mutated);
+                    let (mutated, score) = self.maybe_optimize_constants(mutated, score, seed);
+                    self.phylogeny.insert_capsule(&mutated);
+
+                    let is_validation_passed = match &mutated.validation {
+                        nomad_core::ValidationStatus::PassedLevel3Behavioral
+                        | nomad_core::ValidationStatus::PassedLevel2Computational
+                        | nomad_core::ValidationStatus::PassedLevel1Structural => true,
+                        nomad_core::ValidationStatus::NotEvaluable(r)
+                        | nomad_core::ValidationStatus::GraftHarmful(r)
+                        | nomad_core::ValidationStatus::Failed(r) => {
+                            tracing::warn!("Rejet mutation de {} : {}", mutated.name, r);
+                            false
+                        }
+                        nomad_core::ValidationStatus::Unvalidated => true,
+                    };
+
+                    let is_improved = if let Some(best) = self.archive.best_elite() {
+                        score < best.fitness
+                    } else {
+                        true
+                    };
+
+                    self.lineages.record_evolution(
+                        mutated.id.clone(),
+                        &parent.id,
+                        None,
+                        mutated.semantic_interface.clone(),
+                        is_improved && is_validation_passed && score.is_valid,
+                    );
+
+                    if is_validation_passed && score.is_valid {
+                        self.archive.insert(mutated.clone(), score.clone());
+                        candidate_pool.push(EvaluatedIndividual::new(mutated, score));
+                    }
                 }
 
-                // Anti-Inbreeding : plafond d'utilisation d'un même parent ancestral à max 30% des croisements
+                // 2. Quota de croisements AST déterministes gratuits (pop_size / 2) entre partenaires complémentaires
+                let crossover_quota = (pop_size / 2).max(1);
                 let mut ancestral_usage_counts: std::collections::HashMap<String, usize> =
                     std::collections::HashMap::new();
                 let max_ancestral_usage = ((pop_size as f64) * 0.30).ceil().max(1.0) as usize;
 
-                while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
+                for _ in 0..crossover_quota {
                     let seed = rand::Rng::gen(rng);
-                    let should_crossover = rand::Rng::gen_bool(rng, self.adaptive_crossover_rate)
-                        && (self.archive.occupied_niches_count() >= 2
-                            || current_pop.len() >= 2
-                            || self.cultural_archive.is_some());
+                    // 2.1 Parent A selection via UCB curiosity
+                    let parent_a = self
+                        .archive
+                        .select_parent_ucb(rng)
+                        .unwrap_or_else(|| current_pop[0].capsule.clone());
 
-                    let (child_capsule, is_crossover, is_network_call) = if should_crossover {
-                        // 1. Quality-Diversity Parent A Selection via UCB curiosity
-                        let parent_a = self
-                            .archive
-                            .select_parent_ucb(rng)
-                            .unwrap_or_else(|| current_pop[0].capsule.clone());
+                    let parent_a_score = self
+                        .archive
+                        .grid
+                        .values()
+                        .find(|e| e.capsule.id == parent_a.id)
+                        .map(|e| e.fitness.clone())
+                        .unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
 
-                        let parent_a_score = self
-                            .archive
-                            .grid
-                            .values()
-                            .find(|e| e.capsule.id == parent_a.id)
-                            .map(|e| e.fitness.clone())
-                            .unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
+                    let parent_a_hash = parent_a.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
 
-                        let parent_a_hash = parent_a.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
-
-                        // 2. Sélection dirigée de Parent B :
-                        // Option A : Tirage dans l'archive culturelle en lecture seule (35% à 50% garanti)
-                        let mut chosen_b = None;
-                        if let Some(ref mut cultural) = self.cultural_archive {
-                            if rand::Rng::gen_bool(rng, 0.40) {
-                                if let Some(cand) = cultural.select_complementary_partner(
-                                    &parent_a,
-                                    &parent_a_score,
-                                    rng,
-                                ) {
-                                    let cand_hash =
-                                        cand.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
-                                    let usage = ancestral_usage_counts
-                                        .get(&cand.id.0)
-                                        .copied()
-                                        .unwrap_or(0);
-                                    if usage < max_ancestral_usage
-                                        && cand.id != parent_a.id
-                                        && parent_a_hash != cand_hash
-                                    {
-                                        chosen_b = Some(cand);
-                                    }
-                                }
-                            }
-                        }
-
-                        // Option B : Recherche dans l'archive MAP-Elites active
-                        if chosen_b.is_none() && self.archive.occupied_niches_count() >= 2 {
-                            if let Some(cand) = self.archive.select_complementary_partner(
+                    // 2.2 Parent B selection
+                    let mut chosen_b = None;
+                    if let Some(ref mut cultural) = self.cultural_archive {
+                        if rand::Rng::gen_bool(rng, 0.40) {
+                            if let Some(cand) = cultural.select_complementary_partner(
                                 &parent_a,
                                 &parent_a_score,
                                 rng,
                             ) {
                                 let cand_hash = cand.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
-                                let usage =
-                                    ancestral_usage_counts.get(&cand.id.0).copied().unwrap_or(0);
+                                let usage = ancestral_usage_counts
+                                    .get(&cand.id.0)
+                                    .copied()
+                                    .unwrap_or(0);
                                 if usage < max_ancestral_usage
                                     && cand.id != parent_a.id
                                     && parent_a_hash != cand_hash
@@ -652,214 +683,161 @@ impl<'a> EvolutionEngine<'a> {
                                 }
                             }
                         }
-
-                        // Option C : Recherche dans la population courante avec garantie de dissemblance
-                        if chosen_b.is_none() {
-                            for ind in current_pop {
-                                let ind_hash =
-                                    ind.capsule.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
-                                let usage = ancestral_usage_counts
-                                    .get(&ind.capsule.id.0)
-                                    .copied()
-                                    .unwrap_or(0);
-                                if usage < max_ancestral_usage
-                                    && ind.capsule.id != parent_a.id
-                                    && parent_a_hash != ind_hash
-                                {
-                                    chosen_b = Some(ind.capsule.clone());
-                                    break;
-                                }
-                            }
-                        }
-
-                        // 3. Application du croisement avec INTERDICTION ABSOLUE D'AUTO-CROISEMENT
-                        match chosen_b {
-                            Some(parent_b) => {
-                                let p_b_hash =
-                                    parent_b.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
-                                if parent_a.id == parent_b.id
-                                    || (parent_a_hash.is_some() && parent_a_hash == p_b_hash)
-                                {
-                                    // Biais d'auto-croisement détecté : repli immédiat sur la mutation pure
-                                    let (c, audit) = self.operator
-                                        .mutate(&parent_a, next_gen_idx, seed)
-                                        .map_err(|e| {
-                                            OrchestratorError::OperatorError(e.to_string())
-                                        })?;
-                                    (c, false, audit.is_network_call)
-                                } else {
-                                    self.crossover_attempts += 1;
-                                    *ancestral_usage_counts
-                                        .entry(parent_b.id.0.clone())
-                                        .or_insert(0) += 1;
-                                    let (c, audit) = self.operator
-                                        .crossover(&parent_a, &parent_b, next_gen_idx, seed)
-                                        .map_err(|e| {
-                                            OrchestratorError::OperatorError(e.to_string())
-                                        })?;
-                                    (c, true, audit.is_network_call)
-                                }
-                            }
-                            None => {
-                                // Aucun partenaire dissemblable disponible : repli sur la mutation
-                                let (c, audit) = self.operator
-                                    .mutate(&parent_a, next_gen_idx, seed)
-                                    .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
-                                (c, false, audit.is_network_call)
-                            }
-                        }
-                    } else {
-                        // Mutation from a UCB-selected parent
-                        let parent = self
-                            .archive
-                            .select_parent_ucb(rng)
-                            .unwrap_or_else(|| current_pop[0].capsule.clone());
-
-                        let lineage = self.lineages.get_lineage(&parent.id);
-                        let (c, audit) = self
-                            .operator
-                            .mutate_with_lineage(&parent, next_gen_idx, seed, lineage)
-                            .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
-                        (c, false, audit.is_network_call)
-                    };
-
-                    let is_ast_crossover = is_crossover && (!is_network_call || child_capsule.graft_manifest.is_some());
-                    if !is_ast_crossover {
-                        self.budget.record_llm_call();
-                        self.throttle_cooldown();
-                    } else {
-                        tracing::debug!(
-                            "Local AST crossover for child {} executed with zero LLM budget consumption",
-                            child_capsule.name
-                        );
                     }
 
-                    let (child_capsule, score) = self.evaluate_and_validate(child_capsule);
-                    let (child_capsule, score) =
-                        self.maybe_optimize_constants(child_capsule, score, seed);
-                    self.phylogeny.insert_capsule(&child_capsule);
+                    if chosen_b.is_none() && self.archive.occupied_niches_count() >= 2 {
+                        if let Some(cand) = self.archive.select_complementary_partner(
+                            &parent_a,
+                            &parent_a_score,
+                            rng,
+                        ) {
+                            let cand_hash = cand.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                            let usage = ancestral_usage_counts
+                                .get(&cand.id.0)
+                                .copied()
+                                .unwrap_or(0);
+                            if usage < max_ancestral_usage
+                                && cand.id != parent_a.id
+                                && parent_a_hash != cand_hash
+                            {
+                                chosen_b = Some(cand);
+                            }
+                        }
+                    }
 
-                    // Validation bloquante Anti-Dead-Code :
-                    // Seules les capsules valides (et pour le crossover, certifiées Niveau 3 C_null)
-                    // sont autorisées à concourir dans l'archive MAP-Elites et la génération suivante.
-                    let is_validation_passed = match &child_capsule.validation {
-                        nomad_core::ValidationStatus::PassedLevel3Behavioral => true,
-                        nomad_core::ValidationStatus::PassedLevel2Computational => {
-                            if is_crossover {
-                                self.crossover_rejected_count += 1;
-                                tracing::info!(
-                                    "Crossover child {} rejected: only reached Level 2 Computational",
+                    if chosen_b.is_none() {
+                        for ind in current_pop {
+                            let ind_hash =
+                                ind.capsule.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                            let usage = ancestral_usage_counts
+                                .get(&ind.capsule.id.0)
+                                .copied()
+                                .unwrap_or(0);
+                            if usage < max_ancestral_usage
+                                && ind.capsule.id != parent_a.id
+                                && parent_a_hash != ind_hash
+                            {
+                                chosen_b = Some(ind.capsule.clone());
+                                break;
+                            }
+                        }
+                    }
+
+                    if let Some(parent_b) = chosen_b {
+                        let p_b_hash = parent_b.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
+                        if parent_a.id != parent_b.id && (parent_a_hash.is_none() || parent_a_hash != p_b_hash) {
+                            self.crossover_attempts += 1;
+                            *ancestral_usage_counts
+                                .entry(parent_b.id.0.clone())
+                                .or_insert(0) += 1;
+
+                            let (child_capsule, audit) = self
+                                .operator
+                                .crossover(&parent_a, &parent_b, next_gen_idx, seed)
+                                .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
+
+                            let is_ast_crossover = !audit.is_network_call || child_capsule.graft_manifest.is_some();
+                            if !is_ast_crossover {
+                                if !self.budget.can_invoke_llm(&self.config) {
+                                    continue;
+                                }
+                                self.budget.record_llm_call();
+                                self.throttle_cooldown();
+                            } else {
+                                tracing::debug!(
+                                    "Local AST crossover for child {} executed with zero LLM budget consumption",
                                     child_capsule.name
                                 );
                             }
-                            !is_crossover
-                        }
-                        nomad_core::ValidationStatus::PassedLevel1Structural => {
-                            if is_crossover {
-                                self.crossover_rejected_count += 1;
-                                tracing::info!(
-                                    "Crossover child {} rejected: only reached Level 1 Structural",
-                                    child_capsule.name
-                                );
-                            }
-                            !is_crossover
-                        }
-                        nomad_core::ValidationStatus::NotEvaluable(reason) => {
-                            if is_crossover {
-                                self.crossover_not_evaluable_count += 1;
-                                self.crossover_rejected_count += 1;
-                                tracing::info!(
-                                    "Crossover attrition monitor: child {} marked NotEvaluable: {}",
-                                    child_capsule.name,
-                                    reason
-                                );
-                            }
-                            tracing::warn!(
-                                "Rejet bloquant Anti-Dead-Code (Non Évaluable) de {} : {}",
-                                child_capsule.name,
-                                reason
+
+                            let (child_capsule, score) = self.evaluate_and_validate(child_capsule);
+                            let (child_capsule, score) =
+                                self.maybe_optimize_constants(child_capsule, score, seed);
+                            self.phylogeny.insert_capsule(&child_capsule);
+
+                            // Validation bloquante Anti-Dead-Code pour le crossover (Niveau 3 C_null obligatoire)
+                            let is_crossover_passed = matches!(
+                                &child_capsule.validation,
+                                nomad_core::ValidationStatus::PassedLevel3Behavioral
                             );
-                            false
-                        }
-                        nomad_core::ValidationStatus::GraftHarmful(reason) => {
-                            if is_crossover {
-                                self.crossover_rejected_count += 1;
-                                tracing::info!(
-                                    "Crossover attrition monitor: child {} rejected as GraftHarmful: {}",
-                                    child_capsule.name,
-                                    reason
-                                );
+
+                            if !is_crossover_passed {
+                                match &child_capsule.validation {
+                                    nomad_core::ValidationStatus::NotEvaluable(reason) => {
+                                        self.crossover_not_evaluable_count += 1;
+                                        self.crossover_rejected_count += 1;
+                                        tracing::info!(
+                                            "Crossover child {} marked NotEvaluable: {}",
+                                            child_capsule.name,
+                                            reason
+                                        );
+                                    }
+                                    _ => {
+                                        self.crossover_rejected_count += 1;
+                                    }
+                                }
                             }
-                            tracing::warn!(
-                                "Rejet bloquant Anti-Dead-Code (Greffe Nocive) de {} : {}",
-                                child_capsule.name,
-                                reason
+
+                            let is_improved = if let Some(elite) = self.archive.best_elite() {
+                                score < elite.fitness
+                            } else {
+                                true
+                            };
+
+                            let host_id = child_capsule
+                                .parent_ids
+                                .first()
+                                .cloned()
+                                .unwrap_or_else(|| child_capsule.id.clone());
+                            let partner_id = child_capsule.parent_ids.get(1).cloned();
+
+                            self.lineages.record_evolution(
+                                child_capsule.id.clone(),
+                                &host_id,
+                                partner_id,
+                                child_capsule.semantic_interface.clone(),
+                                is_improved && is_crossover_passed,
                             );
-                            false
-                        }
-                        nomad_core::ValidationStatus::Failed(reason) => {
-                            if is_crossover {
-                                self.crossover_rejected_count += 1;
-                                tracing::info!(
-                                    "Crossover attrition monitor: child {} rejected as Failed: {}",
-                                    child_capsule.name,
-                                    reason
-                                );
+
+                            if is_improved && is_crossover_passed {
+                                self.adaptive_crossover_rate =
+                                    (self.adaptive_crossover_rate + 0.02).min(0.85);
+                            } else {
+                                self.adaptive_crossover_rate =
+                                    (self.adaptive_crossover_rate - 0.01).max(0.25);
                             }
-                            tracing::warn!(
-                                "Rejet bloquant Anti-Dead-Code de {} : {}",
-                                child_capsule.name,
-                                reason
-                            );
-                            false
-                        }
-                        nomad_core::ValidationStatus::Unvalidated => {
-                            if is_crossover {
-                                self.crossover_rejected_count += 1;
+
+                            if is_crossover_passed && score.is_valid {
+                                self.archive.insert(child_capsule.clone(), score.clone());
+                                candidate_pool.push(EvaluatedIndividual::new(child_capsule, score));
                             }
-                            !is_crossover
-                        }
-                    };
-
-                    // Record in AgentPSO lineage state
-                    let host_id = child_capsule
-                        .parent_ids
-                        .first()
-                        .cloned()
-                        .unwrap_or_else(|| child_capsule.id.clone());
-                    let partner_id = child_capsule.parent_ids.get(1).cloned();
-                    let is_improved = if let Some(elite) = self.archive.best_elite() {
-                        score < elite.fitness
-                    } else {
-                        true
-                    };
-
-                    self.lineages.record_evolution(
-                        child_capsule.id.clone(),
-                        &host_id,
-                        partner_id,
-                        child_capsule.semantic_interface.clone(),
-                        is_improved && is_validation_passed,
-                    );
-
-                    // Local niche competition in MAP-Elites (uniquement si validation réussie)
-                    if is_validation_passed && score.is_valid {
-                        self.archive.insert(child_capsule.clone(), score.clone());
-                    }
-
-                    // Adaptive Operator Selection: self-tune crossover probability based on success
-                    if is_crossover {
-                        if is_improved && is_validation_passed {
-                            self.adaptive_crossover_rate =
-                                (self.adaptive_crossover_rate + 0.02).min(0.85);
-                        } else {
-                            self.adaptive_crossover_rate =
-                                (self.adaptive_crossover_rate - 0.01).max(0.25);
                         }
                     }
+                }
 
-                    if is_validation_passed && score.is_valid {
-                        next_population.push(EvaluatedIndividual::new(child_capsule, score));
+                // 3. Compétition Élitiste par Pool Élargi :
+                // Trie tout le pool (élite + mutations valides + croisements certifiés Niveau 3)
+                candidate_pool.sort_by(|a, b| {
+                    a.in_distribution_score
+                        .total_bins
+                        .cmp(&b.in_distribution_score.total_bins)
+                        .then_with(|| {
+                            a.in_distribution_score
+                                .total_fuel
+                                .cmp(&b.in_distribution_score.total_fuel)
+                        })
+                        .then_with(|| {
+                            a.capsule.logic_code.len().cmp(&b.capsule.logic_code.len())
+                        })
+                });
+
+                let mut seen_ids = std::collections::HashSet::new();
+                for ind in candidate_pool {
+                    if seen_ids.insert(ind.capsule.id.clone()) {
+                        next_population.push(ind);
+                        if next_population.len() >= pop_size {
+                            break;
+                        }
                     }
                 }
             }

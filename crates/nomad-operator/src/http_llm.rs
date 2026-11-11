@@ -358,6 +358,13 @@ impl SkillOperator for HttpLlamaOperator {
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let (system_prompt, user_prompt) = if self.domain == ProblemDomain::MultiResourceScheduling
         {
+            let archetype_desc = match index % 5 {
+                0 => "ARCHETYPE: Dominant bottleneck & cross-product alignment (align job_cpu/job_ram ratio with node_residual_cpu/node_residual_ram using dot-product or cosine-like coupling).",
+                1 => "ARCHETYPE: Strict normalized imbalance minimization (penalize |(post_cpu / cap_cpu) - (post_ram / cap_ram)| non-linearly after subtracting job demands).",
+                2 => "ARCHETYPE: Aggressive 2-step lookahead reservation (reward placements where remaining (post_cpu, post_ram) can still fit (next_job_cpu, next_job_ram), penalize stranding the upcoming job).",
+                3 => "ARCHETYPE: Dynamic time-horizon & cluster pressure (modulate tight packing vs imbalance avoidance based on step_index / total_jobs and mean_cpu_residual / mean_ram_residual).",
+                _ => "ARCHETYPE: Exploratory multi-regime conditional policy (use distinct scoring branches for CPU-heavy jobs vs RAM-heavy jobs).",
+            };
             (
                 "You are an expert algorithmic scientist specializing in multi-resource cloud job scheduling heuristics in Rust.\n\
 Nodes have CPU capacity C_cpu=32 and RAM capacity C_ram=128. Jobs arrive sequentially with (cpu, ram) demands. Your goal is to minimize total nodes used and prevent multi-dimensional resource stranding.\n\
@@ -377,10 +384,10 @@ CRITICAL REQUIREMENTS FOR SOTA PERFORMANCE:\n\
    - Lookahead awareness (k=2): `next_job_cpu` and `next_job_ram` provide lookahead of the immediately upcoming job. If residual capacity can perfectly fit the next job, reserve or prioritize pairing complementary jobs!\n\
 3. Use ONLY variables declared in the function signature. Do NOT declare pseudo-random seeds or inject ungrounded constant scales.\n\
 Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
-                format!("Synthesize candidate cloud scheduling heuristic #{}.", index)
+                format!("Synthesize candidate cloud scheduling heuristic #{}. {}", index, archetype_desc)
             )
         } else {
-            let archetype_desc = match index {
+            let archetype_desc = match index % 5 {
                 0 => "ARCHETYPE: Non-linear polynomial coupling post_residual with normalized stream progress (step_index as f64 / total_items as f64). Avoid hardcoded piecewise constants; use smooth non-linear interaction terms.",
                 1 => "ARCHETYPE: Harmonic classes logic (explore modulo arithmetic, capacity fractions, integer division thresholds on post_residual and next_item_size).",
                 2 => "ARCHETYPE: Strict dead space avoidance (penalizing post_residual in unusable small gaps) coupled with open_bins_count pressure.",
