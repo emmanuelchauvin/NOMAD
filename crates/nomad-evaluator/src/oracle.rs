@@ -6,6 +6,21 @@ use nomad_core::{
 use nomad_sandbox::{DeterministicSandbox, HeuristicSandbox};
 use rayon::prelude::*;
 
+/// Longueur d'instance pour laquelle `fuel_limit_per_call` est calibre (jeu d'entrainement
+/// du profil Weibull : 1 000 objets).
+pub const FUEL_REFERENCE_ITEMS: usize = 1_000;
+
+/// Limite de fuel par decision, proportionnelle a la longueur de l'instance.
+///
+/// Une decision note chaque bac ouvert : son cout croit avec le nombre de bacs, donc avec
+/// le nombre d'objets. Une limite fixe invalide sur les longues instances (OOD-1, 5 000
+/// objets) des heuristiques valides sur 1 000 objets. La limite est multipliee par
+/// `ceil(n_items / FUEL_REFERENCE_ITEMS)` et reste inchangee jusqu'a 1 000 objets.
+pub fn scaled_fuel_limit(fuel_limit_per_call: u64, n_items: usize) -> u64 {
+    let factor = n_items.div_ceil(FUEL_REFERENCE_ITEMS).max(1) as u64;
+    fuel_limit_per_call.saturating_mul(factor)
+}
+
 /// ============================================================================
 /// compute_trajectory_tldr : Algorithme Mathématique du tLDR (Sections 6.4 & 6.5)
 /// ============================================================================
@@ -438,6 +453,7 @@ impl OracleEvaluator {
         fuel_limit_per_call: u64,
         lookahead: bool,
     ) -> (InstanceEvaluation, BehaviorDescriptor, TrajectoryMetrics) {
+        let fuel_limit_per_call = scaled_fuel_limit(fuel_limit_per_call, instance.items.len());
         let mut bin_levels: Vec<u32> = Vec::new();
         let mut mid_levels: Vec<u32> = Vec::new();
         let mid_course_step = instance.items.len() / 2;
@@ -630,5 +646,19 @@ impl OracleEvaluator {
             std::collections::HashMap::new(),
         );
         self.evaluate_dataset(dataset, &capsule, &sandbox, 100_000)
+    }
+}
+
+#[cfg(test)]
+mod fuel_tests {
+    use super::scaled_fuel_limit;
+
+    #[test]
+    fn scaled_fuel_limit_is_proportional_to_instance_length() {
+        assert_eq!(scaled_fuel_limit(400_000, 50), 400_000);
+        assert_eq!(scaled_fuel_limit(400_000, 1_000), 400_000);
+        assert_eq!(scaled_fuel_limit(400_000, 1_001), 800_000);
+        assert_eq!(scaled_fuel_limit(400_000, 5_000), 2_000_000);
+        assert_eq!(scaled_fuel_limit(u64::MAX, 5_000), u64::MAX);
     }
 }

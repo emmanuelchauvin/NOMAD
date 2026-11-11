@@ -266,6 +266,10 @@ enum Commands {
         #[arg(short, long, default_value_t = 30)]
         seeds: usize,
 
+        /// First seed of the campaign. Seed r is `seed_start + 17 * r`.
+        #[arg(long, default_value_t = 1000)]
+        seed_start: u64,
+
         #[arg(short, long, default_value_t = 10)]
         pop_size: usize,
 
@@ -1433,6 +1437,7 @@ fn main() -> Result<()> {
         Commands::Campaign {
             domain,
             seeds,
+            seed_start,
             pop_size,
             generations,
             lookahead,
@@ -1446,9 +1451,17 @@ fn main() -> Result<()> {
             let prob_domain: ProblemDomain = domain.into();
             std::fs::create_dir_all(&output_dir)?;
             println!("============================================================");
-            println!(" NOMAD PRE-REGISTERED 30-SEED STATISTICAL CAMPAIGN");
+            println!(" NOMAD PRE-REGISTERED {}-SEED STATISTICAL CAMPAIGN", seeds);
             println!(" Target Domain   : {:?}", prob_domain);
-            println!(" Paired Seeds    : {}", seeds);
+            println!(" Paired Seeds    : {} (first seed {}, step 17)", seeds, seed_start);
+            println!(
+                " Fuel per call   : {} (scaled with instance length)",
+                ExperimentConfig::default().fuel_limit_per_call
+            );
+            println!(
+                " BP profile      : {}",
+                std::env::var("NOMAD_BP_PROFILE").unwrap_or_else(|_| "default".to_string())
+            );
             println!(" Lookahead (k=2) : {}", lookahead);
             println!(" Constant Opt    : {}", enable_constant_opt);
             println!(" Output Directory: {}", output_dir.display());
@@ -1476,7 +1489,7 @@ fn main() -> Result<()> {
             let mut aggregate_pairs = Vec::new();
 
             for r in 0..seeds {
-                let seed = 1000 + (r as u64) * 17;
+                let seed = seed_start + (r as u64) * 17;
                 let oracle = OracleEvaluator::new(seed);
                 let sched_oracle = SchedulingOracle::new(seed);
                 let sandbox = DeterministicSandbox::new();
