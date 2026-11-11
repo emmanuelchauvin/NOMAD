@@ -295,6 +295,24 @@ impl HttpLlamaOperator {
         (code, item_fn)
     }
 
+    /// Complement de prompt decrivant l'interface quand le bac vide est candidat
+    /// (`NOMAD_BP_ALLOW_OPEN=1` ou `NOMAD_BP_PROFILE=weibull`). Decrit le mecanisme
+    /// uniquement, jamais une strategie.
+    fn bin_packing_profile_note() -> String {
+        let on = |k: &str, v: &str| std::env::var(k).map(|x| x == v).unwrap_or(false);
+        let active = !on("NOMAD_BP_ALLOW_OPEN", "0")
+            && (on("NOMAD_BP_ALLOW_OPEN", "1") || on("NOMAD_BP_PROFILE", "weibull"));
+        if !active {
+            return String::new();
+        }
+        "
+
+INTERFACE NOTE (overrides any size range stated above):
+- Item sizes are integers between 1 and 100 drawn from an UNKNOWN distribution; streams are long (see `total_items`).
+- NEW-BIN CANDIDATE: besides every open bin that can fit the item, `score_bin` is also called once for a brand-new EMPTY bin, recognizable by `bin_residual == bin_capacity`. If that call returns the LOWEST score, a new bin is opened even though some open bins could fit the item. Your heuristic therefore decides when opening a new bin is better than accepting a poor fit."
+            .to_string()
+    }
+
     /// Converts raw LLM output or classical primitives into validated Rust AST `score_node` function.
     fn normalize_to_ast_score_node(
         code: &str,
@@ -326,7 +344,7 @@ impl HttpLlamaOperator {
             return (code, item_fn);
         }
         if trimmed.contains("BALANCED_FIT") {
-            let code = "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let mut score = cpu_norm * cpu_norm + ram_norm * ram_norm;\n    score\n}".to_string();
+            let code = "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = (node_residual_cpu - job_cpu) as f64 / node_capacity_cpu as f64;\n    let ram_norm = (node_residual_ram - job_ram) as f64 / node_capacity_ram as f64;\n    let mut score = cpu_norm * cpu_norm + ram_norm * ram_norm;\n    score\n}".to_string();
             let item_fn = parse_heuristic_fn(&code).expect("Balanced fit must parse");
             return (code, item_fn);
         }
@@ -378,8 +396,8 @@ pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_resid
 CRITICAL REQUIREMENTS FOR SOTA PERFORMANCE:\n\
 1. The candidate open node with the MINIMUM score is selected for placing the job.\n\
 2. To outperform standard baselines, an advanced heuristic MUST balance multi-resource usage:\n\
-   - Normalize residuals: `node_residual_cpu as f64 / node_capacity_cpu as f64` and `node_residual_ram as f64 / node_capacity_ram as f64`.\n\
-   - Penalize resource imbalance: `(cpu_norm - ram_norm).abs()` to avoid stranded resource capacity.\n\
+   - `node_residual_cpu` / `node_residual_ram` are the free capacities BEFORE placing the job (the job is guaranteed to fit). ALWAYS reason on the POST-PLACEMENT state: `let post_cpu = (node_residual_cpu - job_cpu) as f64 / node_capacity_cpu as f64;` and `let post_ram = (node_residual_ram - job_ram) as f64 / node_capacity_ram as f64;`.\n\
+   - Penalize POST-PLACEMENT resource imbalance: `(post_cpu - post_ram).abs()` to avoid stranded resource capacity. A node that is currently imbalanced is a GOOD target for a complementary job that restores balance; never penalize pre-placement imbalance.\n\
    - Dynamic horizon awareness: Combine `step_index` and `total_jobs`.\n\
    - Lookahead awareness (k=2): `next_job_cpu` and `next_job_ram` provide lookahead of the immediately upcoming job. If residual capacity can perfectly fit the next job, reserve or prioritize pairing complementary jobs!\n\
 3. Use ONLY variables declared in the function signature. Do NOT declare pseudo-random seeds or inject ungrounded constant scales.\n\
@@ -420,7 +438,7 @@ CRITICAL OPTIMIZATION OBJECTIVE:\n\
 - ADD to score to penalize undesirable placements (e.g. creating unusable dead space).\n\
 - Invent your own functional relationships, non-linear couplings, and calibrated numerical constants.\n\
 - Use ONLY variables declared in the function signature. Do NOT declare pseudo-random seeds or inject ungrounded constant scales.\n\
-Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
+Return ONLY the executable Rust function inside a ```rust ... ``` code block without markdown prose.".to_string() + &Self::bin_packing_profile_note(),
                 format!("Synthesize candidate heuristic #{}. {}", index, archetype_desc)
             )
         };
@@ -540,7 +558,8 @@ Synthesize multiple complementary features: combine fine-grained residual fittin
             (
                 "You are an evolutionary code optimizer for Multi-Resource Cloud Job Scheduling heuristics in Rust.\n\
 Apply an algorithmic mutation to improve compaction, reduce total nodes used, and balance CPU and RAM usage.\n\
-Combine multiple input variables: residuals, capacities, normalized imbalances `(cpu_norm - ram_norm).abs()`, time horizon `step_index / total_jobs`, and lookahead `next_job_cpu`/`next_job_ram`.\n\
+`node_residual_cpu`/`node_residual_ram` are free capacities BEFORE placing the job (the job always fits): reason on the POST-PLACEMENT state `post_cpu = (node_residual_cpu - job_cpu) as f64 / node_capacity_cpu as f64` and `post_ram = (node_residual_ram - job_ram) as f64 / node_capacity_ram as f64`.\n\
+Combine multiple input variables: post-placement residuals, capacities, post-placement normalized imbalance `(post_cpu - post_ram).abs()`, time horizon `step_index / total_jobs`, and lookahead `next_job_cpu`/`next_job_ram`.\n\
 Introduce non-linear conditionals, lookahead packing bonuses, imbalance penalties, or horizon-aware placement logic.\n\
 The candidate node with the MINIMUM score is selected.\n\
 Use ONLY signature variables. Do NOT declare pseudo-random seeds or mock constants.\n\
@@ -558,7 +577,7 @@ CRITICAL: THE ORACLE MINIMIZES THE SCORE. LOWER SCORE = HIGHER PRIORITY TO SELEC
 Combine available inputs: `item_size`, `bin_residual`, `post_residual`, `bin_capacity`, `step_index`, `total_items`, `open_bins_count`, `mean_residual`, `next_item_size`, and `fitting_bins_count`.\n\
 Search for effective variable couplings, non-linear conditionals, fine-tuned thresholds, or lookahead trade-offs.\n\
 Invent your own logic and calibrated constants. Do NOT declare pseudo-random seeds or mock constants. Do NOT copy preset templates.\n\
-Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string(),
+Return ONLY the mutated Rust function inside a ```rust ... ``` code block without markdown prose.".to_string() + &Self::bin_packing_profile_note(),
                 format!(
                     "PARENT HEURISTIC (ID: {}):\n```rust\n{}\n```\nINTENT: {}\nMutate this heuristic for Generation {}.{}",
                     parent.id, parent.logic_code, parent.semantic_interface, generation, guidance_section
@@ -682,6 +701,7 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
         let system_prompt = if is_sched {
             "You are an evolutionary synthesizer performing SWARM CROSSOVER between two distinct algorithmic lineages for Multi-Resource Cloud Job Scheduling.\n\
 Recombine their complementary heuristic mechanisms into a single, superior hybrid Rust function score_node.\n\
+The node with the MINIMUM score is selected. Residual inputs are measured BEFORE placement: prefer terms computed on the post-placement state (node_residual_cpu - job_cpu, node_residual_ram - job_ram).\n\
 Return ONLY the hybrid Rust function in a ```rust ... ``` code block."
         } else {
             "You are an evolutionary synthesizer performing SWARM CROSSOVER between two distinct algorithmic lineages for Online 1D Bin Packing (C=100).\n\

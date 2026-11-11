@@ -275,6 +275,31 @@ impl HeuristicSandbox for DeterministicSandbox {
                 }
             }
 
+            // Option "bac vide candidat" : l'heuristique note aussi un bac neuf virtuel et peut
+            // donc choisir d'ouvrir un bac plutot que d'accepter un mauvais ajustement.
+            // Sans cette option, toute heuristique est confinee a la famille Any-Fit.
+            if best_idx.is_some() && allow_open_new_bin() {
+                let ctx = ScorePolicyContext {
+                    item_size: item_weight,
+                    next_item_size: next_item_weight,
+                    bin_residual: bin_capacity,
+                    bin_capacity,
+                    step_index,
+                    total_items,
+                    open_bins_count: bin_levels.len(),
+                    mean_residual,
+                    post_residual: bin_capacity - item_weight,
+                    fitting_bins_count,
+                };
+                let outcome = interpreter
+                    .eval(&ctx)
+                    .map_err(|e| SandboxError::ExecutionCrash(e.to_string()))?;
+                fuel_consumed += outcome.fuel_consumed;
+                if outcome.score < best_score {
+                    best_idx = None;
+                }
+            }
+
             match best_idx {
                 Some(idx) => PackingDecision::PlaceInExisting(idx),
                 None => PackingDecision::OpenNewBin,
@@ -778,4 +803,18 @@ fn extract_bool_param(text: &str, param_name: &str) -> Option<bool> {
         }
     }
     None
+}
+
+/// Indique si le bac vide virtuel fait partie des candidats notes par `score_bin`.
+/// Active par `NOMAD_BP_ALLOW_OPEN=1` ou par le profil `NOMAD_BP_PROFILE=weibull`.
+/// Lu une seule fois par processus.
+pub fn allow_open_new_bin() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| {
+        let on = |k: &str, v: &str| std::env::var(k).map(|x| x == v).unwrap_or(false);
+        if on("NOMAD_BP_ALLOW_OPEN", "0") {
+            return false;
+        }
+        on("NOMAD_BP_ALLOW_OPEN", "1") || on("NOMAD_BP_PROFILE", "weibull")
+    })
 }

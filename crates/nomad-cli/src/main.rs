@@ -119,6 +119,19 @@ enum Commands {
         domain: DomainArg,
     },
 
+    /// Evaluate a heuristic source file (bin packing `score_bin`) on all datasets.
+    Eval {
+        #[arg(short, long, default_value_t = 42)]
+        seed: u64,
+
+        /// Path to a Rust source file containing `pub fn score_bin(...) -> f64`.
+        #[arg(long)]
+        code: PathBuf,
+
+        #[arg(long, default_value_t = 50_000)]
+        fuel: u64,
+    },
+
     /// Run classical algorithmic baselines.
     Baseline {
         #[arg(short, long, default_value_t = 42)]
@@ -816,7 +829,7 @@ fn main() -> Result<()> {
                     "--- Pre-Registered Multi-Resource Scheduling Datasets (Seed: {}) ---",
                     seed
                 );
-                println!("In-Distribution (50 instances, N=50 jobs,  Node: 32C/128G) :");
+                println!("In-Distribution (50 uniform + 25 moderate-skew instances, N=50 jobs, Node: 32C/128G) :");
                 println!("  SHA-256: {}", in_dist.dataset_hash);
                 println!("OOD-1 Scale     (50 instances, N=300 jobs, Node: 32C/128G) :");
                 println!("  SHA-256: {}", ood1.dataset_hash);
@@ -834,6 +847,40 @@ fn main() -> Result<()> {
                 println!("  SHA-256: {}", ood1.dataset_hash);
                 println!("OOD-2 Shift     (50 instances, N=500, Power-Law):");
                 println!("  SHA-256: {}", ood2.dataset_hash);
+            }
+        }
+
+        Commands::Eval { seed, code, fuel } => {
+            let sandbox = DeterministicSandbox::new();
+            let oracle = OracleEvaluator::new(seed);
+            let source = std::fs::read_to_string(&code)?;
+            let capsule = nomad_core::SkillCapsule::new(
+                "eval-candidate",
+                "Externally supplied heuristic",
+                source,
+                vec![],
+                0,
+                std::collections::HashMap::new(),
+            );
+            println!("--- Heuristic evaluation (Dataset Seed: {}) ---", seed);
+            for (label, ds) in [
+                ("In-Dist", &oracle.in_distribution),
+                ("Valid  ", &oracle.validation),
+                ("OOD-1  ", &oracle.ood1_scale),
+                ("OOD-2  ", &oracle.ood2_powerlaw),
+            ] {
+                let sc = oracle.evaluate_dataset(ds, &capsule, &sandbox, fuel);
+                let bf = oracle.evaluate_classical_baseline("BEST_FIT", ds);
+                println!(
+                    "  {} : valid={} {} bins (excess: +{}), Best-Fit: {} (excess: +{}), fuel: {}",
+                    label,
+                    sc.is_valid,
+                    sc.total_bins,
+                    sc.total_excess_bins,
+                    bf.total_bins,
+                    bf.total_excess_bins,
+                    sc.total_fuel
+                );
             }
         }
 

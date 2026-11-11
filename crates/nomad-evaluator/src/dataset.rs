@@ -146,6 +146,42 @@ impl Dataset {
 
         Self::new("NOMAD_OOD2_POWERLAW_N500_50INST", instances)
     }
+
+    /// Profil Weibull (benchmark de type FunSearch, Romera-Paredes et al. 2023) :
+    /// tailles ~ Weibull(shape, scale) arrondies et bornees a [1, capacite], C=100.
+    /// Contrairement a U(10,80), peu d'objets depassent C/2 : la borne L1 est presque
+    /// atteignable sur de longues instances, ce qui laisse une marge mesurable au-dela
+    /// de Best-Fit.
+    pub fn generate_weibull(
+        seed: u64,
+        name: &str,
+        n_instances: usize,
+        n_items: usize,
+        shape: f64,
+        scale: f64,
+    ) -> Self {
+        let mut rng = ChaCha8Rng::seed_from_u64(seed);
+        let capacity = 100u32;
+        let mut instances = Vec::with_capacity(n_instances);
+        for i in 0..n_instances {
+            let items: Vec<u32> = (0..n_items)
+                .map(|_| {
+                    let u: f64 = rng.gen_range(0.0..1.0);
+                    let x = scale * (-(1.0 - u).ln()).powf(1.0 / shape);
+                    (x.round() as u32).clamp(1, capacity)
+                })
+                .collect();
+            instances.push(BinPackingInstance::new(
+                format!("{}_{:02}", name, i + 1),
+                items,
+                capacity,
+            ));
+        }
+        Self::new(
+            format!("NOMAD_{}_N{}_{}INST", name.to_uppercase(), n_items, n_instances),
+            instances,
+        )
+    }
 }
 
 #[cfg(test)]

@@ -59,8 +59,49 @@ pub struct SchedulingDataset {
 }
 
 impl SchedulingDataset {
+    /// Nombre d'instances uniformes et d'instances a asymetrie moderee des jeux
+    /// d'entrainement et de validation.
+    pub const UNIFORM_INSTANCES: usize = 50;
+    pub const MODERATE_SKEW_INSTANCES: usize = 25;
+
+    /// Ajoute des instances a asymetrie CPU/RAM moderee (50 taches chacune).
+    /// Profils volontairement plus doux que ceux d'OOD-2 (CPU 8..=24 / RAM 32..=96,
+    /// 100 taches) afin qu'OOD-2 reste un decalage de distribution : la selection voit
+    /// l'asymetrie, mais pas son regime extreme.
+    fn push_moderate_skew_instances(
+        seed: u64,
+        prefix: &str,
+        instances: &mut Vec<SchedulingInstance>,
+    ) {
+        let mut rng = ChaCha8Rng::seed_from_u64(seed);
+        for inst_idx in 0..Self::MODERATE_SKEW_INSTANCES {
+            let mut jobs = Vec::with_capacity(50);
+            for job_id in 0..50 {
+                let (cpu_req, ram_req) = if rng.gen_bool(0.5) {
+                    // CPU-dominant modere
+                    (rng.gen_range(6..=16), rng.gen_range(2..=12))
+                } else {
+                    // RAM-dominant modere
+                    (rng.gen_range(1..=4), rng.gen_range(24..=64))
+                };
+                jobs.push(JobRequest {
+                    job_id,
+                    cpu_req,
+                    ram_req,
+                });
+            }
+            instances.push(SchedulingInstance {
+                name: format!("{}-ModSkew-Sched-{:03}", prefix, inst_idx),
+                jobs,
+                node_capacity_cpu: 32,
+                node_capacity_ram: 128,
+            });
+        }
+    }
+
     /// Génère le jeu de données d'entraînement In-Distribution :
-    /// 50 instances de 50 tâches hétérogènes (CPU 1..=8, RAM 2..=32, nœuds 32 cores / 128 GB).
+    /// 50 instances uniformes de 50 tâches (CPU 1..=8, RAM 2..=32, nœuds 32 cores / 128 GB)
+    /// + 25 instances à asymétrie CPU/RAM modérée, pour que la sélection voie l'asymétrie.
     pub fn generate_in_distribution(seed: u64) -> Self {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let mut instances = Vec::with_capacity(50);
@@ -83,6 +124,8 @@ impl SchedulingDataset {
                 node_capacity_ram: 128,
             });
         }
+        // Flux RNG distinct : les 50 instances uniformes restent identiques a l'historique.
+        Self::push_moderate_skew_instances(seed ^ 0x0071_5CE3_u64, "InDist", &mut instances);
 
         let dataset_hash = Self::compute_hash(&instances);
         Self {
@@ -116,6 +159,7 @@ impl SchedulingDataset {
                 node_capacity_ram: 128,
             });
         }
+        Self::push_moderate_skew_instances(seed ^ 0x00A1_5CE3_u64, "Val", &mut instances);
 
         let dataset_hash = Self::compute_hash(&instances);
         Self {
@@ -552,7 +596,8 @@ impl SchedulingOracle {
             }
         };
 
-        // Comparaison décisionnelle différentielle sur un jeu de sondes (4 In-Dist + 1 OOD-2 Asymétrique)
+        // Comparaison décisionnelle différentielle sur un jeu de sondes (4 uniformes + 1 asymétrique
+        // modérée, toutes issues de l'entraînement : OOD-2 n'intervient plus dans la sélection)
         let mut divergent_decisions = 0usize;
         let mut null_nodes_total = 0usize;
         let mut orig_nodes_total = 0usize;
@@ -564,7 +609,13 @@ impl SchedulingOracle {
             .instances
             .iter()
             .take(4)
-            .chain(self.ood2_skewed.instances.iter().take(1));
+            .chain(
+                self.in_distribution
+                    .instances
+                    .iter()
+                    .skip(SchedulingDataset::UNIFORM_INSTANCES)
+                    .take(1),
+            );
 
         for inst in probes {
             let (eval_c, imb_c, _) =

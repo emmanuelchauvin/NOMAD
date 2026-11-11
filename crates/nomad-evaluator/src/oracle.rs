@@ -161,7 +161,55 @@ pub struct OracleEvaluator {
 
 impl OracleEvaluator {
     /// Initialise l'évaluateur avec les jeux de données pré-enregistrés générés via une seed fixe.
+    ///
+    /// La variable d'environnement `NOMAD_BP_PROFILE=weibull` selectionne le profil Weibull
+    /// (longues instances, marge mesurable) a la place du profil uniforme historique.
     pub fn new(seed: u64) -> Self {
+        if std::env::var("NOMAD_BP_PROFILE").map(|v| v == "weibull").unwrap_or(false) {
+            return Self::new_weibull(seed);
+        }
+        Self::new_uniform(seed)
+    }
+
+    /// Profil Weibull : entrainement et validation Weibull(3, 45) ; OOD-1 = instances 5x plus
+    /// longues ; OOD-2 = changement de forme, Weibull(2, 40).
+    pub fn new_weibull(seed: u64) -> Self {
+        let n = |k: &str, d: usize| -> usize {
+            std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+        };
+        let inst = n("NOMAD_WB_INSTANCES", 10);
+        let items = n("NOMAD_WB_ITEMS", 1000);
+        Self {
+            in_distribution: Dataset::generate_weibull(seed, "weibull_train", inst, items, 3.0, 45.0),
+            validation: Dataset::generate_weibull(
+                seed ^ 0x005A_11DA_710E_u64,
+                "weibull_val",
+                inst,
+                items,
+                3.0,
+                45.0,
+            ),
+            ood1_scale: Dataset::generate_weibull(
+                seed ^ 0x00D1_5CA1E,
+                "weibull_ood1_scale",
+                5,
+                items * 5,
+                3.0,
+                45.0,
+            ),
+            ood2_powerlaw: Dataset::generate_weibull(
+                seed ^ 0x00D2_5E1F7,
+                "weibull_ood2_shape",
+                inst,
+                items,
+                2.0,
+                40.0,
+            ),
+        }
+    }
+
+    /// Profil uniforme historique U(10, 80).
+    pub fn new_uniform(seed: u64) -> Self {
         Self {
             in_distribution: Dataset::generate_in_distribution(seed),
             validation: Dataset::generate_validation(seed),

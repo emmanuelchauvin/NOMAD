@@ -88,7 +88,11 @@ impl Default for ExperimentConfig {
             elite_selection_ratio: 0.20,
             max_llm_calls: 10_000,
             max_executions: 100_000,
-            fuel_limit_per_call: 50_000,
+            // Surcharge possible par NOMAD_FUEL_LIMIT (longues instances : beaucoup de bacs ouverts).
+            fuel_limit_per_call: std::env::var("NOMAD_FUEL_LIMIT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(50_000),
             memory_limit_bytes: 4 * 1024 * 1024, // 4 MB
             bin_capacity: 100,
             node_capacity_cpu: 32,
