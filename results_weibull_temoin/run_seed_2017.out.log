@@ -1,0 +1,63 @@
+2026-11-12T18:53:09.704013Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=2017, Pop=85, MaxGens=1
+2026-11-12T19:16:13.488004Z  INFO nomad_orchestrator::engine: Evaluating winning capsule bc2573d0c1df4395 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 2017 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4177 bins (excess: +142), Efficiency: 96.60%, Fuel: 33730681
+ Best In-Dist (w/o Lookahead) : 4214 bins (excess: +179), Efficiency: 95.75%
+ Dynamic Trajectory: tLDR = 1.9065
+ Behavior Profile : DeadSpaceRatio: 61.3%, NewBinRatio: 41.8%, ResVar: 0.55
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.118
+ Validation Score : 4161 bins (excess: +150), Efficiency: 96.39%
+ OOD-1 Score      : 10410 bins (excess: +350), Efficiency: 96.64%
+ OOD-2 Score      : 3644 bins (excess: +105), Efficiency: 97.12%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-058
+ Logic Code       : pub fn score_bin(
+    item_size: u32,
+    bin_residual: u32,
+    bin_capacity: u32,
+    step_index: usize,
+    total_items: usize,
+    _open_bins_count: usize,
+    mean_residual: f64,
+    next_item_size: u32,
+    post_residual: u32,
+    fitting_bins_count: usize,
+) -> f64 {
+    // Base score is the residual left after placing the item.
+    let mut score = post_residual as f64;
+
+    // Aggressive 2‑step lookahead:
+    //   * If the bin can still hold the next item, strongly reward it.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 2.0 * (next_item_size as f64);
+    }
+
+    // Perfect match for the next item is even better.
+    if next_item_size > 0 && post_residual == next_item_size {
+        score -= 5.0;
+    }
+
+    // Prefer bins whose residual is close to the current mean residual.
+    // The penalty grows as the stream progresses to keep the distribution tight.
+    let diff = (post_residual as f64 - mean_residual).abs();
+    let time_weight = step_index as f64 / total_items as f64; // 0 .. 1
+    score += diff * time_weight;
+
+    // Penalize opening a brand‑new bin when other fitting bins exist.
+    if bin_residual == bin_capacity && fitting_bins_count > 1 {
+        score += 10.0;
+    }
+
+    // If this is the last fitting bin before a new bin would be needed, give a small bonus.
+    if fitting_bins_count == 1 {
+        score -= 3.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_weibull_temoin\run_seed_2017_tirage.json.tmp

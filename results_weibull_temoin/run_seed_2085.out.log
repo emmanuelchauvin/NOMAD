@@ -1,0 +1,78 @@
+2026-11-12T20:26:09.571326Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=2085, Pop=85, MaxGens=1
+2026-11-12T20:48:56.422799Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 41c1b79650e01b26 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 2085 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4219 bins (excess: +167), Efficiency: 96.04%, Fuel: 48929212
+ Best In-Dist (w/o Lookahead) : 4220 bins (excess: +168), Efficiency: 96.02%
+ Dynamic Trajectory: tLDR = 0.8994
+ Behavior Profile : DeadSpaceRatio: 65.1%, NewBinRatio: 42.2%, ResVar: 0.49
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 5.639
+ Validation Score : 4220 bins (excess: +183), Efficiency: 95.67%
+ OOD-1 Score      : 10457 bins (excess: +380), Efficiency: 96.37%
+ OOD-2 Score      : 3642 bins (excess: +87), Efficiency: 97.61%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-030
+ Logic Code       : pub fn score_bin(
+    item_size: u32,
+    bin_residual: u32,
+    bin_capacity: u32,
+    step_index: usize,
+    total_items: usize,
+    open_bins_count: usize,
+    mean_residual: f64,
+    next_item_size: u32,
+    post_residual: u32,
+    fitting_bins_count: usize,
+) -> f64 {
+    // Normalized stream progress
+    let progress = step_index as f64 / total_items as f64;
+
+    // Base score is the residual after placing the item
+    let mut score = post_residual as f64;
+
+    // Early stream: encourage tighter packing
+    let early_term = (1.0 - progress).powi(3)
+        * (post_residual as f64).powi(2)
+        * 0.02;
+    score -= early_term;
+
+    // Late stream: allow a little slack for upcoming items
+    let late_term = progress.powi(3)
+        * (post_residual as f64).powi(2)
+        * 0.015;
+    score += late_term;
+
+    // Fewer bins that can fit the item → higher priority
+    let fit_bonus = (1.0 / (fitting_bins_count as f64 + 1.0))
+        .powi(2)
+        * 10.0;
+    score -= fit_bonus;
+
+    // Penalize many open bins to avoid excessive fragmentation
+    let open_penalty = (open_bins_count as f64).powi(2) * 0.1;
+    score += open_penalty;
+
+    // Prefer bins whose residual is close to the mean residual
+    let mean_bonus = (1.0 - mean_residual / bin_capacity as f64)
+        .powi(3)
+        * 5.0;
+    score -= mean_bonus;
+
+    // If the next item is large, reward leaving more space
+    let next_bonus = ((next_item_size as f64) / bin_capacity as f64)
+        .powi(2)
+        * 8.0;
+    score -= next_bonus;
+
+    // Ensure non‑negative score
+    if score < 0.0 {
+        score = 0.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_weibull_temoin\run_seed_2085_tirage.json.tmp

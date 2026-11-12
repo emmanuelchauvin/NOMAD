@@ -1,0 +1,63 @@
+2026-11-12T19:39:47.524931Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=2051, Pop=85, MaxGens=1
+2026-11-12T20:03:10.827812Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 22719b2d7d4a26fb on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 2051 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4142 bins (excess: +130), Efficiency: 96.86%, Fuel: 29335176
+ Best In-Dist (w/o Lookahead) : 4214 bins (excess: +202), Efficiency: 95.21%
+ Dynamic Trajectory: tLDR = 1.1028
+ Behavior Profile : DeadSpaceRatio: 52.8%, NewBinRatio: 41.4%, ResVar: 0.35
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 4.923
+ Validation Score : 4159 bins (excess: +131), Efficiency: 96.85%
+ OOD-1 Score      : 10441 bins (excess: +382), Efficiency: 96.34%
+ OOD-2 Score      : 3616 bins (excess: +63), Efficiency: 98.26%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-067
+ Logic Code       : pub fn score_bin(
+    item_size: u32,
+    bin_residual: u32,
+    bin_capacity: u32,
+    step_index: usize,
+    total_items: usize,
+    open_bins_count: usize,
+    mean_residual: f64,
+    next_item_size: u32,
+    post_residual: u32,
+    fitting_bins_count: usize,
+) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Penalize creating a dead space that cannot fit the next item
+    if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size {
+        score += 1000.0;
+    }
+
+    // Penalize large residual to avoid wasteful gaps
+    score += (post_residual as f64).powi(2) * 0.01;
+
+    // Reward the last fitting bin if only one can accommodate the item
+    if fitting_bins_count == 1 {
+        score -= 10.0;
+    }
+
+    // Penalize opening a brand‑new bin when many bins are already open
+    if bin_residual == bin_capacity {
+        score += (open_bins_count as f64) * 5.0;
+    } else {
+        // Slightly reward using existing bins when many are open
+        if open_bins_count > 0 {
+            score -= (open_bins_count as f64) * 0.1;
+        }
+    }
+
+    // Ensure score is non‑negative
+    if score < 0.0 {
+        score = 0.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_weibull_temoin\run_seed_2051_tirage.json.tmp

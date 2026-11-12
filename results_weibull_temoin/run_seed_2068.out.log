@@ -1,0 +1,112 @@
+2026-11-12T20:03:14.648136Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=2068, Pop=85, MaxGens=1
+2026-11-12T20:26:02.976996Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 3cab45045781f284 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 2068 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4201 bins (excess: +182), Efficiency: 95.67%, Fuel: 28978810
+ Best In-Dist (w/o Lookahead) : 4200 bins (excess: +181), Efficiency: 95.69%
+ Dynamic Trajectory: tLDR = 0.2200
+ Behavior Profile : DeadSpaceRatio: 68.5%, NewBinRatio: 42.0%, ResVar: 0.54
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 3.613
+ Validation Score : 4187 bins (excess: +181), Efficiency: 95.68%
+ OOD-1 Score      : 10482 bins (excess: +417), Efficiency: 96.02%
+ OOD-2 Score      : 3620 bins (excess: +86), Efficiency: 97.63%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-011
+ Logic Code       : pub fn score_bin(
+    item_size: u32,
+    bin_residual: u32,
+    bin_capacity: u32,
+    step_index: usize,
+    total_items: usize,
+    open_bins_count: usize,
+    mean_residual: f64,
+    next_item_size: u32,
+    post_residual: u32,
+    fitting_bins_count: usize,
+) -> f64 {
+    // Base score is the post‑residual space; smaller residual → lower score
+    let mut score = post_residual as f64;
+
+    // --- Residual class (harmonic style) ---------------------------------
+    let residual_class = post_residual % 10;
+    let residual_reward = if residual_class == 0 {
+        -15.0                     // perfect fit
+    } else if residual_class <= 5 {
+        -5.0                      // small remainder
+    } else {
+        5.0                       // large remainder
+    };
+    score += residual_reward;
+
+    // --- Next item foresight ---------------------------------------------
+    let next_reward = if next_item_size > 0 {
+        if post_residual > next_item_size {
+            10.0                    // too much space left for next item
+        } else {
+            -10.0                   // good fit for next item
+        }
+    } else {
+        0.0
+    };
+    score += next_reward;
+
+    // --- Mean residual comparison ----------------------------------------
+    let mean_reward = if post_residual as f64 > mean_residual {
+        5.0                        // leave more than average space (bad)
+    } else {
+        -5.0                       // leave less or equal than average (good)
+    };
+    score += mean_reward;
+
+    // --- New‑bin candidate penalty ---------------------------------------
+    let new_bin_penalty = if bin_residual == bin_capacity {
+        // Called for a brand‑new empty bin
+        if fitting_bins_count > 1 || open_bins_count > 0 {
+            20.0                    // discourage opening a new bin if alternatives exist
+        } else {
+            -10.0                   // reward opening a new bin when it is the only choice
+        }
+    } else {
+        0.0
+    };
+    score += new_bin_penalty;
+
+    // --- Single‑fit bonus ------------------------------------------------
+    let fitting_reward = if fitting_bins_count == 1 {
+        -15.0                       // only one bin can hold this item
+    } else {
+        0.0
+    };
+    score += fitting_reward;
+
+    // --- Late‑stream penalty ---------------------------------------------
+    let progress = step_index as f64 / total_items as f64;
+    let late_penalty = if progress > 0.9 {
+        if post_residual > 0 {
+            5.0                     // leaving space late in the stream is bad
+        } else {
+            -5.0                    // perfect fit late is good
+        }
+    } else {
+        0.0
+    };
+    score += late_penalty;
+
+    // --- Residual fraction (harmonic class) -----------------------------
+    let residual_fraction = post_residual as f64 / bin_capacity as f64;
+    let frac_reward = if residual_fraction < 0.1 {
+        -5.0                        // almost full bin
+    } else if residual_fraction > 0.5 {
+        5.0                         // too much space left
+    } else {
+        0.0
+    };
+    score += frac_reward;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_weibull_temoin\run_seed_2068_tirage.json.tmp

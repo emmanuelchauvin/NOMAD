@@ -1,0 +1,87 @@
+2026-11-12T18:28:41.016384Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=2000, Pop=85, MaxGens=1
+2026-11-12T18:53:04.320381Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4889f610767dcf87 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 2000 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4172 bins (excess: +148), Efficiency: 96.46%, Fuel: 39987481
+ Best In-Dist (w/o Lookahead) : 4215 bins (excess: +191), Efficiency: 95.47%
+ Dynamic Trajectory: tLDR = 0.8998
+ Behavior Profile : DeadSpaceRatio: 30.7%, NewBinRatio: 41.7%, ResVar: 0.49
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 4.315
+ Validation Score : 4164 bins (excess: +121), Efficiency: 97.10%
+ OOD-1 Score      : 10173 bins (excess: +147), Efficiency: 98.56%
+ OOD-2 Score      : 3659 bins (excess: +95), Efficiency: 97.41%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-043
+ Logic Code       : pub fn score_bin(
+    item_size: u32,
+    bin_residual: u32,
+    bin_capacity: u32,
+    step_index: usize,
+    total_items: usize,
+    open_bins_count: usize,
+    mean_residual: f64,
+    next_item_size: u32,
+    post_residual: u32,
+    fitting_bins_count: usize,
+) -> f64 {
+    // Base score: remaining space after placement
+    let mut score = post_residual as f64;
+
+    // --- 1. Unique-fit reward ------------------------------------
+    // If this bin is the only one that can take the item, it becomes
+    // highly desirable.
+    if fitting_bins_count == 1 {
+        score -= 100.0;
+    }
+
+    // --- 2. Aggressive 2‑step lookahead --------------------------
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Will also fit the next item – great!
+            score -= 50.0;
+        } else if post_residual == 0 {
+            // Bin becomes exactly full – no waste.
+            score -= 20.0;
+        } else {
+            // Space left is too small for the next item – undesirable.
+            score += 30.0;
+        }
+    }
+
+    // --- 3. Mean‑residual bias -----------------------------------
+    if mean_residual > 0.0 {
+        let post = post_residual as f64;
+        if post < mean_residual {
+            // Bin has less free space than average – we want to fill it early.
+            let diff = mean_residual - post;
+            score -= 0.5 * diff;
+        } else {
+            // Bin has more free space than average – postpone filling it.
+            let diff = post - mean_residual;
+            score += 0.3 * diff;
+        }
+    }
+
+    // --- 4. New‑bin penalty ---------------------------------------
+    // When a call comes from an empty bin, we still penalize opening
+    // a new bin if other suitable bins exist.
+    if bin_residual == bin_capacity && fitting_bins_count > 0 {
+        // Extra waste created by opening a new bin.
+        let waste_if_new = bin_capacity - item_size;
+        score += waste_if_new as f64 * 0.1;
+    }
+
+    // --- 5. Optional context: end‑of‑stream urgency ----------
+    // If we are in the last quarter of the stream and have many open bins,
+    // we slightly favor new bins for large items to avoid dead space.
+    if step_index * 4 > total_items * 3 && open_bins_count > 10 && item_size > 70 {
+        score -= 15.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_weibull_temoin\run_seed_2000_tirage.json.tmp
