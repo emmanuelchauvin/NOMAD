@@ -61,8 +61,10 @@ validation.
    pour Best-Fit. Le champion de D est invalide, y compris avec une limite de fuel dix
    fois plus haute : ce n'est pas un effet de la limite. La correction du fuel a par
    ailleurs fonctionné : aucun autre champion n'est invalide.
-5. **La référence manuelle reste devant** sur toutes les seeds et tous les jeux, sauf
-   OOD-2 sur les seeds 2034 et 2153 (groupe D, égalité sur cette dernière).
+5. **La référence manuelle reste devant** sur l'entraînement et la validation pour toutes
+   les seeds. Elle est battue deux fois hors distribution : sur OOD-1 par le champion de D
+   de la seed 2153 (10 117 bacs contre 10 157) et sur OOD-2 par le champion de C de la
+   seed 2034 (3 592 contre 3 608, le champion de D faisant jeu égal).
 
 ## Lecture d'ensemble des deux campagnes
 
