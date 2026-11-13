@@ -1,0 +1,179 @@
+2026-11-13T11:44:22.782293Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4017, Pop=8, MaxGens=12
+2026-11-13T11:55:51.528658Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 478dc25733236b7b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4017 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4157 bins (excess: +144), Efficiency: 96.54%, Fuel: 70692720
+ Best In-Dist (w/o Lookahead) : 4177 bins (excess: +164), Efficiency: 96.08%
+ Dynamic Trajectory: tLDR = 0.2940
+ Behavior Profile : DeadSpaceRatio: 61.9%, NewBinRatio: 41.6%, ResVar: 0.44
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 6.095
+ Validation Score : 4168 bins (excess: +151), Efficiency: 96.38%
+ OOD-1 Score      : 10369 bins (excess: +296), Efficiency: 97.15%
+ OOD-2 Score      : 3650 bins (excess: +78), Efficiency: 97.86%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-001-mut-g2-mut-g2-mut-g3-mut-g5-mut-g6-mut-g6-mut-g10-mut-g10
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: u32) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let residual = bin_residual as f64;
+    let post = post_residual as f64;
+    let mean = mean_residual as f64;
+    let next = next_item_size as f64;
+
+    let fit_ratio = (residual / capacity).clamp(0.0, 1.0);
+    let post_ratio = (post / capacity).clamp(0.0, 1.0);
+    let item_ratio = (item / capacity).clamp(0.0, 1.0);
+    let next_ratio = (next / capacity).clamp(0.0, 1.0);
+
+    let post_waste = 1.0 - post_ratio;
+    let residual_waste = 1.0 - fit_ratio;
+    let dead_space = post_waste * capacity;
+    let stranded = if post < item { post } else { 0.0 };
+
+    let mut score = post * 2.08 + post_waste * capacity * 0.92;
+    score += residual_waste * capacity * 1.18;
+    score -= next_ratio * capacity * 0.31;
+    score -= mean * 0.17;
+
+    let scarcity = 1.0 / (fitting_bins_count.max(1) as f64).sqrt();
+    score += scarcity * capacity * 0.14 * (1.0 + 0.35 * item_ratio);
+
+    let dead_fraction = dead_space / capacity;
+    let nonlinear_dead = dead_fraction * dead_fraction * (3.0 - 2.0 * dead_fraction);
+    score += nonlinear_dead * capacity * 0.42;
+    score += stranded * 0.24;
+
+    if post < item * 0.06 {
+        score -= capacity * 0.17;
+    } else if post < item * 0.14 {
+        score -= capacity * 0.10;
+    } else if post < item * 0.24 {
+        score -= capacity * 0.04;
+    }
+
+    if post == 0.0 {
+        score -= capacity * 0.34;
+    }
+
+    let mean_deficit = (item - mean).max(0.0);
+    let mean_pressure = mean_deficit / item.max(1.0);
+    if open_bins_count > 1 {
+        score += mean_pressure * capacity * 0.09;
+    }
+
+    if fitting_bins_count == 1 && residual != bin_capacity {
+        let usable_gap = (post - next).max(0.0);
+        let gap_value = usable_gap * (usable_gap / capacity).min(1.0);
+        score -= gap_value * 0.25;
+    }
+
+    if residual == bin_capacity {
+        let progress = (step_index as f64 / total_items.max(1) as f64).min(1.0);
+        let pressure = 0.68
+            + 0.32 * progress
+            + 0.28 * item_ratio
+            + 0.12 * next_ratio
+            + 0.16 * mean_pressure;
+        score += capacity * pressure;
+    } else if residual < item * 1.35 {
+        score += capacity * 0.06 * (1.0 - residual / (item * 1.35).max(1.0));
+    }
+
+    let tightness = 1.0 - post_ratio;
+    let harmonic = (post * post) / (post * post + capacity * capacity);
+    score += harmonic * capacity * 0.07 * tightness;
+    score -= post_ratio.powf(1.5) * capacity * 0.06;
+
+    if residual != bin_capacity {
+        let near_exact = (1.0 - post_ratio).abs();
+        if near_exact < 0.10 {
+            score -= capacity * 0.08 * (1.0 - near_exact / 0.10);
+        }
+    }
+
+    let useful_after_next = (post - next).max(0.0);
+    let useful_fraction = (useful_after_next / capacity).min(1.0);
+    let future_fit = (1.0 - useful_fraction).powi(2);
+    score += future_fit * capacity * 0.11 * next_ratio;
+
+    if post_ratio < 0.18 {
+        let unusable = post_ratio / 0.18;
+        score += capacity * 0.13 * unusable * unusable;
+    }
+
+    let dead_band = (post - item * 0.04).max(0.0) / capacity;
+    score += capacity * 0.08 * dead_band * dead_band;
+
+    let residual_debt = (post_ratio - next_ratio).max(0.0);
+    let fragmentation = residual_debt * residual_debt / (post_ratio + 0.08);
+    score += fragmentation * capacity * 0.18;
+
+    let usable_slack = (post - next).max(0.0);
+    if usable_slack > 0.0 && usable_slack < item * 0.30 {
+        let narrowness = 1.0 - usable_slack / (item * 0.30).max(1.0);
+        score += capacity * 0.07 * narrowness * narrowness;
+    }
+
+    let near_dead = (post_ratio / 0.12).min(1.0);
+    let near_dead_cost = near_dead * near_dead * (3.0 - 2.0 * near_dead);
+    score += near_dead_cost * capacity * 0.13;
+
+    if residual != bin_capacity && post_ratio < next_ratio {
+        let below_next = next_ratio - post_ratio;
+        score += below_next * capacity * 0.42;
+    }
+
+    let residual_ratio = (residual / capacity).clamp(0.0, 1.0);
+    let waste_penalty = 1.0 - residual_ratio;
+    let curvature = waste_penalty * waste_penalty * (3.0 - 2.0 * waste_penalty);
+    score += curvature * capacity * 0.19;
+
+    let residual_dominance = (residual_ratio - post_ratio).max(0.0);
+    score += residual_dominance * residual_dominance * capacity * 0.26;
+
+    let item_occupancy = (residual - item).max(0.0) / capacity;
+    score += item_occupancy * item_occupancy * capacity * 0.14;
+
+    if residual != bin_capacity {
+        let normalized_residual = residual / item.max(1.0);
+        if normalized_residual > 1.0 && normalized_residual < 1.55 {
+            let awkwardness = 1.0 - (normalized_residual - 1.0) / 0.55;
+            score += capacity * 0.11 * awkwardness * awkwardness;
+        }
+    }
+
+    let usable_remaining = (post - next).max(0.0);
+    let usable_share = (usable_remaining / capacity).min(1.0);
+    let unusable_share = 1.0 - usable_share;
+    score += unusable_share * unusable_share * capacity * 0.08 * (0.4 + 0.6 * next_ratio);
+
+    let relative_waste = (post / item.max(1.0)).min(4.0);
+    if relative_waste > 1.0 {
+        let excess = relative_waste - 1.0;
+        score += capacity * 0.06 * excess * excess;
+    } else {
+        score -= capacity * 0.09 * (1.0 - relative_waste);
+    }
+
+    let live_slack = post_ratio.min(1.0);
+    let live_slack_sq = live_slack * live_slack;
+    score += capacity * 0.20 * live_slack_sq;
+
+    let relative_live = post / item.max(1.0);
+    if relative_live > 1.0 {
+        let excess_live = relative_live - 1.0;
+        score += capacity * 0.035 * excess_live * excess_live;
+    }
+
+    if residual != bin_capacity {
+        let unusable = 1.0 - (post / (item * 0.35).max(1.0)).min(1.0);
+        score += capacity * 0.12 * unusable * unusable;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4017_evolution.json.tmp

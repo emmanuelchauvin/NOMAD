@@ -1,0 +1,92 @@
+2026-11-13T10:20:35.286170Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4085, Pop=85, MaxGens=1
+2026-11-13T10:30:27.502005Z  INFO nomad_orchestrator::engine: Evaluating winning capsule b46bc38af80cef1b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4085 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4124 bins (excess: +124), Efficiency: 97.00%, Fuel: 71194736
+ Best In-Dist (w/o Lookahead) : 4180 bins (excess: +180), Efficiency: 95.70%
+ Dynamic Trajectory: tLDR = 1.3688
+ Behavior Profile : DeadSpaceRatio: 2.0%, NewBinRatio: 41.2%, ResVar: 0.64
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 7.951
+ Validation Score : 4139 bins (excess: +129), Efficiency: 96.89%
+ OOD-1 Score      : 10126 bins (excess: +74), Efficiency: 99.27%
+ OOD-2 Score      : 3605 bins (excess: +72), Efficiency: 98.01%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-032
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    let capacity = bin_capacity.max(1) as f64;
+    let size = item_size as f64;
+    let residual = bin_residual as f64;
+    let next_size = next_item_size as f64;
+
+    // Dead space below the smallest useful future item is strongly penalized.
+    let dead_threshold = next_size.max(1.0).min(10.0);
+    let dead_space = post_residual as f64;
+    if dead_space > 0.0 && dead_space < dead_threshold {
+        score += (dead_threshold - dead_space) * 12.0;
+    }
+
+    // Preserve a compact residual when the placement leaves a conspicuous gap.
+    if post_residual > 0 && (post_residual as u32) < next_item_size.max(1) {
+        score += (next_item_size as f64 - post_residual as f64) * 8.0;
+    }
+
+    // Reward exact closure and good utilization.
+    if post_residual == 0 {
+        score -= 28.0;
+    } else {
+        let utilization = size / capacity;
+        score -= utilization * 18.0;
+    }
+
+    // Mildly favor bins whose residual is close to the average residual,
+    // avoiding both fragmented and excessively empty bins.
+    let deviation = (mean_residual - residual).abs();
+    score += deviation * 0.35;
+
+    // With many open bins, place into an existing bin rather than fragmenting load.
+    let pressure = (open_bins_count as f64).sqrt();
+    score += pressure * 1.8;
+
+    // If this is the only fitting bin, avoid opening another bin when a
+    // moderately poor placement still preserves useful flexibility.
+    if fitting_bins_count == 1 {
+        score -= 4.0;
+    }
+
+    // Look-ahead: favor leaving room for the immediately following item.
+    if next_item_size > 0 {
+        let room_after_next = post_residual as f64 - next_size;
+        if room_after_next >= 0.0 {
+            score -= (room_after_next / capacity).min(1.0) * 10.0;
+        } else {
+            score += (-room_after_next / capacity).min(1.0) * 16.0;
+        }
+    }
+
+    // A new empty bin is inherently less attractive than any existing fit;
+    // the small exception is when no open bin can accommodate the item.
+    if bin_residual == bin_capacity {
+        score += 55.0;
+        if fitting_bins_count == 0 {
+            score -= 45.0;
+        }
+    }
+
+    // Progressively reduce the reluctance to use an existing bin late in
+    // a long stream, where preserving throughput is especially valuable.
+    let progress = if total_items == 0 {
+        1.0
+    } else {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    };
+    score -= progress * 3.0;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\tirage\run_seed_4085_tirage.json.tmp

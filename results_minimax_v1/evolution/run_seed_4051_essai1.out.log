@@ -1,0 +1,63 @@
+2026-11-13T12:06:33.921885Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4051, Pop=8, MaxGens=12
+2026-11-13T12:15:55.520296Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 23f4427ea91ce913 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4051 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4228 bins (excess: +192), Efficiency: 95.46%, Fuel: 30998025
+ Best In-Dist (w/o Lookahead) : 4228 bins (excess: +192), Efficiency: 95.46%
+ Dynamic Trajectory: tLDR = 0.1420
+ Behavior Profile : DeadSpaceRatio: 68.9%, NewBinRatio: 42.3%, ResVar: 0.52
+ MAP-Elites Niches: 1 active (1.0% coverage), QD-Score: 0.955
+ Validation Score : 4210 bins (excess: +179), Efficiency: 95.75%
+ OOD-1 Score      : 10406 bins (excess: +409), Efficiency: 96.07%
+ OOD-2 Score      : 3644 bins (excess: +85), Efficiency: 97.67%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-007-mut-g1-mut-g1
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let residual = post_residual as f64;
+    let remaining_fraction = (residual / capacity).clamp(0.0, 1.0);
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    let density = (1.0 - remaining_fraction).clamp(0.0, 1.0);
+
+    // Tight fits are preferred, while moderately useful residual space is retained.
+    let mut score = residual * 2.08;
+    score += 5.6 * remaining_fraction;
+    score += 0.36 * (open_bins_count as f64).powf(0.68);
+    score -= 0.31 * (mean_residual.max(0.0) - residual);
+    score -= 0.40 * fitting_bins_count.min(5) as f64;
+    score += 0.52 * progress;
+
+    // Avoid leaving a remainder that is too small to be reused effectively.
+    let dead_cutoff = (item * 0.29).min(22.0);
+    if residual <= dead_cutoff {
+        score += 1.85;
+        score += 0.27 * residual;
+    }
+    if residual == 0.0 {
+        score += 0.70;
+    }
+
+    // If the next item no longer fits, retain larger remainders for later.
+    let next = next_item_size as f64;
+    if residual < next {
+        score += 0.16 * next * (residual / capacity.max(1.0));
+    } else {
+        score -= 0.18 * (next / capacity.max(1.0));
+    }
+
+    // New bins are penalized, but may win when all alternatives are poor fits.
+    if bin_residual == bin_capacity {
+        score += 14.2 + 3.4 * progress;
+        score += 0.24 * open_bins_count as f64;
+        score -= 1.55 * (item / capacity);
+        score += 0.9 * density;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4051_evolution.json.tmp

@@ -1,0 +1,52 @@
+2026-11-13T10:39:10.997243Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4119, Pop=85, MaxGens=1
+2026-11-13T10:49:22.088413Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 511a194f675257f0 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4119 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4169 bins (excess: +120), Efficiency: 97.12%, Fuel: 29676442
+ Best In-Dist (w/o Lookahead) : 4238 bins (excess: +189), Efficiency: 95.54%
+ Dynamic Trajectory: tLDR = 0.4956
+ Behavior Profile : DeadSpaceRatio: 73.9%, NewBinRatio: 41.7%, ResVar: 0.18
+ MAP-Elites Niches: 11 active (11.0% coverage), QD-Score: 8.550
+ Validation Score : 4152 bins (excess: +126), Efficiency: 96.97%
+ OOD-1 Score      : 10371 bins (excess: +263), Efficiency: 97.46%
+ OOD-2 Score      : 3631 bins (excess: +74), Efficiency: 97.96%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-022
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    let dead_gap = if post_residual == 0 {
+        0.0
+    } else if post_residual < next_item_size && next_item_size != 0 {
+        (post_residual as f64).powi(2) * 1.8
+    } else if post_residual <= 5 {
+        (post_residual as f64).powi(2) * 1.2
+    } else {
+        0.0
+    };
+    score += dead_gap;
+
+    let pressure = open_bins_count as f64 / (total_items.max(1) as f64).sqrt();
+    score -= pressure * 0.7;
+
+    if fitting_bins_count <= 1 {
+        score -= 12.0;
+    }
+
+    let utilization = item_size as f64 / bin_capacity.max(1) as f64;
+    score -= utilization * 5.0;
+
+    if bin_residual == bin_capacity {
+        score += 18.0 + pressure * 0.8;
+    }
+
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score += progress * 0.3;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\tirage\run_seed_4119_tirage.json.tmp
