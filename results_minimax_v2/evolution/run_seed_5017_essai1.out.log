@@ -1,0 +1,148 @@
+2026-11-13T16:05:35.212704Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5017, Pop=8, MaxGens=10
+2026-11-13T16:23:33.288012Z  INFO nomad_orchestrator::engine: Evaluating winning capsule c0ff8cae18753dc8 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5017 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4173 bins (excess: +164), Efficiency: 96.07%, Fuel: 47641127
+ Best In-Dist (w/o Lookahead) : 4177 bins (excess: +168), Efficiency: 95.98%
+ Dynamic Trajectory: tLDR = 0.4076
+ Behavior Profile : DeadSpaceRatio: 63.5%, NewBinRatio: 41.7%, ResVar: 0.50
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.332
+ Validation Score : 4203 bins (excess: +173), Efficiency: 95.88%
+ OOD-1 Score      : 10404 bins (excess: +358), Efficiency: 96.56%
+ OOD-2 Score      : 3615 bins (excess: +75), Efficiency: 97.93%
+ Lineage Nodes    : 85, Transitions: 54
+ Best Heuristic   : LLM-Seed-006-mut-g2-mut-g2-mut-g3
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let residual = bin_residual as f64;
+    let post = post_residual as f64;
+    let next = next_item_size as f64;
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    };
+
+    let post_fraction = (post / capacity).clamp(0.0, 1.0);
+    let item_fraction = (item / capacity).clamp(0.0, 1.0);
+    let next_fraction = (next / capacity).clamp(0.0, 1.0);
+    let mean_fraction = (mean_residual / capacity).clamp(0.0, 1.0);
+    let is_new = bin_residual >= bin_capacity;
+
+    let mut score = 1.54 * post;
+
+    score -= 40.5 * post_fraction * (0.40 + 0.60 * progress);
+    score += 27.5 * post_fraction * post_fraction;
+    score -= 15.5 * item_fraction * (1.0 - progress);
+
+    if mean_fraction > item_fraction {
+        score += 16.0 * item_fraction * (mean_fraction - item_fraction) * (1.0 - progress);
+    }
+
+    if next_item_size > 0 {
+        if post >= next {
+            let next_fit_fraction = (next / post.max(1.0)).min(1.0);
+            score -= 21.5 * next_fraction * next_fit_fraction;
+            if post >= item + next {
+                score -= 6.0 * next_fraction;
+            }
+        } else if post >= item {
+            let blocked_next = (next - post) / capacity;
+            score += 8.0 * (1.0 - next_fraction) + 22.0 * blocked_next * blocked_next;
+        } else {
+            score += 14.0 + 10.0 * (1.0 - progress);
+        }
+    }
+
+    if post > 0.0 && post < item {
+        let dead_fraction = (item - post) / capacity;
+        score += 18.0 + 32.0 * post_fraction + 11.0 * progress + 27.0 * dead_fraction;
+    }
+
+    if post == 0.0 {
+        score -= 12.0;
+    }
+
+    if fitting_bins_count <= 1 {
+        score -= 14.0 * (1.0 - progress);
+    } else if fitting_bins_count <= 3 {
+        score -= 3.0;
+    }
+
+    if open_bins_count > 1 && residual > mean_residual * 1.30 {
+        score += 0.10 * (residual - mean_residual);
+    }
+
+    if is_new {
+        let pressure = if open_bins_count == 0 {
+            0.0
+        } else {
+            item / residual.max(1.0)
+        };
+        score += 32.5 + 12.5 * (1.0 - progress) + 9.5 * pressure;
+        score -= 8.5 * mean_fraction;
+
+        if open_bins_count > 0 && fitting_bins_count > 0 {
+            let desired_post = (1.0 - item_fraction).max(0.0);
+            let orphaned_fraction = (post_fraction - desired_post).max(0.0);
+            score += 46.0 * orphaned_fraction;
+        }
+    } else if open_bins_count > 1 {
+        let residual_fraction = (residual / capacity).clamp(0.0, 1.0);
+        let fit_ratio = (item / residual.max(1.0)).clamp(0.0, 1.0);
+        let tightness = 1.0 - residual_fraction;
+
+        score += 15.0 * tightness * tightness;
+        score -= 5.5 * fit_ratio * (1.0 - progress);
+
+        let excessive_room = (residual_fraction - 0.23).max(0.0);
+        score += 25.0 * excessive_room * excessive_room;
+
+        let fragmented = (post < item) as u32 as f64;
+        score += 5.0 * fragmented * post_fraction;
+
+        let local_slack = (mean_residual - residual).max(0.0);
+        score += 0.18 * local_slack * (1.0 - progress);
+
+        let tiny_slack = (0.08 - post_fraction).max(0.0);
+        score -= 9.0 * tiny_slack * (0.4 + 0.6 * progress);
+
+        let next_room = if next > 0.0 {
+            ((post - next).max(0.0) / capacity).min(1.0)
+        } else {
+            0.0
+        };
+        score += 6.0 * next_room * (1.0 - progress);
+
+        let residual_gap = (residual - post).abs();
+        let residual_disorder = (residual_gap / capacity).min(1.0);
+        score += 8.0 * residual_disorder * (1.0 - progress);
+
+        if post >= item && next > 0.0 {
+            let combined = item + next;
+            let combined_slack = (post - combined).max(0.0) / capacity;
+            score += 12.0 * combined_slack * combined_slack;
+        }
+
+        let usable_post = post.min(residual);
+        let usable_fraction = (usable_post / capacity).clamp(0.0, 1.0);
+        let waste_band = (usable_fraction - 0.16).max(0.0);
+        let stranded_room = (residual - usable_post).max(0.0) / capacity;
+        score += 11.0 * waste_band * waste_band;
+        score += 9.0 * stranded_room * (1.0 - 0.5 * progress);
+
+        if post >= item && next > 0.0 {
+            let two_item_fraction = ((item + next) / capacity).clamp(0.0, 1.0);
+            let pair_fit = if post >= item + next { 1.0 } else { 0.0 };
+            score -= 8.0 * two_item_fraction * pair_fit * (1.0 - progress);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5017_evolution.json.tmp

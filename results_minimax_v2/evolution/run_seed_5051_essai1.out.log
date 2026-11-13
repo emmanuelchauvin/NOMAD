@@ -1,0 +1,155 @@
+2026-11-13T16:40:44.108084Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5051, Pop=8, MaxGens=10
+2026-11-13T16:52:49.440826Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 1dcfcc6b4422ddef on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5051 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4194 bins (excess: +164), Efficiency: 96.09%, Fuel: 37454518
+ Best In-Dist (w/o Lookahead) : 4202 bins (excess: +172), Efficiency: 95.91%
+ Dynamic Trajectory: tLDR = 0.2521
+ Behavior Profile : DeadSpaceRatio: 63.5%, NewBinRatio: 41.9%, ResVar: 0.50
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 5.013
+ Validation Score : 4201 bins (excess: +172), Efficiency: 95.91%
+ OOD-1 Score      : 10398 bins (excess: +385), Efficiency: 96.30%
+ OOD-2 Score      : 3630 bins (excess: +81), Efficiency: 97.77%
+ Lineage Nodes    : 85, Transitions: 60
+ Best Heuristic   : LLM-Seed-014-mut-g1-mut-g8
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size.max(1) as f64;
+    let next = next_item_size.max(1) as f64;
+    let before = bin_residual.max(1) as f64;
+    let after = post_residual as f64;
+    let is_new = bin_residual == bin_capacity;
+    let progress = if total_items == 0 {
+        1.0
+    } else {
+        ((step_index as f64 + 1.0) / total_items as f64).clamp(0.0, 1.0)
+    };
+
+    let mut score = after;
+
+    // Exact and near-exact closures are the strongest way to eliminate bins.
+    let closure = if after == 0.0 {
+        1.0
+    } else {
+        (1.0 - (after - item).abs() / item).max(0.0)
+    };
+    score -= if after == 0.0 { 42.0 } else { 19.0 * closure * closure };
+
+    // Reward consuming a meaningful fraction of the currently available room.
+    let fill = (item / before).clamp(0.0, 1.0);
+    score -= 1.9 * fill;
+
+    // Fit the known next item when possible, with a soft target near common small classes.
+    if after + 1e-9 >= next {
+        let target = next.min(capacity * 0.24);
+        score -= 9.0 + 3.0 * progress;
+        score += (after - target).abs() * 0.055;
+    } else {
+        score += 4.0 + (next - after) * 0.075;
+    }
+
+    // Anticipate whether placing here still leaves room for another next item.
+    let room_after_next = capacity - after;
+    if next <= room_after_next + 1e-9 {
+        let slack = room_after_next - next;
+        if slack <= 1.0 {
+            score -= 11.0;
+        } else if slack <= 3.0 {
+            score -= 5.0;
+        } else if slack <= 7.0 {
+            score -= 1.5;
+        }
+    } else if next - room_after_next <= 2.0 {
+        score += 5.0;
+    }
+
+    // Penalize residues that are too small for both current and foreseeable classes.
+    let smallest_seen = item.min(next);
+    if after > 0.0 && after < smallest_seen {
+        let dead_ratio = after / capacity;
+        let dead_cost = if dead_ratio <= 0.025 {
+            8.0 + after * 0.12
+        } else if dead_ratio <= 0.075 {
+            16.0 + after * 0.30
+        } else if dead_ratio <= 0.15 {
+            11.0 + after * 0.20
+        } else {
+            7.0 + after * 0.13
+        };
+        score += dead_cost;
+    } else if after < item {
+        score += 5.5;
+    }
+
+    if !is_new {
+        // Scarcity dominates: use the sole feasible bin unless it strands a large fragment.
+        if fitting_bins_count == 1 {
+            let scarcity = 1.0 + (open_bins_count as f64).min(20.0) * 0.052;
+            score -= 34.0 * scarcity;
+        } else if fitting_bins_count == 2 {
+            score -= 5.0;
+        }
+
+        // Mildly favor residues near the fleet mean, avoiding fleet-wide drift.
+        let deviation = after - mean_residual;
+        score += deviation.abs() * 0.014;
+        if deviation > 0.0 {
+            score += deviation * 0.011;
+        }
+
+        // Very small usable remnants are valuable because they can close bins later.
+        let stranded_ratio = after / capacity;
+        let smooth = if stranded_ratio <= 0.018 {
+            1.0
+        } else if stranded_ratio <= 0.058 {
+            (0.058 - stranded_ratio) / 0.040
+        } else {
+            0.0
+        };
+        score -= 9.0 * smooth;
+
+        // A residue just above the next item but below the current item is awkward.
+        let usable_slack = (after - next).max(0.0);
+        if usable_slack > 0.0 && usable_slack < item {
+            score += 6.5 * (1.0 - usable_slack / item);
+        }
+    }
+
+    if is_new {
+        // Opening a bin has a real opportunity cost, especially for small items.
+        let fleet_pressure = (open_bins_count as f64).min(28.0) * 0.235;
+        let occupancy = (mean_residual / capacity).clamp(0.0, 1.0);
+        let waste_hazard = if next < capacity * 0.30 {
+            3.5 + occupancy * 4.5
+        } else if next < capacity * 0.55 {
+            8.0 + occupancy * 3.0
+        } else {
+            12.5 + occupancy * 2.0
+        };
+        score += 13.0 + fleet_pressure + waste_hazard;
+
+        // Still open a new bin when no existing bin can accept the item.
+        if fitting_bins_count == 0 {
+            score -= 18.0;
+        } else if fitting_bins_count == 1 {
+            score -= 6.0;
+        }
+
+        let end_discount = if progress > 0.82 {
+            (progress - 0.82) / 0.18
+        } else {
+            0.0
+        };
+        score += end_discount * 8.0;
+    } else if progress > 0.78 {
+        // Near termination, compact existing bins before creating new ones.
+        score -= ((progress - 0.78) / 0.22) * 29.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5051_evolution.json.tmp

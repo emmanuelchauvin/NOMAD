@@ -1,0 +1,383 @@
+2026-11-13T17:01:20.816779Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5085, Pop=8, MaxGens=10
+2026-11-13T17:21:23.575073Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 780c11527c349dec on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5085 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4134 bins (excess: +108), Efficiency: 97.39%, Fuel: 265307818
+ Best In-Dist (w/o Lookahead) : 4182 bins (excess: +156), Efficiency: 96.27%
+ Dynamic Trajectory: tLDR = 1.6356
+ Behavior Profile : DeadSpaceRatio: 1.6%, NewBinRatio: 41.3%, ResVar: 0.59
+ MAP-Elites Niches: 17 active (17.0% coverage), QD-Score: 15.073
+ Validation Score : 4130 bins (excess: +123), Efficiency: 97.03%
+ OOD-1 Score      : 10154 bins (excess: +94), Efficiency: 99.07%
+ OOD-2 Score      : 3636 bins (excess: +94), Efficiency: 97.42%
+ Lineage Nodes    : 85, Transitions: 63
+ Best Heuristic   : LLM-Seed-011-mut-g1-mut-g2-mut-g2-mut-g4-mut-g5-mut-g6-mut-g7-mut-g7-mut-g8
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let post = post_residual as f64;
+    let next = next_item_size as f64;
+    let residual = bin_residual as f64;
+    let mean = mean_residual.max(0.0).min(capacity);
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    };
+    let is_new = bin_residual == bin_capacity;
+    let norm_post = (post / capacity).clamp(0.0, 1.0);
+    let norm_item = (item / capacity).clamp(0.0, 1.0);
+    let norm_mean = (mean / capacity).clamp(0.0, 1.0);
+    let norm_next = (next / capacity).clamp(0.0, 1.0);
+    let fitting_ratio = (fitting_bins_count as f64 / open_bins_count.max(1) as f64).clamp(0.0, 1.0);
+    let horizon = 0.62 + 0.38 * progress;
+
+    let mut score = post;
+
+    if post_residual == 0 {
+        score -= 264.0 + 94.0 * progress + 47.0 * norm_item;
+    } else {
+        score += 125.0 * norm_post * (1.0 - 0.41 * progress);
+
+        if next > 0.0 {
+            if post >= next {
+                let alignment = 1.0 - (post - next) / capacity;
+                score -= 49.0 * alignment;
+                let remainder = post % next;
+                if remainder == 0.0 {
+                    score -= 35.0;
+                } else if remainder <= next / 3.0 {
+                    score -= 18.0;
+                }
+            } else {
+                let deficit = (next - post) / next;
+                score += 21.0 * deficit * deficit;
+            }
+        }
+
+        if post < item {
+            score += 104.0 * (item - post) / capacity;
+        } else {
+            score -= 21.0 * (post / item.max(1.0)).min(8.0);
+            let remainder = post % item.max(1.0);
+            if remainder == 0.0 {
+                score -= 30.0;
+            } else if remainder <= item / 3.0 {
+                score -= 14.0;
+            }
+        }
+
+        let gap = (norm_post - norm_mean).clamp(-1.0, 1.0);
+        score += 37.0 * gap * gap * (0.34 + 0.66 * progress);
+        score += 27.0 * norm_post * (1.0 - progress) * (1.0 - norm_mean);
+
+        if next > 0.0 {
+            let distance = (post - next).abs() / capacity;
+            score += 28.0 * distance;
+        }
+    }
+
+    if is_new {
+        score += 59.0 + 85.0 * progress + 40.0 * fitting_ratio + 29.0 * norm_item;
+        if progress > 0.84 && fitting_bins_count > 1 {
+            score += 46.0;
+        }
+        if fitting_bins_count == 0 {
+            score -= 80.0;
+        }
+    }
+
+    score -= 38.0 * norm_mean * norm_item;
+    score += 17.0 * progress * (1.0 - norm_mean);
+
+    if fitting_bins_count == 1 && !is_new {
+        score += 26.0 + 65.0 * progress + 2.3 * post;
+        if post > 0.0 && post < next {
+            score += 20.0;
+        }
+    }
+
+    if open_bins_count > 2 && !is_new {
+        let extra = (open_bins_count as f64 - 2.0).min(6.0);
+        score += 5.3 * extra * (0.4 + 0.6 * progress);
+    }
+
+    if next > 0.0 && !is_new {
+        if post == next {
+            score -= 60.0;
+        } else if post > next && post - next <= next / 4.0 {
+            score -= 24.0;
+        }
+    }
+
+    if !is_new && post > 0.0 {
+        let reference = item.min(next.max(item));
+        if post < reference {
+            score += 79.0 * (reference - post) / capacity;
+        }
+
+        if post < item {
+            let dead_ratio = (item - post) / item;
+            score += 125.0 * dead_ratio * dead_ratio;
+        }
+
+        if next > 0.0 && post < next {
+            let fragmentation = (next - post) / next;
+            score += 49.0 * fragmentation * fragmentation;
+        }
+
+        let remainder = post % item.max(1.0);
+        let waste = remainder.min(item.max(1.0) - remainder) / item.max(1.0);
+        score -= 17.0 * (1.0 - waste) * (0.35 + 0.65 * progress);
+
+        let threshold = item.min(next.max(item)).min(0.35 * capacity);
+        if post < threshold {
+            let tiny_gap = (threshold - post) / threshold.max(1.0);
+            score += 89.0 * tiny_gap * tiny_gap;
+        }
+
+        let usable = post.min(next.max(item));
+        if usable > 0.0 {
+            let unusable = (post - usable).max(0.0) / capacity;
+            score += 47.0 * unusable * (0.55 + 0.45 * progress);
+        }
+    }
+
+    let lookahead_fit = if next > 0.0 && post + 1e-9 >= next {
+        1.0 - (post - next) / capacity
+    } else if next > 0.0 {
+        -1.0 + next / capacity
+    } else {
+        0.0
+    };
+    score -= 14.5 * lookahead_fit * (0.48 + 0.52 * progress);
+
+    if !is_new && post > 0.0 {
+        let reference = item.min(next.max(item));
+        if post < reference {
+            let small_gap = (reference - post) / capacity;
+            score += 60.0 * small_gap * small_gap * fitting_ratio;
+        }
+    }
+
+    if !is_new && residual > 0.0 {
+        let old_remainder = residual % item.max(1.0);
+        if old_remainder > 0.0 {
+            let old_dead = old_remainder.min(item.max(1.0) - old_remainder) / item.max(1.0);
+            score += 34.0 * old_dead * (0.45 + 0.55 * progress);
+        }
+
+        let bin_fill = 1.0 - residual / capacity;
+        let pooled_fill = 1.0 - norm_mean;
+        let fill_gap = (bin_fill - pooled_fill).clamp(-1.0, 1.0);
+        score -= 21.0 * fill_gap * fill_gap * (1.0 - 0.45 * progress);
+    }
+
+    if !is_new && post > 0.0 && next > 0.0 {
+        let next_after = post - next;
+        if next_after > 0.0 {
+            let old_mod = residual % next;
+            let projected = next_after % next;
+            let disruption = if old_mod == 0.0 {
+                (projected as f64 / next).min(1.0)
+            } else {
+                (projected as f64 - old_mod as f64).abs() / next
+            };
+            score += 33.0 * disruption * (0.45 + 0.55 * progress);
+        }
+    }
+
+    if !is_new && post > 0.0 && next > 0.0 && post >= next {
+        let residual_after_next = post - next;
+        let blocked = if residual_after_next < item {
+            (item - residual_after_next) / item
+        } else {
+            0.0
+        };
+        score += 68.0 * blocked * blocked * (0.55 + 0.45 * progress);
+    }
+
+    if !is_new && post > 0.0 {
+        let item_u = item.max(1.0);
+        let dead = post % item_u;
+        if dead > 0.0 {
+            let waste_ratio = dead.min(item_u - dead) / item_u;
+            let midness = 1.0 - (2.0 * dead / item_u - 1.0).abs();
+            score += 52.0 * waste_ratio * midness * (0.45 + 0.55 * progress);
+        }
+
+        if next > 0.0 {
+            let nxt = next.max(1.0);
+            let rem = post % nxt;
+            if rem == 0.0 {
+                score -= 26.0 * (0.5 + 0.5 * progress);
+            } else if rem <= nxt / 5.0 {
+                score -= 12.0;
+            } else if nxt - rem <= nxt / 5.0 {
+                score += 18.0 * (1.0 - (nxt - rem) / (nxt / 5.0)) * (0.5 + 0.5 * progress);
+            }
+        }
+
+        let abs_leftover = post / capacity;
+        score += 38.0 * abs_leftover * abs_leftover * (0.55 + 0.45 * progress);
+    }
+
+    if !is_new && post > 0.0 && next > 0.0 {
+        let nxt = next.max(1.0);
+        let rem = post % nxt;
+        let next_after = post - nxt;
+        let second_value = if next_after <= 0.0 {
+            0.0
+        } else {
+            next_after.min(item.max(1.0)) / item.max(1.0)
+        };
+
+        if rem == 0.0 {
+            score -= 19.0 * horizon;
+        } else {
+            let distance = rem.min(nxt - rem) / nxt;
+            score += 24.0 * distance * distance * horizon;
+        }
+
+        if next_after > 0.0 {
+            let second_rem = next_after % item.max(1.0);
+            let second_clean = second_rem == 0.0;
+            score -= 21.0 * second_value * (0.45 + 0.55 * progress);
+            if second_clean {
+                score -= 13.0 * (0.45 + 0.55 * progress);
+            } else {
+                let sliver = second_rem.min(item.max(1.0) - second_rem) / item.max(1.0);
+                score += 29.0 * sliver * (0.4 + 0.6 * progress);
+            }
+        }
+
+        let exact_fit = (post - nxt).abs() < 0.5;
+        if exact_fit {
+            score -= 34.0 * (0.45 + 0.55 * progress);
+        } else if (post - nxt).abs() <= nxt / 4.0 {
+            score -= 11.0 * (0.45 + 0.55 * progress);
+        }
+    }
+
+    if !is_new && post > 0.0 && next > 0.0 {
+        let nxt = next.max(1.0);
+        let remaining = if post >= nxt { post - nxt } else { post };
+        let second = if remaining >= item {
+            remaining - item
+        } else if remaining >= nxt.min(item) {
+            0.0
+        } else {
+            remaining
+        };
+
+        let useful_next = if post >= nxt {
+            1.0
+        } else {
+            post / nxt
+        };
+        let useful_second = if remaining >= item {
+            1.0
+        } else {
+            second / item.max(1.0)
+        };
+        score -= 42.0 * useful_next * (0.45 + 0.55 * progress);
+        score -= 27.0 * useful_second * (0.35 + 0.65 * progress);
+
+        let residue = post % nxt;
+        let residue_cost = if residue == 0.0 {
+            0.0
+        } else if residue <= nxt / 4.0 {
+            0.45
+        } else if residue >= nxt * 0.75 {
+            0.8
+        } else {
+            1.0
+        };
+        score += 31.0 * residue_cost * (1.0 - 0.35 * progress);
+    }
+
+    if is_new {
+        if fitting_bins_count > 0 {
+            let tight = (fitting_bins_count as f64).min(4.0) / 4.0;
+            score += 46.0 * tight * (1.0 - 0.55 * progress);
+        }
+        score -= 18.0 * norm_item * norm_item * (1.0 - progress);
+    }
+
+    // Refine residual quality using a multi-item viability frontier.  A
+    // residual is valuable when it can consume the current item and still
+    // leave space that can be matched to the upcoming item without creating
+    // an unusable sliver.
+    if !is_new && post > 0.0 {
+        let item_u = item.max(1.0);
+        let immediate_dead = post % item_u;
+        let immediate_waste = if immediate_dead == 0.0 {
+            0.0
+        } else {
+            immediate_dead.min(item_u - immediate_dead) / item_u
+        };
+        score += 39.0 * immediate_waste * (0.55 + 0.45 * progress);
+
+        if next > 0.0 {
+            let nxt = next.max(1.0);
+            let after_next = (post - nxt).max(0.0);
+            let next_dead = after_next % item_u;
+            let next_waste = if next_dead == 0.0 {
+                0.0
+            } else {
+                next_dead.min(item_u - next_dead) / item_u
+            };
+
+            let chain = if post >= nxt {
+                1.0
+            } else {
+                post / nxt
+            };
+            let chain_bonus = 31.0 * chain * (0.45 + 0.55 * progress);
+            score -= chain_bonus;
+            score += 46.0 * next_waste * (0.45 + 0.55 * progress);
+
+            let combined_dead = (immediate_waste + next_waste) * 0.5;
+            score += 31.0 * combined_dead * (0.65 + 0.35 * progress);
+
+            if post >= nxt {
+                let residual_after = post - nxt;
+                let small_residual = residual_after < 0.20 * capacity;
+                if small_residual {
+                    let penalty = (0.20 * capacity - residual_after) / (0.20 * capacity);
+                    score += 55.0 * penalty * (0.5 + 0.5 * progress);
+                } else if residual_after < item {
+                    let trapped = (item - residual_after) / item;
+                    score += 72.0 * trapped * trapped;
+                }
+            }
+        }
+    }
+
+    // Gentle encouragement for exact and near-exact multi-item closures,
+    // helping reduce residual variance without overriding the main terms.
+    if !is_new && post > 0.0 && next > 0.0 {
+        let nxt = next.max(1.0);
+        let combined = post - nxt;
+        let closure = if combined.abs() < 0.5 {
+            1.0
+        } else if combined.abs() <= item.max(1.0) * 0.15 {
+            0.55
+        } else {
+            0.0
+        };
+        score -= 25.0 * closure * (0.45 + 0.55 * progress);
+
+        let residual_mod = post % nxt;
+        if residual_mod <= nxt * 0.12 {
+            score -= 8.0 * (0.5 + 0.5 * progress);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5085_evolution.json.tmp

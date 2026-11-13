@@ -1,0 +1,78 @@
+2026-11-13T16:03:11.527017Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5136, Pop=85, MaxGens=1
+2026-11-13T16:13:24.092891Z  INFO nomad_orchestrator::engine: Evaluating winning capsule c9a9a436ada01835 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5136 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4206 bins (excess: +179), Efficiency: 95.74%, Fuel: 29330752
+ Best In-Dist (w/o Lookahead) : 4209 bins (excess: +182), Efficiency: 95.68%
+ Dynamic Trajectory: tLDR = 0.2149
+ Behavior Profile : DeadSpaceRatio: 69.0%, NewBinRatio: 42.1%, ResVar: 0.51
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 4.996
+ Validation Score : 4226 bins (excess: +188), Efficiency: 95.56%
+ OOD-1 Score      : 10414 bins (excess: +387), Efficiency: 96.28%
+ OOD-2 Score      : 3612 bins (excess: +89), Efficiency: 97.54%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-019
+ Logic Code       : pub fn score_bin(
+    item_size: u32,
+    bin_residual: u32,
+    bin_capacity: u32,
+    step_index: usize,
+    total_items: usize,
+    open_bins_count: usize,
+    mean_residual: f64,
+    next_item_size: u32,
+    post_residual: u32,
+    fitting_bins_count: usize,
+) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Prefer tighter placements, but do not create negligible fragments.
+    let item = item_size as f64;
+    let capacity = bin_capacity.max(1) as f64;
+    let residual = bin_residual as f64;
+    let progress = step_index as f64 / total_items.max(1) as f64;
+
+    let tightness = 1.0 - (residual / capacity);
+    score += (1.0 - tightness) * 9.0;
+
+    // Dead space is increasingly costly near the end of the stream.
+    let dead_penalty = if post_residual > 0 && (post_residual as u32) < item_size.min(20) {
+        4.0 + 10.0 * progress
+    } else {
+        0.0
+    };
+    score += dead_penalty;
+
+    // Reward consuming space close to the average residual.
+    let mean_gap = (mean_residual - residual).abs();
+    score -= mean_gap * 0.08;
+
+    // A lookahead item can use the residual space created by this placement.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 5.0 + 4.0 * (next_item_size as f64 / capacity);
+    } else if next_item_size > 0 {
+        score += 0.6 * (next_item_size as f64 / capacity);
+    }
+
+    // If this is the only fitting bin, urgency rises late in the stream.
+    if fitting_bins_count <= 1 {
+        score -= (2.0 + 8.0 * progress) * (item / capacity);
+    }
+
+    // Opening an empty bin is acceptable only when the existing bins are poor;
+    // the empty candidate receives this same structural signal through residual.
+    if bin_residual == bin_capacity {
+        score += open_bins_count as f64 * 0.025;
+        score += mean_residual * 0.015;
+    }
+
+    // Slightly favor placements in bins whose remaining space is less globally typical.
+    score += (mean_residual - residual) * 0.012;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\tirage\run_seed_5136_tirage.json.tmp

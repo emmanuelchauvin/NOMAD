@@ -1,0 +1,85 @@
+2026-11-13T16:33:30.008421Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5187, Pop=85, MaxGens=1
+2026-11-13T16:42:40.908317Z  INFO nomad_orchestrator::engine: Evaluating winning capsule dd5a250617a64c2f on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5187 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4165 bins (excess: +142), Efficiency: 96.60%, Fuel: 55343500
+ Best In-Dist (w/o Lookahead) : 4231 bins (excess: +208), Efficiency: 95.09%
+ Dynamic Trajectory: tLDR = 2.5940
+ Behavior Profile : DeadSpaceRatio: 29.2%, NewBinRatio: 41.6%, ResVar: 0.77
+ MAP-Elites Niches: 9 active (9.0% coverage), QD-Score: 7.663
+ Validation Score : 4180 bins (excess: +149), Efficiency: 96.44%
+ OOD-1 Score      : 10424 bins (excess: +397), Efficiency: 96.19%
+ OOD-2 Score      : 3611 bins (excess: +80), Efficiency: 97.79%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-023
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = if total_items == 0 {
+        1.0
+    } else {
+        step_index as f64 / total_items as f64
+    };
+
+    // Strongly prefer an exact fit: it closes the bin with no dead space.
+    if post_residual == 0 {
+        score -= 70.0;
+    }
+
+    // Preserve enough room for the immediately following item.
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 60.0;
+        } else if post_residual < next_item_size {
+            score += (next_item_size - post_residual) as f64 * 4.5;
+        } else {
+            score -= (post_residual - next_item_size) as f64 * 0.35;
+        }
+    }
+
+    // Favor compact residuals relative to the average residual of open bins.
+    if mean_residual > 0.0 {
+        let relative = (post_residual as f64 - mean_residual) / mean_residual;
+        score += relative * 18.0;
+    }
+
+    // Dead residuals are especially costly once the stream is mature.
+    if post_residual > 0 && post_residual < 10 {
+        score += 35.0 * (1.0 + progress);
+    } else if post_residual > 0 && post_residual < 20 {
+        score += 15.0;
+    }
+
+    // If this is the only fitting bin, avoid opening another bin when the
+    // current placement still leaves useful capacity.
+    if fitting_bins_count == 1 && post_residual > 0 {
+        score += 22.0;
+        if next_item_size > 0 && post_residual >= next_item_size {
+            score -= 18.0;
+        }
+    }
+
+    // A new empty bin is attractive only when the current item is large and
+    // opening a bin is unlikely to strand much future capacity.
+    if bin_residual == bin_capacity {
+        score += 38.0;
+        score -= (item_size as f64 / bin_capacity as f64) * 16.0;
+        if next_item_size > 0 && item_size >= next_item_size {
+            score -= 8.0;
+        }
+        if open_bins_count == 0 {
+            score -= 55.0;
+        }
+    }
+
+    // Small items are normally better placed in existing bins; opening a bin
+    // for them is penalized progressively near the end of the stream.
+    score += (item_size as f64 / bin_capacity as f64) * 4.0;
+    score *= 1.0 + progress * 0.15;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\tirage\run_seed_5187_tirage.json.tmp

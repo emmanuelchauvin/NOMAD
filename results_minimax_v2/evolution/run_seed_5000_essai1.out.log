@@ -1,0 +1,307 @@
+2026-11-13T15:45:09.404860Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5000, Pop=8, MaxGens=10
+2026-11-13T16:04:43.969255Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4e58f1353c238884 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5000 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4170 bins (excess: +143), Efficiency: 96.58%, Fuel: 301044770
+ Best In-Dist (w/o Lookahead) : 4383 bins (excess: +356), Efficiency: 91.92%
+ Dynamic Trajectory: tLDR = 1.4066
+ Behavior Profile : DeadSpaceRatio: 4.8%, NewBinRatio: 41.7%, ResVar: 0.68
+ MAP-Elites Niches: 9 active (9.0% coverage), QD-Score: 8.431
+ Validation Score : 4174 bins (excess: +145), Efficiency: 96.53%
+ OOD-1 Score      : 10103 bins (excess: +82), Efficiency: 99.19%
+ OOD-2 Score      : 3636 bins (excess: +84), Efficiency: 97.69%
+ Lineage Nodes    : 85, Transitions: 63
+ Best Heuristic   : LLM-Seed-009-mut-g3-mut-g3-mut-g3-mut-g4-mut-g5-mut-g6-mut-g7-mut-g8
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let residual = bin_residual as f64;
+    let post = post_residual as f64;
+    let next = next_item_size as f64;
+    let is_empty = (bin_residual == bin_capacity) as i32;
+    let progress = if total_items == 0 {
+        1.0
+    } else {
+        (step_index as f64 + 1.0) / total_items as f64
+    };
+
+    let post_fraction = (post / capacity).clamp(0.0, 1.0);
+    let residual_fraction = (residual / capacity).clamp(0.0, 1.0);
+    let utilization = 1.0 - residual_fraction;
+    let post_utilization = 1.0 - post_fraction;
+    let smallest_known = item.min(if next > 0.0 { next } else { item });
+
+    let stranded = post > 0.0 && post < smallest_known;
+    let dead_space = if stranded {
+        (smallest_known - post).powf(1.18)
+    } else {
+        0.0
+    };
+
+    let scarcity = if fitting_bins_count == 0 {
+        1.0
+    } else if fitting_bins_count == 1 {
+        0.72
+    } else {
+        0.0
+    };
+
+    let mean_gap = mean_residual - residual;
+    let relative_mean_gap = mean_gap / capacity;
+    let next_ratio = if next > 0.0 { next / capacity } else { 0.0 };
+
+    let exact_next = if next > 0.0 && post + 0.5 >= next { 1.0 } else { 0.0 };
+    let reusable = if next > 0.0 && post >= next {
+        (post - next + 1.0) / capacity
+    } else {
+        0.0
+    };
+
+    let fit_excess = (residual - item + 1.0) / capacity;
+    let overflow = if residual < item {
+        (item - residual) / capacity
+    } else {
+        0.0
+    };
+
+    let mut score = post;
+    score += dead_space * (2.25 + 3.40 * scarcity);
+    score += post_fraction * post_fraction * (1.05 + 1.75 * next_ratio * (1.0 - progress));
+    score -= relative_mean_gap * (0.72 + 1.10 * scarcity);
+    score -= utilization * utilization * (0.68 + 1.35 * progress);
+    score -= fit_excess * 1.08;
+    score += overflow * 4.0;
+    score += (mean_gap / capacity) * 0.34;
+    score += is_empty as f64 * (0.92 + 0.78 * progress);
+
+    score -= exact_next * (0.72 + 0.58 * (1.0 - progress));
+    score -= reusable * (0.42 + 0.24 * progress);
+    score += post_utilization * 0.22;
+
+    if next > 0.0 {
+        let next_shortfall = (next - post).max(0.0) / capacity;
+        score += next_shortfall * (0.18 + 0.48 * scarcity);
+        if post + 0.5 >= next {
+            score -= 0.34 * (1.0 - progress);
+        }
+    }
+
+    if fitting_bins_count == 1 {
+        score -= 0.88 + 0.38 * (1.0 - progress);
+    } else if fitting_bins_count > 1 {
+        score -= 0.08 * (fitting_bins_count as f64 - 1.0).min(3.0);
+    }
+
+    let pressure = if total_items == 0 {
+        0.0
+    } else {
+        ((step_index + 1) as f64 / total_items as f64 - 0.5).abs() * 2.0
+    };
+    score += pressure * (post_fraction * 0.18 + is_empty as f64 * 0.12);
+    score += open_bins_count as f64 * 0.0009;
+
+    let residual_pressure = if fitting_bins_count > 0 {
+        let fit_count = fitting_bins_count as f64;
+        ((mean_residual - residual) / capacity).max(0.0) * (fit_count.min(8.0) / 8.0)
+    } else {
+        0.0
+    };
+    score -= residual_pressure * (0.46 + 0.22 * progress);
+
+    let unusable_ratio = if smallest_known > 0.0 {
+        (post / smallest_known).min(1.0)
+    } else {
+        0.0
+    };
+    let tiny_gap = if stranded {
+        ((smallest_known - post) / capacity).min(1.0)
+    } else {
+        0.0
+    };
+    score += unusable_ratio * tiny_gap * (1.65 + 1.25 * scarcity);
+
+    let future_fit = if next > 0.0 && post + 0.5 >= next {
+        (post - next + 1.0) / capacity
+    } else {
+        0.0
+    };
+    score -= future_fit * (0.58 + 0.42 * (1.0 - progress));
+
+    let residual_cube = residual_fraction * residual_fraction * residual_fraction;
+    let post_cube = post_fraction * post_fraction * post_fraction;
+    score -= residual_cube * (0.31 + 0.23 * progress);
+    score += post_cube * (0.46 + 0.31 * scarcity);
+
+    let gap_to_next = if next > 0.0 {
+        (post - next).max(0.0) / capacity
+    } else {
+        0.0
+    };
+    let useful_holdover = if post >= next && next > 0.0 {
+        ((post - next + 1.0) / capacity).min(1.0)
+    } else {
+        0.0
+    };
+    score -= useful_holdover * gap_to_next * (0.82 + 0.44 * (1.0 - progress));
+
+    let near_dead = if post_fraction < 0.08 && post_fraction > 0.0 {
+        (0.08 - post_fraction) / 0.08
+    } else {
+        0.0
+    };
+    score += near_dead * (0.74 + 1.36 * scarcity);
+
+    let obsolete_gap = if post > 0.0 && post < item {
+        let absolute = (item - post) / capacity;
+        let normalized = absolute.min(0.5);
+        let curvature = normalized * (1.0 - normalized * 1.45);
+        curvature * (1.45 + 2.10 * scarcity)
+    } else {
+        0.0
+    };
+    score += obsolete_gap;
+
+    let residual_floor = if residual_fraction < 0.10 && residual > 0.0 {
+        let normalized = (0.10 - residual_fraction) / 0.10;
+        normalized * normalized * (1.25 + 1.80 * scarcity)
+    } else {
+        0.0
+    };
+    score += residual_floor;
+
+    let balanced_post = if post > 0.0 {
+        let ideal = (item.min(next.max(item)) / capacity).clamp(0.05, 0.45);
+        let distance = (post_fraction - ideal).abs();
+        distance * distance * (0.68 + 0.42 * scarcity)
+    } else {
+        0.0
+    };
+    score += balanced_post;
+
+    let near_exact = if post > 0.0 && next > 0.0 {
+        let miss = (post - next).abs() / capacity;
+        if miss < 0.025 {
+            (0.025 - miss) / 0.025
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+    score -= near_exact * (0.72 + 0.28 * progress);
+
+    let landing_bonus = if residual_fraction > 0.0 && residual_fraction < 0.32 {
+        let x = residual_fraction / 0.32;
+        (1.0 - x) * (1.0 - x) * (0.52 + 0.36 * scarcity)
+    } else {
+        0.0
+    };
+    score -= landing_bonus;
+
+    let next_bridge = if next > 0.0 && post < next {
+        let gap = next - post;
+        let quality = 1.0 - (gap / capacity).min(1.0);
+        quality * quality * (0.40 + 0.30 * scarcity)
+    } else {
+        0.0
+    };
+    score -= next_bridge;
+
+    let viable = if post >= smallest_known {
+        1.0
+    } else {
+        (post / smallest_known.max(1.0)).min(1.0)
+    };
+    score += (1.0 - viable) * (0.55 + 0.85 * scarcity);
+
+    let residual_gap_to_item = (residual - item).max(0.0) / capacity;
+    let residual_atomicity = if residual > 0.0 {
+        let gap_penalty = (1.0 - (residual_gap_to_item / 0.35).min(1.0)).max(0.0);
+        let useful_next = if next > 0.0 && residual + 0.5 >= next { 1.0 } else { 0.0 };
+        gap_penalty * (1.0 - 0.55 * useful_next)
+    } else {
+        0.0
+    };
+    score += residual_atomicity * (0.42 + 0.70 * scarcity);
+
+    let empty_excess = if is_empty != 0 {
+        (1.0 - (item / capacity).min(1.0)) * (1.0 - progress)
+    } else {
+        0.0
+    };
+    score += empty_excess * 0.55;
+
+    let item_fraction = (item / capacity).clamp(0.0, 1.0);
+    let next_known_fraction = if next > 0.0 {
+        (next / capacity).clamp(0.0, 1.0)
+    } else {
+        item_fraction
+    };
+
+    // Prefer residuals that can be closed by the current or next known item,
+    // while preserving moderate capacity for otherwise unseen items.
+    let close_window = if next > 0.0 {
+        item_fraction.max(next_known_fraction)
+    } else {
+        item_fraction
+    };
+    let closure_quality = if residual > 0.0 && residual <= close_window + 1.0 {
+        1.0 - ((residual - item).max(0.0) / capacity).min(0.35) / 0.35
+    } else {
+        0.0
+    };
+    score -= closure_quality * (0.46 + 0.30 * (1.0 - progress));
+
+    // A residual just below the next item is valuable when their difference
+    // is small; a larger miss is fragmentation and receives a stronger cost.
+    if next > 0.0 && residual < next {
+        let miss = (next - residual) / capacity;
+        let near_bridge = if miss <= 0.20 {
+            (1.0 - miss / 0.20).powi(2)
+        } else {
+            0.0
+        };
+        score -= near_bridge * (0.42 + 0.28 * scarcity);
+    }
+
+    // Model the probability that a leftover misses several plausible future
+    // sizes, using both the mean residual and the next-item distance.
+    let residual_to_mean = (residual - mean_residual).abs() / capacity;
+    let mean_miss = if residual < mean_residual {
+        1.0 - residual_to_mean.min(1.0)
+    } else {
+        0.0
+    };
+    let fragmentation = if residual > 0.0 {
+        let unobserved_risk = if next > 0.0 {
+            let miss = (residual - next).abs() / capacity;
+            1.0 - miss.min(1.0)
+        } else {
+            0.5
+        };
+        ((mean_miss * 0.6 + unobserved_risk * 0.4) * residual_fraction).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    score += fragmentation * (0.54 + 0.42 * scarcity);
+
+    // Empty-bin opening is justified only when the current item is large or
+    // when existing fitting capacity is nearly exhausted.
+    if is_empty != 0 {
+        let open_pressure = if fitting_bins_count == 0 {
+            1.0
+        } else if fitting_bins_count == 1 {
+            0.34
+        } else {
+            0.0
+        };
+        score += open_pressure * (0.52 + 0.88 * item_fraction);
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5000_evolution.json.tmp

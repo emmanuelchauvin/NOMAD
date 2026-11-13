@@ -1,0 +1,77 @@
+2026-11-13T16:03:59.419632Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5034, Pop=85, MaxGens=1
+2026-11-13T16:14:09.006488Z  INFO nomad_orchestrator::engine: Evaluating winning capsule a241cf179fb04a89 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5034 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4157 bins (excess: +112), Efficiency: 97.31%, Fuel: 59821920
+ Best In-Dist (w/o Lookahead) : 4233 bins (excess: +188), Efficiency: 95.56%
+ Dynamic Trajectory: tLDR = 1.0044
+ Behavior Profile : DeadSpaceRatio: 36.0%, NewBinRatio: 41.6%, ResVar: 0.43
+ MAP-Elites Niches: 9 active (9.0% coverage), QD-Score: 7.337
+ Validation Score : 4141 bins (excess: +111), Efficiency: 97.32%
+ OOD-1 Score      : 10169 bins (excess: +122), Efficiency: 98.80%
+ OOD-2 Score      : 3610 bins (excess: +62), Efficiency: 98.29%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-069
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let residual = bin_residual as f64;
+    let mean = mean_residual.max(0.0).min(capacity);
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    };
+
+    let utilization = (item / capacity).clamp(0.0, 1.0);
+    let waste_ratio = (post_residual as f64 / capacity).clamp(0.0, 1.0);
+    let tightness = (residual / capacity).clamp(0.0, 1.0);
+    let relative_gap = ((post_residual as f64) - mean).abs();
+    let state_interaction = utilization * tightness * (1.0 - progress)
+        + (1.0 - utilization) * progress * 0.35;
+    let mean_pressure = (mean / capacity).clamp(0.0, 1.0) * (1.0 + 0.25 * progress);
+
+    score += 7.5 * waste_ratio;
+    score -= 4.0 * utilization;
+    score -= 0.75 * relative_gap;
+    score += 2.25 * state_interaction;
+    score += 1.35 * mean_pressure * (1.0 - utilization);
+
+    if post_residual > 0 && post_residual < item.min(next_item_size.max(1)) {
+        score += 18.0 + 12.0 * waste_ratio;
+    } else if post_residual == 0 {
+        score -= 9.0;
+    }
+
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            score -= 5.0 + 3.0 * (next_item_size as f64 / capacity);
+        } else {
+            score += 3.0 + 5.0 * (1.0 - post_residual as f64 / capacity);
+        }
+    }
+
+    if fitting_bins_count == 1 {
+        score -= 11.0 * (1.0 - progress);
+    } else if fitting_bins_count == 0 {
+        score += 16.0;
+    }
+
+    if bin_residual == bin_capacity {
+        score += 8.0 + 5.0 * progress;
+        score -= 3.0 * (1.0 - progress);
+        if open_bins_count == 0 {
+            score -= 25.0;
+        }
+    }
+
+    score += 0.04 * (open_bins_count as f64).sqrt();
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\tirage\run_seed_5034_tirage.json.tmp

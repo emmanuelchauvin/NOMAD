@@ -1,0 +1,151 @@
+2026-11-13T16:24:03.382614Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5034, Pop=8, MaxGens=10
+2026-11-13T16:40:09.509105Z  INFO nomad_orchestrator::engine: Evaluating winning capsule b3fcc6087a5c2a12 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5034 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4202 bins (excess: +157), Efficiency: 96.27%, Fuel: 56960395
+ Best In-Dist (w/o Lookahead) : 4229 bins (excess: +184), Efficiency: 95.65%
+ Dynamic Trajectory: tLDR = 0.5255
+ Behavior Profile : DeadSpaceRatio: 65.8%, NewBinRatio: 42.0%, ResVar: 0.47
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.717
+ Validation Score : 4187 bins (excess: +157), Efficiency: 96.25%
+ OOD-1 Score      : 10411 bins (excess: +364), Efficiency: 96.50%
+ OOD-2 Score      : 3624 bins (excess: +76), Efficiency: 97.90%
+ Lineage Nodes    : 85, Transitions: 63
+ Best Heuristic   : LLM-Seed-008-mut-g7-mut-g9
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let after = post_residual as f64;
+    let mean = mean_residual.clamp(0.0, capacity);
+    let residual = bin_residual as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    };
+
+    let item_fraction = (item / capacity).clamp(0.0, 1.0);
+    let after_fraction = (after / capacity).clamp(0.0, 1.0);
+    let mean_fraction = (mean / capacity).clamp(0.0, 1.0);
+    let next_fraction = (next_item_size as f64 / capacity).clamp(0.0, 1.0);
+
+    let mut score = 74.0 * after_fraction.sqrt();
+    let next_gap = (next_item_size as f64 - after).max(0.0);
+    let dead_fraction = (next_gap / capacity).min(1.0);
+
+    score += 30.0 * dead_fraction;
+    score += 9.0 * after_fraction * (1.0 - next_fraction);
+
+    let residue_gap = mean_fraction - after_fraction;
+    score += (18.0 + 17.0 * progress * progress) * residue_gap.max(0.0);
+    score += 8.0 * (-residue_gap).max(0.0);
+
+    let snug = (1.0 - residual / capacity).powi(2);
+    score += 18.0 * item_fraction * snug;
+
+    if after == 0.0 {
+        score -= 57.0;
+    } else if after < item * 0.45 {
+        score += 24.0;
+    } else if after < item {
+        score += 8.0;
+    }
+
+    if next_item_size > 0 {
+        let next = next_item_size as f64;
+        if after < next {
+            score += 14.0 + 38.0 * ((next - after) / capacity) + 9.0 * next_fraction;
+            score += 10.0 * (1.0 - progress);
+        } else {
+            score -= 15.0;
+            score -= 7.0 * ((after - next) / capacity).clamp(0.0, 1.0);
+        }
+
+        let stranded = (after / next).min(1.0);
+        score += 25.0 * (1.0 - stranded).powi(2);
+    }
+
+    score -= 0.16 * (residual - mean);
+    score += 9.0 * (mean_fraction - residual / capacity).abs();
+
+    if fitting_bins_count == 1 && !is_new_bin {
+        score += 10.0 + 14.0 * (1.0 - progress);
+        if next_item_size > 0 && after < next_item_size as f64 {
+            score += 11.0 * (1.0 - progress);
+        }
+    }
+
+    if is_new_bin {
+        score += 43.0 + 12.0 * (1.0 - progress);
+        score += 13.0 * (1.0 - mean_fraction);
+
+        if open_bins_count == 0 {
+            score -= 68.0;
+        } else if fitting_bins_count > 1 {
+            let scarcity = (open_bins_count as f64).sqrt();
+            let fragmentation = (mean_fraction - after_fraction).abs();
+            score += 2.5 * fitting_bins_count as f64 * scarcity;
+            score += 9.0 * fragmentation;
+        }
+
+        if item_fraction > 0.48 && fitting_bins_count > 1 {
+            score -= 4.0 * fitting_bins_count as f64;
+        }
+    }
+
+    let pressure = (mean - item).max(0.0);
+    score -= 0.34 * pressure * (open_bins_count.max(1) as f64).sqrt();
+
+    let close_threshold = (item / 3.4).max(2.0);
+    if after < close_threshold {
+        score -= 21.0 - 6.0 * progress;
+    }
+    if after > 0.0 && after < capacity * 0.15 {
+        let unusable = next_item_size == 0 || after < next_item_size as f64;
+        if unusable {
+            score -= 13.0 * (1.0 - 0.45 * progress);
+        }
+    }
+
+    let closure_value = (1.0 - after_fraction).powi(2);
+    score -= 13.0 * progress * progress * closure_value;
+    score -= 4.0 * (1.0 - progress);
+
+    let residual_fraction = (residual / capacity).clamp(0.0, 1.0);
+    let useful_space = if next_item_size > 0 {
+        let next = next_item_size as f64;
+        if after >= next {
+            1.0
+        } else {
+            (after / next.max(1.0)).clamp(0.0, 1.0)
+        }
+    } else {
+        1.0
+    };
+    let orphaned = (1.0 - useful_space).powi(2) * residual_fraction;
+    score += 31.0 * orphaned;
+
+    let near_closure = (1.0 - (after / (item.max(1.0) * 0.5)).min(1.0)).powi(2);
+    score -= 17.0 * near_closure * progress;
+
+    let next_can_fit = next_item_size > 0 && after >= next_item_size as f64;
+    if next_can_fit && after <= capacity * 0.28 {
+        score -= 8.0 * (after / capacity) + 5.0 * progress;
+    }
+
+    if !is_new_bin && fitting_bins_count > 1 {
+        let best_gap = (after_fraction - mean_fraction).abs();
+        score += 11.0 * best_gap * (1.0 - 0.35 * progress);
+        if next_item_size > 0 {
+            score += 13.0 * ((after - next_item_size as f64).max(0.0) / capacity).min(1.0);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5034_evolution.json.tmp

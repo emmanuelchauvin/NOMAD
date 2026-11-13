@@ -1,0 +1,78 @@
+2026-11-13T16:57:04.099800Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5187, Pop=8, MaxGens=10
+2026-11-13T17:10:01.371074Z  INFO nomad_orchestrator::engine: Evaluating winning capsule aa7caecd45621480 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5187 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4159 bins (excess: +136), Efficiency: 96.73%, Fuel: 75043388
+ Best In-Dist (w/o Lookahead) : 4219 bins (excess: +196), Efficiency: 95.36%
+ Dynamic Trajectory: tLDR = 1.3443
+ Behavior Profile : DeadSpaceRatio: 3.4%, NewBinRatio: 41.6%, ResVar: 0.60
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 7.450
+ Validation Score : 4150 bins (excess: +119), Efficiency: 97.14%
+ OOD-1 Score      : 10087 bins (excess: +60), Efficiency: 99.41%
+ OOD-2 Score      : 3595 bins (excess: +64), Efficiency: 98.23%
+ Lineage Nodes    : 85, Transitions: 45
+ Best Heuristic   : LLM-Seed-007
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        step_index as f64 / total_items as f64
+    };
+
+    let residual = bin_residual as f64;
+    let capacity = bin_capacity.max(1) as f64;
+    let mean = mean_residual.max(0.0);
+    let open_bins = open_bins_count as f64;
+    let fitting = fitting_bins_count as f64;
+    let next_size = next_item_size as f64;
+
+    let unusable_gap = if post_residual == 0 {
+        0.0
+    } else if post_residual < next_size && next_size > 0.0 {
+        (next_size - post_residual as f64).max(0.0)
+    } else {
+        0.0
+    };
+    score += 3.5 * unusable_gap;
+
+    let dead_fraction = post_residual as f64 / capacity;
+    score += 18.0 * dead_fraction * dead_fraction;
+
+    let occupancy = item_size as f64 / capacity;
+    score -= 8.0 * occupancy;
+
+    let mean_gap = (mean - post_residual as f64).max(0.0);
+    score += 0.45 * mean_gap;
+
+    let pressure = (open_bins / (open_bins + 4.0)).min(1.0);
+    score += 4.0 * pressure * (post_residual as f64 / capacity);
+
+    if fitting <= 1.0 && fitting > 0.0 {
+        score -= 10.0 * occupancy;
+        score -= 2.0 * pressure;
+    }
+
+    if open_bins > 1.0 && mean > residual * 0.5 {
+        score += 1.5 * (mean - residual * 0.5).max(0.0) / capacity;
+    }
+
+    if next_size > 0.0 {
+        let next_fit = if post_residual >= next_item_size {
+            -2.0 * (next_item_size as f64 / capacity)
+        } else {
+            1.5 * (next_item_size as f64 / capacity)
+        };
+        score += next_fit;
+    }
+
+    score += 2.0 * progress * (post_residual as f64 / capacity);
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5187_evolution.json.tmp
