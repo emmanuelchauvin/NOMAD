@@ -134,8 +134,9 @@ impl<'a> EvolutionEngine<'a> {
 
     /// Associe un oracle de scheduling multi-ressources au moteur d'évolution.
     pub fn with_scheduling_oracle(mut self, sched_oracle: &'a SchedulingOracle) -> Self {
+        // L'archive garde le domaine de la configuration : fournir l'oracle d'ordonnancement
+        // ne change pas le probleme traite (les campagnes le fournissent dans tous les cas).
         self.scheduling_oracle = Some(sched_oracle);
-        self.archive.domain = nomad_core::ProblemDomain::MultiResourceScheduling;
         self
     }
 
@@ -533,7 +534,7 @@ impl<'a> EvolutionEngine<'a> {
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
                     let parent = self
                         .archive
-                        .select_parent_ucb(rng)
+                        .select_parent(self.config.parent_selection, rng)
                         .unwrap_or_else(|| current_pop[0].capsule.clone());
                     let seed = rand::Rng::gen(rng);
                     let lineage = self.lineages.get_lineage(&parent.id);
@@ -587,7 +588,7 @@ impl<'a> EvolutionEngine<'a> {
                     mutations_done += 1;
                     let parent = self
                         .archive
-                        .select_parent_ucb(rng)
+                        .select_parent(self.config.parent_selection, rng)
                         .unwrap_or_else(|| current_pop[0].capsule.clone());
                     let seed = rand::Rng::gen(rng);
                     let lineage = self.lineages.get_lineage(&parent.id);
@@ -648,7 +649,7 @@ impl<'a> EvolutionEngine<'a> {
                     // 2.1 Parent A selection via UCB curiosity
                     let parent_a = self
                         .archive
-                        .select_parent_ucb(rng)
+                        .select_parent(self.config.parent_selection, rng)
                         .unwrap_or_else(|| current_pop[0].capsule.clone());
 
                     let parent_a_score = self

@@ -25,6 +25,29 @@ fn default_constant_opt_excess() -> usize {
     50
 }
 
+/// Regle de choix du parent d'une mutation parmi les elites de l'archive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ParentSelection {
+    /// Selection par rang : le meilleur elite a une chance sur deux, le suivant une sur
+    /// quatre, etc. La pression de selection est forte et ne depend pas de l'echelle des scores.
+    #[default]
+    Rank,
+    /// Curiosite UCB sur les niches (regle des campagnes Weibull v1 et v2). Le bonus
+    /// d'exploration y domine les ecarts de qualite : les niches sont visitees presque
+    /// uniformement. Conservee pour reproduire ces campagnes (`NOMAD_PARENT_SELECTION=ucb`).
+    Ucb,
+}
+
+impl ParentSelection {
+    /// Lit `NOMAD_PARENT_SELECTION` (`rank` par defaut, `ucb` pour l'ancienne regle).
+    pub fn from_env() -> Self {
+        match std::env::var("NOMAD_PARENT_SELECTION") {
+            Ok(v) if v.trim().eq_ignore_ascii_case("ucb") => Self::Ucb,
+            _ => Self::Rank,
+        }
+    }
+}
+
 /// Configuration for an evolutionary run according to the pre-registered protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExperimentConfig {
@@ -75,6 +98,9 @@ pub struct ExperimentConfig {
     /// Seuil maximal d'excès de bacs par rapport au minimum théorique pour déclencher l'optimisation des constantes.
     #[serde(default = "default_constant_opt_excess")]
     pub constant_opt_excess_threshold: usize,
+    /// Regle de choix du parent d'une mutation (defaut : selection par rang).
+    #[serde(default)]
+    pub parent_selection: ParentSelection,
 }
 
 impl Default for ExperimentConfig {
@@ -103,6 +129,7 @@ impl Default for ExperimentConfig {
             lookahead: true,
             enable_constant_optimization: false,
             constant_opt_excess_threshold: 50,
+            parent_selection: ParentSelection::from_env(),
         }
     }
 }

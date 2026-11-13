@@ -3,7 +3,14 @@ use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use nomad_core::{BehaviorDescriptor, BenchmarkScore, ProblemDomain, SkillCapsule, StructuralFingerprint};
+use nomad_core::{
+    BehaviorDescriptor, BenchmarkScore, ParentSelection, ProblemDomain, SkillCapsule,
+    StructuralFingerprint,
+};
+
+/// Rapport geometrique de la selection par rang : chaque rang a moitie moins de chances
+/// que le precedent.
+const RANK_SELECTION_RATIO: f64 = 0.5;
 
 /// ============================================================================
 /// ArchiveEntry : Représentant Élite d'une Niche Comportementale
@@ -196,6 +203,51 @@ impl MapElitesArchive {
     /// Échantillonne un parent selon le principe Upper Confidence Bound (Section 3.3) :
     /// UCB(niche) = Qualité(niche) + c * sqrt(ln(N_total) / N_niche)
     /// Équilibre l'exploitation des meilleures niches et l'exploration des niches sous-échantillonnées.
+    /// Choisit le parent d'une mutation selon la regle demandee.
+    pub fn select_parent(
+        &mut self,
+        mode: ParentSelection,
+        rng: &mut ChaCha8Rng,
+    ) -> Option<SkillCapsule> {
+        match mode {
+            ParentSelection::Rank => self.select_parent_rank(rng),
+            ParentSelection::Ucb => self.select_parent_ucb(rng),
+        }
+    }
+
+    /// Selection par rang. Les elites sont classes du meilleur au moins bon ; le rang r est
+    /// tire avec un poids `RANK_SELECTION_RATIO^r`. Le meilleur elite recoit ainsi au moins
+    /// la moitie des mutations, et un elite tres inferieur n'en recoit presque aucune.
+    pub fn select_parent_rank(&mut self, rng: &mut ChaCha8Rng) -> Option<SkillCapsule> {
+        if self.grid.is_empty() {
+            return None;
+        }
+        self.total_samples += 1;
+
+        // Tri deterministe : par fitness, puis par cle de niche en cas d'egalite.
+        let mut ranked: Vec<(&String, &ArchiveEntry)> = self.grid.iter().collect();
+        ranked.sort_by(|a, b| a.1.fitness.cmp(&b.1.fitness).then_with(|| a.0.cmp(b.0)));
+
+        let weights: Vec<f64> = (0..ranked.len())
+            .map(|r| RANK_SELECTION_RATIO.powi(r as i32))
+            .collect();
+        let total: f64 = weights.iter().sum();
+        let mut draw = rng.gen_range(0.0..total);
+        let mut chosen = ranked.len() - 1;
+        for (r, w) in weights.iter().enumerate() {
+            if draw < *w {
+                chosen = r;
+                break;
+            }
+            draw -= w;
+        }
+
+        let key = ranked[chosen].0.clone();
+        let entry = self.grid.get_mut(&key)?;
+        entry.times_sampled += 1;
+        Some(entry.capsule.clone())
+    }
+
     pub fn select_parent_ucb(&mut self, rng: &mut ChaCha8Rng) -> Option<SkillCapsule> {
         if self.grid.is_empty() {
             return None;
@@ -400,6 +452,84 @@ mod tests {
         // Test UCB selection
         let parent = archive.select_parent_ucb(&mut rng).unwrap();
         assert_eq!(parent.id, cap3.id);
+    }
+
+    /// Archive de quatre niches dont les elites utilisent 4 100, 4 200, 4 600 et 8 700 bacs.
+    fn archive_with_four_elites() -> (MapElitesArchive, Vec<nomad_core::CapsuleId>) {
+        let mut archive = MapElitesArchive::new(10, 10);
+        let mut ids = Vec::new();
+        for (i, bins) in [4_100usize, 4_200, 4_600, 8_700].into_iter().enumerate() {
+            let capsule = SkillCapsule::new(
+                format!("Cap{}", i),
+                "Desc",
+                format!("code {}", i),
+                vec![],
+                1,
+                HashMap::new(),
+            );
+            ids.push(capsule.id.clone());
+            let fitness = BenchmarkScore {
+                is_valid: true,
+                total_bins: bins,
+                total_theoretical_min_bins: 4_000,
+                total_excess_bins: bins - 4_000,
+                mean_efficiency: 4_000.0 / bins as f64,
+                total_fuel: 10_000,
+                solved_instances: 10,
+                total_instances: 10,
+                behavior: BehaviorDescriptor {
+                    residual_variance: 1.0,
+                    new_bin_ratio: 0.30,
+                    mean_fullness: 0.90,
+                    dead_space_ratio: 0.05,
+                },
+                tldr_score: 0.9,
+                trajectory_metrics: None,
+            };
+            archive.grid.insert(
+                format!("{},0", i),
+                ArchiveEntry {
+                    capsule,
+                    niche_coord: (i, 0),
+                    behavior: fitness.behavior.clone(),
+                    fitness,
+                    structural_fingerprint: None,
+                    times_sampled: 0,
+                    times_replaced: 0,
+                },
+            );
+        }
+        (archive, ids)
+    }
+
+    fn parent_shares(mode: ParentSelection, draws: usize) -> Vec<f64> {
+        let (mut archive, ids) = archive_with_four_elites();
+        let mut rng = ChaCha8Rng::seed_from_u64(7);
+        let mut counts = vec![0usize; ids.len()];
+        for _ in 0..draws {
+            let parent = archive.select_parent(mode, &mut rng).unwrap();
+            counts[ids.iter().position(|id| *id == parent.id).unwrap()] += 1;
+        }
+        counts.iter().map(|&c| c as f64 / draws as f64).collect()
+    }
+
+    #[test]
+    fn rank_selection_concentrates_mutations_on_best_elites() {
+        let shares = parent_shares(ParentSelection::Rank, 2_000);
+        assert!(shares[0] > 0.45, "best elite share {:?}", shares);
+        assert!(shares[0] > shares[1] && shares[1] > shares[2] && shares[2] > shares[3]);
+        assert!(shares[3] < 0.12, "worst elite share {:?}", shares);
+    }
+
+    #[test]
+    fn ucb_selection_wastes_mutations_on_poor_elites_at_small_budget() {
+        // Defaut documente de l'ancienne regle au budget d'un run (une centaine de tirages) :
+        // le bonus d'exploration domine, le meilleur elite recoit moins de la moitie des
+        // mutations et les deux moins bons en recoivent davantage qu'avec la selection par rang.
+        let ucb = parent_shares(ParentSelection::Ucb, 100);
+        let rank = parent_shares(ParentSelection::Rank, 100);
+        assert!(ucb[0] < 0.45 && rank[0] > 0.50, "ucb {:?} rank {:?}", ucb, rank);
+        assert!(ucb[2] + ucb[3] > rank[2] + rank[3], "ucb {:?} rank {:?}", ucb, rank);
     }
 
     #[test]

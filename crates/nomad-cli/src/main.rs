@@ -1459,6 +1459,10 @@ fn main() -> Result<()> {
                 ExperimentConfig::default().fuel_limit_per_call
             );
             println!(
+                " Parent select   : {:?}",
+                ExperimentConfig::default().parent_selection
+            );
+            println!(
                 " BP profile      : {}",
                 std::env::var("NOMAD_BP_PROFILE").unwrap_or_else(|_| "default".to_string())
             );
