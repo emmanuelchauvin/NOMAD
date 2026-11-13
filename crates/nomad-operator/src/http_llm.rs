@@ -226,11 +226,18 @@ impl HttpLlamaOperator {
 
         // Champs supplementaires propres a un fournisseur (`NOMAD_LLM_EXTRA_BODY`, objet JSON),
         // par exemple `{"reasoning_effort":"low"}`. Ils completent ou remplacent ceux ci-dessus.
+        // Une valeur `null` retire le champ : `{"seed":null}` pour une API qui refuse `seed`.
         let mut request_body = serde_json::to_value(&request_body)
             .map_err(|e| OperatorError::InferenceError(format!("Invalid request body: {}", e)))?;
         if let Some(extra) = extra_body_from_env()? {
             if let Some(body) = request_body.as_object_mut() {
-                body.extend(extra);
+                for (key, value) in extra {
+                    if value.is_null() {
+                        body.remove(&key);
+                    } else {
+                        body.insert(key, value);
+                    }
+                }
             }
         }
 
