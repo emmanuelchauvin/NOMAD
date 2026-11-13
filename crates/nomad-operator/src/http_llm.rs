@@ -56,6 +56,19 @@ struct ChatMessage<'a> {
 #[derive(Deserialize)]
 struct ChatCompletionResponse {
     choices: Vec<Choice>,
+    #[serde(default)]
+    usage: Option<TokenUsage>,
+}
+
+/// Compteurs de tokens renvoyes par l'API (champ `usage` du format OpenAI).
+#[derive(Deserialize, Default, Clone, Copy)]
+struct TokenUsage {
+    #[serde(default)]
+    prompt_tokens: u64,
+    #[serde(default)]
+    completion_tokens: u64,
+    #[serde(default)]
+    total_tokens: u64,
 }
 
 #[derive(Deserialize)]
@@ -65,7 +78,8 @@ struct Choice {
 
 #[derive(Deserialize)]
 struct MessageContent {
-    content: String,
+    #[serde(default)]
+    content: Option<String>,
 }
 
 /// Local LLM operator connecting to llama.cpp (or compatible `/v1/chat/completions` endpoint)
@@ -80,6 +94,66 @@ pub struct HttpLlamaOperator {
     pub top_p: f64,
     pub timeout: Duration,
     pub domain: ProblemDomain,
+    /// Cle d'API envoyee en `Authorization: Bearer` (API distante). `None` pour Ollama local.
+    pub api_key: Option<ApiKey>,
+    /// Fichier JSONL ou chaque appel ajoute ses compteurs de tokens (`NOMAD_USAGE_LOG`).
+    pub usage_log: Option<std::path::PathBuf>,
+}
+
+/// Cle d'API. `Debug` ne l'affiche jamais, pour qu'elle ne fuie pas dans un journal.
+#[derive(Clone)]
+pub struct ApiKey(String);
+
+impl std::fmt::Debug for ApiKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ApiKey(***)")
+    }
+}
+
+/// Lit la cle d'API dans la variable d'environnement nommee par `NOMAD_API_KEY_ENV`
+/// (par exemple `NOMAD_API_KEY_ENV=MINIMAX_API_KEY`). La cle n'est jamais ecrite sur disque.
+fn api_key_from_env() -> Option<ApiKey> {
+    let var_name = std::env::var("NOMAD_API_KEY_ENV").ok()?;
+    std::env::var(var_name.trim())
+        .ok()
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty())
+        .map(ApiKey)
+}
+
+/// Delai d'attente d'une reponse, 180 s par defaut. `NOMAD_LLM_TIMEOUT_SECS` le remplace
+/// (les modeles a raisonnement long peuvent depasser 180 s).
+fn timeout_from_env() -> Duration {
+    let secs = std::env::var("NOMAD_LLM_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|&s| s > 0)
+        .unwrap_or(180);
+    Duration::from_secs(secs)
+}
+
+/// Lit `NOMAD_LLM_EXTRA_BODY`. Une valeur presente mais invalide est une erreur : un run
+/// ne doit pas partir avec un reglage de modele different de celui demande.
+fn extra_body_from_env() -> Result<Option<serde_json::Map<String, serde_json::Value>>, OperatorError> {
+    let Ok(raw) = std::env::var("NOMAD_LLM_EXTRA_BODY") else {
+        return Ok(None);
+    };
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+    match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(serde_json::Value::Object(map)) => Ok(Some(map)),
+        _ => Err(OperatorError::InferenceError(
+            "NOMAD_LLM_EXTRA_BODY must be a JSON object".to_string(),
+        )),
+    }
+}
+
+fn usage_log_from_env() -> Option<std::path::PathBuf> {
+    std::env::var("NOMAD_USAGE_LOG")
+        .ok()
+        .filter(|p| !p.trim().is_empty())
+        .map(std::path::PathBuf::from)
 }
 
 impl Default for HttpLlamaOperator {
@@ -91,8 +165,10 @@ impl Default for HttpLlamaOperator {
             engine_version: "llama.cpp server v1.0".to_string(),
             temperature: 0.7,
             top_p: 0.95,
-            timeout: Duration::from_secs(180),
+            timeout: timeout_from_env(),
             domain: ProblemDomain::BinPacking1D,
+            api_key: api_key_from_env(),
+            usage_log: usage_log_from_env(),
         }
     }
 }
@@ -113,8 +189,10 @@ impl HttpLlamaOperator {
             engine_version: engine_version.into(),
             temperature,
             top_p,
-            timeout: Duration::from_secs(180),
+            timeout: timeout_from_env(),
             domain: ProblemDomain::BinPacking1D,
+            api_key: api_key_from_env(),
+            usage_log: usage_log_from_env(),
         }
     }
 
@@ -146,14 +224,26 @@ impl HttpLlamaOperator {
             seed: (seed & 0x7FFF_FFFF) as i64,
         };
 
+        // Champs supplementaires propres a un fournisseur (`NOMAD_LLM_EXTRA_BODY`, objet JSON),
+        // par exemple `{"reasoning_effort":"low"}`. Ils completent ou remplacent ceux ci-dessus.
+        let mut request_body = serde_json::to_value(&request_body)
+            .map_err(|e| OperatorError::InferenceError(format!("Invalid request body: {}", e)))?;
+        if let Some(extra) = extra_body_from_env()? {
+            if let Some(body) = request_body.as_object_mut() {
+                body.extend(extra);
+            }
+        }
+
         let max_attempts = 3;
         let mut last_err = String::new();
 
         for attempt in 1..=max_attempts {
-            match ureq::post(&self.endpoint)
-                .timeout(self.timeout)
-                .send_json(&request_body)
-            {
+            let started = std::time::Instant::now();
+            let mut request = ureq::post(&self.endpoint).timeout(self.timeout);
+            if let Some(key) = &self.api_key {
+                request = request.set("Authorization", &format!("Bearer {}", key.0));
+            }
+            match request.send_json(&request_body) {
                 Ok(resp) => {
                     let response: ChatCompletionResponse = resp.into_json().map_err(|e| {
                         OperatorError::InferenceError(format!(
@@ -162,10 +252,12 @@ impl HttpLlamaOperator {
                         ))
                     })?;
 
+                    self.record_usage(response.usage, started.elapsed());
+
                     let raw_text = response
                         .choices
                         .first()
-                        .map(|c| c.message.content.clone())
+                        .and_then(|c| c.message.content.clone())
                         .ok_or_else(|| {
                             OperatorError::InferenceError(
                                 "Empty choices returned by LLM".to_string(),
@@ -200,8 +292,38 @@ impl HttpLlamaOperator {
         )))
     }
 
+    /// Ajoute une ligne JSON par appel dans `usage_log` (tokens et duree). Sans effet si le
+    /// fichier n'est pas configure. Une erreur d'ecriture n'interrompt jamais un run.
+    fn record_usage(&self, usage: Option<TokenUsage>, elapsed: Duration) {
+        let Some(path) = &self.usage_log else {
+            return;
+        };
+        let u = usage.unwrap_or_default();
+        let line = serde_json::json!({
+            "timestamp": Utc::now().to_rfc3339(),
+            "model": self.model_name,
+            "prompt_tokens": u.prompt_tokens,
+            "completion_tokens": u.completion_tokens,
+            "total_tokens": u.total_tokens,
+            "usage_reported": usage.is_some(),
+            "elapsed_ms": elapsed.as_millis() as u64,
+        });
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            use std::io::Write;
+            let _ = writeln!(file, "{}", line);
+        }
+    }
+
+    /// Retire le raisonnement `<think>...</think>` que certains modeles placent avant la reponse.
+    fn strip_reasoning(raw: &str) -> &str {
+        match raw.rfind("</think>") {
+            Some(pos) => &raw[pos + "</think>".len()..],
+            None => raw,
+        }
+    }
+
     fn extract_code_block(raw: &str) -> String {
-        let trimmed = raw.trim();
+        let trimmed = Self::strip_reasoning(raw).trim();
         if let Some(start) = trimmed.find("```") {
             let after_start = &trimmed[start + 3..];
             let code_start = if let Some(newline_pos) = after_start.find('\n') {
@@ -760,6 +882,32 @@ Return ONLY the hybrid Rust function in a ```rust ... ``` code block."
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extract_code_block_ignores_reasoning_section() {
+        let raw = "<think>
+Maybe ```rust
+fn wrong() {}
+``` first.
+</think>
+```rust
+pub fn score_bin() -> f64 { 1.0 }
+```";
+        assert_eq!(
+            HttpLlamaOperator::extract_code_block(raw),
+            "pub fn score_bin() -> f64 { 1.0 }"
+        );
+        assert_eq!(HttpLlamaOperator::strip_reasoning("no reasoning"), "no reasoning");
+    }
+
+    #[test]
+    fn api_key_debug_is_redacted() {
+        let op = HttpLlamaOperator {
+            api_key: Some(ApiKey("secret-value".to_string())),
+            ..HttpLlamaOperator::default()
+        };
+        assert!(!format!("{:?}", op).contains("secret-value"));
+    }
 
     #[test]
     fn test_http_llama_operator_ast_normalization() {
