@@ -10,7 +10,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::meta::ReproducibilityAudit;
-use crate::operator::{OperatorError, SkillOperator};
+use crate::operator::{MutationContext, OperatorError, SkillOperator};
 use nomad_core::{
     LineageEvolutionState, MomentumAction, PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus,
 };
@@ -619,6 +619,17 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block wit
         seed: u64,
         lineage: Option<&LineageEvolutionState>,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
+        self.mutate_informed(parent, generation, seed, lineage, None)
+    }
+
+    fn mutate_informed(
+        &self,
+        parent: &SkillCapsule,
+        generation: usize,
+        seed: u64,
+        lineage: Option<&LineageEvolutionState>,
+        context: Option<&MutationContext>,
+    ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let is_sched = parent.logic_code.contains("score_node")
             || self.domain == ProblemDomain::MultiResourceScheduling;
 
@@ -674,6 +685,10 @@ Synthesize multiple complementary features: combine fine-grained residual fittin
             for line in profile_lines {
                 guidance_section.push_str(&format!("\n- {}", line));
             }
+        }
+
+        if let Some(ctx) = context {
+            guidance_section.push_str(&ctx.prompt_section());
         }
 
         let (system_prompt, user_prompt) = if is_sched {

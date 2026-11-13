@@ -11,7 +11,7 @@ use nomad_evaluator::{
     validate_anti_dead_code_3levels_with_score, OracleEvaluator, SchedulingOracle,
 };
 use nomad_genome::PhylogenyGraph;
-use nomad_operator::SkillOperator;
+use nomad_operator::{MutationContext, SkillOperator};
 use nomad_sandbox::HeuristicSandbox;
 
 use crate::error::OrchestratorError;
@@ -103,6 +103,10 @@ pub struct EvolutionEngine<'a> {
     pub crossover_attempts: usize,
     pub crossover_not_evaluable_count: usize,
     pub crossover_rejected_count: usize,
+    /// Generations consecutives sans nouveau meilleur score a l'entrainement.
+    pub stagnant_generations: usize,
+    /// Index de la prochaine proposition fraiche (prolonge le cycle des archetypes).
+    pub fresh_seed_counter: usize,
 }
 
 impl<'a> EvolutionEngine<'a> {
@@ -129,6 +133,8 @@ impl<'a> EvolutionEngine<'a> {
             crossover_attempts: 0,
             crossover_not_evaluable_count: 0,
             crossover_rejected_count: 0,
+            stagnant_generations: 0,
+            fresh_seed_counter: 0,
         }
     }
 
@@ -205,6 +211,9 @@ impl<'a> EvolutionEngine<'a> {
 
             if is_new_global_best {
                 best_overall = Some(top_individual.clone());
+                self.stagnant_generations = 0;
+            } else {
+                self.stagnant_generations += 1;
             }
 
             let qd_score = self.archive.qd_score();
@@ -336,16 +345,39 @@ impl<'a> EvolutionEngine<'a> {
         })
     }
 
+    /// Resultats mesures du parent et meilleur programme connu, pour la mutation informee.
+    fn mutation_context(&self, parent: &SkillCapsule) -> Option<MutationContext> {
+        let elites = self.archive.all_elites();
+        let entry = elites.iter().find(|e| e.capsule.id == parent.id)?;
+        let best_other = self
+            .archive
+            .best_elite()
+            .filter(|b| b.capsule.id != parent.id && b.fitness.is_valid)
+            .map(|b| (b.capsule.logic_code.clone(), b.fitness.total_bins));
+        Some(MutationContext {
+            parent_valid: entry.fitness.is_valid,
+            parent_bins: entry.fitness.total_bins,
+            lower_bound_bins: entry.fitness.total_theoretical_min_bins,
+            best_other,
+        })
+    }
+
     fn initialize_population(
         &mut self,
         rng: &mut ChaCha8Rng,
     ) -> Result<Vec<EvaluatedIndividual>, OrchestratorError> {
-        let mut population = Vec::with_capacity(self.config.population_size);
+        let initial_size = if self.config.initial_population_size > 0 {
+            self.config.initial_population_size
+        } else {
+            self.config.population_size
+        };
+        self.fresh_seed_counter = initial_size;
+        let mut population = Vec::with_capacity(initial_size);
 
         // Anti-Inbreeding : 100% de nouvelles graines LLM-Seed sont générées à chaque époque
         // pour démarrer sur des fondations fraîches (Tabula Rasa), le patrimoine étant conservé
         // en lecture seule dans l'archive culturelle de référence.
-        for i in 0..self.config.population_size {
+        for i in 0..initial_size {
             let seed = rand::Rng::gen(rng);
             let (capsule, _audit) = self
                 .operator
@@ -531,17 +563,50 @@ impl<'a> EvolutionEngine<'a> {
                     .unwrap_or_else(|| current_pop[0].in_distribution_score.clone());
                 next_population.push(EvaluatedIndividual::new(elite, elite_score));
 
+                // Relance : apres `stagnation_patience` generations sans progres, une
+                // proposition sur deux est une proposition fraiche au lieu d'une mutation.
+                let inject_fresh = self.config.stagnation_patience > 0
+                    && self.stagnant_generations >= self.config.stagnation_patience;
+                let mut slot = 0usize;
+
                 while next_population.len() < pop_size && self.budget.can_invoke_llm(&self.config) {
+                    slot += 1;
+                    if inject_fresh && slot % 2 == 0 {
+                        let seed = rand::Rng::gen(rng);
+                        let index = self.fresh_seed_counter;
+                        self.fresh_seed_counter += 1;
+                        let (fresh, _) = self
+                            .operator
+                            .generate_seed(index, seed)
+                            .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
+
+                        self.budget.record_llm_call();
+                        self.throttle_cooldown();
+
+                        let (fresh, score) = self.evaluate_and_validate(fresh);
+                        let (fresh, score) = self.maybe_optimize_constants(fresh, score, seed);
+                        self.phylogeny.insert_capsule(&fresh);
+                        self.lineages.register_seed(fresh.id.clone());
+                        self.archive.insert(fresh.clone(), score.clone());
+                        next_population.push(EvaluatedIndividual::new(fresh, score));
+                        continue;
+                    }
+
                     let parent = self
                         .archive
                         .select_parent(self.config.parent_selection, rng)
                         .unwrap_or_else(|| current_pop[0].capsule.clone());
                     let seed = rand::Rng::gen(rng);
+                    let context = if self.config.informed_mutation {
+                        self.mutation_context(&parent)
+                    } else {
+                        None
+                    };
                     let lineage = self.lineages.get_lineage(&parent.id);
 
                     let (mutated, _) = self
                         .operator
-                        .mutate_with_lineage(&parent, next_gen_idx, seed, lineage)
+                        .mutate_informed(&parent, next_gen_idx, seed, lineage, context.as_ref())
                         .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
                     self.budget.record_llm_call();

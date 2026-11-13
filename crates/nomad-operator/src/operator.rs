@@ -49,6 +49,19 @@ pub trait SkillOperator: Send + Sync {
         lineage: Option<&LineageEvolutionState>,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError>;
 
+    /// Mutation informee : comme `mutate_with_lineage`, avec les resultats mesures du parent
+    /// et le meilleur programme connu. Par defaut, le contexte est ignore.
+    fn mutate_informed(
+        &self,
+        parent: &SkillCapsule,
+        generation: usize,
+        seed: u64,
+        lineage: Option<&LineageEvolutionState>,
+        _context: Option<&MutationContext>,
+    ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
+        self.mutate_with_lineage(parent, generation, seed, lineage)
+    }
+
     /// Performs horizontal Swarm Crossover between two parent capsules (Group C only).
     fn crossover(
         &self,
@@ -57,6 +70,47 @@ pub trait SkillOperator: Send + Sync {
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError>;
+}
+
+/// Resultats mesures sur le jeu d'entrainement, transmis au prompt de mutation informee.
+#[derive(Debug, Clone)]
+pub struct MutationContext {
+    /// Le parent est valide sur le jeu d'entrainement.
+    pub parent_valid: bool,
+    /// Bacs utilises par le parent.
+    pub parent_bins: usize,
+    /// Minimum theorique de bacs sur le meme jeu.
+    pub lower_bound_bins: usize,
+    /// Code et bacs du meilleur programme connu, s'il differe du parent.
+    pub best_other: Option<(String, usize)>,
+}
+
+impl MutationContext {
+    /// Section ajoutee au prompt de mutation.
+    pub fn prompt_section(&self) -> String {
+        let mut s = String::from("\n\n--- MEASURED RESULTS ON THE TRAINING SET (fewer bins is better) ---");
+        if self.parent_valid {
+            s.push_str(&format!(
+                "\n- This parent uses {} bins. The theoretical minimum is {} bins, so {} bins are wasted.",
+                self.parent_bins,
+                self.lower_bound_bins,
+                self.parent_bins.saturating_sub(self.lower_bound_bins)
+            ));
+        } else {
+            s.push_str("\n- This parent is INVALID on the training set (it crashes, exceeds its compute limit or breaks a constraint). Simplify it and fix it.");
+        }
+        match &self.best_other {
+            Some((code, bins)) => s.push_str(&format!(
+                "\n- The best heuristic found so far uses {} bins. Its code:\n```rust\n{}\n```\n\
+Your mutation is useful only if it uses fewer bins than its parent; aim for fewer than {} bins. You may borrow ideas from the best heuristic, but return a mutation of the PARENT.",
+                bins, code, bins
+            )),
+            None => s.push_str(
+                "\n- This parent is the best heuristic found so far. Small cosmetic edits will not beat it: change its logic in a meaningful way while keeping what makes it work.",
+            ),
+        }
+        s
+    }
 }
 
 /// Fully reproducible deterministic operator for testing, validation, and benchmarking.
@@ -371,5 +425,38 @@ impl SkillOperator for DeterministicMockOperator {
         );
 
         Ok((capsule, audit))
+    }
+}
+
+#[cfg(test)]
+mod mutation_context_tests {
+    use super::MutationContext;
+
+    #[test]
+    fn prompt_section_reports_scores_and_best_program() {
+        let ctx = MutationContext {
+            parent_valid: true,
+            parent_bins: 4227,
+            lower_bound_bins: 4049,
+            best_other: Some(("fn best() {}".to_string(), 4180)),
+        };
+        let s = ctx.prompt_section();
+        assert!(s.contains("4227 bins"));
+        assert!(s.contains("178 bins are wasted"));
+        assert!(s.contains("fn best() {}"));
+        assert!(s.contains("fewer than 4180 bins"));
+    }
+
+    #[test]
+    fn prompt_section_handles_best_and_invalid_parents() {
+        let best = MutationContext {
+            parent_valid: true,
+            parent_bins: 4100,
+            lower_bound_bins: 4049,
+            best_other: None,
+        };
+        assert!(best.prompt_section().contains("best heuristic found so far"));
+        let invalid = MutationContext { parent_valid: false, ..best };
+        assert!(invalid.prompt_section().contains("INVALID"));
     }
 }

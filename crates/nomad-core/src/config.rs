@@ -101,6 +101,26 @@ pub struct ExperimentConfig {
     /// Regle de choix du parent d'une mutation (defaut : selection par rang).
     #[serde(default)]
     pub parent_selection: ParentSelection,
+    /// Nombre de propositions fraiches de la population de depart. 0 : egal a
+    /// `population_size` (comportement historique). Variable `NOMAD_INIT_POP`.
+    #[serde(default)]
+    pub initial_population_size: usize,
+    /// Nombre de generations sans nouveau meilleur score apres lequel une proposition sur
+    /// deux redevient une proposition fraiche (groupe D). 0 : jamais (comportement
+    /// historique). Variable `NOMAD_STAGNATION_PATIENCE`.
+    #[serde(default)]
+    pub stagnation_patience: usize,
+    /// Si vrai, le prompt de mutation indique le score mesure du parent et le meilleur
+    /// programme connu (groupe D). Variable `NOMAD_INFORMED_MUTATION=1`.
+    #[serde(default)]
+    pub informed_mutation: bool,
+}
+
+fn env_usize(name: &str) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0)
 }
 
 impl Default for ExperimentConfig {
@@ -130,6 +150,9 @@ impl Default for ExperimentConfig {
             enable_constant_optimization: false,
             constant_opt_excess_threshold: 50,
             parent_selection: ParentSelection::from_env(),
+            initial_population_size: env_usize("NOMAD_INIT_POP"),
+            stagnation_patience: env_usize("NOMAD_STAGNATION_PATIENCE"),
+            informed_mutation: env_usize("NOMAD_INFORMED_MUTATION") == 1,
         }
     }
 }

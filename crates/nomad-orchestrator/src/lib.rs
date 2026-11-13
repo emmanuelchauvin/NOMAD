@@ -293,4 +293,164 @@ mod tests {
             assert!(gen_rec.crossover_rate >= 0.20);
         }
     }
+
+    #[test]
+    fn test_initial_population_size_is_independent_of_population_size() {
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupD,
+            rng_seed: 42,
+            population_size: 4,
+            max_generations: 3,
+            initial_population_size: 10,
+            stagnation_patience: 0,
+            informed_mutation: false,
+            ..Default::default()
+        };
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        let report = engine.execute_run().expect("Run execution should succeed");
+
+        // 10 propositions de depart, puis 2 generations de 3 mutations (l'elite est gratuit).
+        assert_eq!(report.generations_history[0].llm_calls_consumed, 10);
+        assert_eq!(report.budget_consumed.llm_calls_consumed, 10 + 2 * 3);
+        assert_eq!(engine.fresh_seed_counter, 10);
+    }
+
+    #[test]
+    fn test_stagnation_injects_fresh_proposals_within_the_same_budget() {
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupD,
+            rng_seed: 42,
+            population_size: 5,
+            max_generations: 8,
+            initial_population_size: 0,
+            stagnation_patience: 1,
+            informed_mutation: true,
+            ..Default::default()
+        };
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        let report = engine.execute_run().expect("Run execution should succeed");
+
+        // Le budget ne depend pas de la relance : 5 au depart, puis 7 generations de 4 appels.
+        assert_eq!(report.budget_consumed.llm_calls_consumed, 5 + 7 * 4);
+        // Avec une patience de 1, l'operateur de test stagne et declenche des relances.
+        assert!(
+            engine.fresh_seed_counter > 5,
+            "aucune proposition fraiche injectee (compteur {})",
+            engine.fresh_seed_counter
+        );
+    }
+
+    /// Operateur de test qui compte les mutations recues avec et sans contexte.
+    struct ContextProbe {
+        inner: DeterministicMockOperator,
+        with_context: std::sync::atomic::AtomicUsize,
+        with_best_other: std::sync::atomic::AtomicUsize,
+        without_context: std::sync::atomic::AtomicUsize,
+    }
+
+    impl nomad_operator::SkillOperator for ContextProbe {
+        fn generate_seed(
+            &self,
+            index: usize,
+            seed: u64,
+        ) -> Result<(nomad_core::SkillCapsule, nomad_operator::ReproducibilityAudit), nomad_operator::OperatorError>
+        {
+            self.inner.generate_seed(index, seed)
+        }
+
+        fn mutate_with_lineage(
+            &self,
+            parent: &nomad_core::SkillCapsule,
+            generation: usize,
+            seed: u64,
+            lineage: Option<&nomad_core::LineageEvolutionState>,
+        ) -> Result<(nomad_core::SkillCapsule, nomad_operator::ReproducibilityAudit), nomad_operator::OperatorError>
+        {
+            self.inner.mutate_with_lineage(parent, generation, seed, lineage)
+        }
+
+        fn mutate_informed(
+            &self,
+            parent: &nomad_core::SkillCapsule,
+            generation: usize,
+            seed: u64,
+            lineage: Option<&nomad_core::LineageEvolutionState>,
+            context: Option<&nomad_operator::MutationContext>,
+        ) -> Result<(nomad_core::SkillCapsule, nomad_operator::ReproducibilityAudit), nomad_operator::OperatorError>
+        {
+            use std::sync::atomic::Ordering;
+            match context {
+                Some(ctx) => {
+                    assert!(ctx.parent_bins > 0 && ctx.lower_bound_bins > 0);
+                    self.with_context.fetch_add(1, Ordering::Relaxed);
+                    if ctx.best_other.is_some() {
+                        self.with_best_other.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+                None => {
+                    self.without_context.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            self.inner.mutate_with_lineage(parent, generation, seed, lineage)
+        }
+
+        fn crossover(
+            &self,
+            parent_a: &nomad_core::SkillCapsule,
+            parent_b: &nomad_core::SkillCapsule,
+            generation: usize,
+            seed: u64,
+        ) -> Result<(nomad_core::SkillCapsule, nomad_operator::ReproducibilityAudit), nomad_operator::OperatorError>
+        {
+            self.inner.crossover(parent_a, parent_b, generation, seed)
+        }
+    }
+
+    fn probe_run(informed: bool) -> (usize, usize, usize) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupD,
+            rng_seed: 42,
+            population_size: 5,
+            max_generations: 6,
+            initial_population_size: 12,
+            stagnation_patience: 0,
+            informed_mutation: informed,
+            ..Default::default()
+        };
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = ContextProbe {
+            inner: DeterministicMockOperator::default(),
+            with_context: AtomicUsize::new(0),
+            with_best_other: AtomicUsize::new(0),
+            without_context: AtomicUsize::new(0),
+        };
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        engine.execute_run().expect("Run execution should succeed");
+        (
+            operator.with_context.load(Ordering::Relaxed),
+            operator.with_best_other.load(Ordering::Relaxed),
+            operator.without_context.load(Ordering::Relaxed),
+        )
+    }
+
+    #[test]
+    fn test_informed_mutation_passes_measured_context_to_the_operator() {
+        // 5 generations de 4 mutations, toutes informees.
+        let (with_context, with_best_other, without_context) = probe_run(true);
+        assert_eq!((with_context, without_context), (20, 0));
+        assert!(with_best_other > 0, "aucune mutation n'a recu le meilleur programme connu");
+
+        let (with_context, _, without_context) = probe_run(false);
+        assert_eq!((with_context, without_context), (0, 20));
+    }
 }

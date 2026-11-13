@@ -1,13 +1,17 @@
-"""Depouille les bras du protocole docs/PROTOCOLE_MINIMAX_TIRAGE_EVOLUTION.md.
+"""Depouille les bras des protocoles MiniMax tirage contre evolution.
 
-Usage : python scripts/analysis/minimax_tirage_evolution.py
+Usage : python scripts/analysis/minimax_tirage_evolution.py [v1|v2]
+  v1 : docs/PROTOCOLE_MINIMAX_TIRAGE_EVOLUTION.md (defaut)
+  v2 : docs/PROTOCOLE_MINIMAX_V2.md
 Le bras evolution est ignore tant que ses 12 rapports ne sont pas presents.
 """
-import glob, json, os, re, statistics, subprocess
+import glob, json, os, re, statistics, subprocess, sys
 
-EXE = os.path.abspath("target/frozen/nomad-minimax-v1.exe")
-OUT = "results_minimax_v1"
-SEEDS = list(range(4000, 4188, 17))
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "v1"
+FIRST_SEED = {"v1": 4000, "v2": 5000}[VERSION]
+EXE = os.path.abspath(f"target/frozen/nomad-minimax-{VERSION}.exe")
+OUT = f"results_minimax_{VERSION}"
+SEEDS = [FIRST_SEED + 17 * r for r in range(12)]
 SETS = [("Entrainement", "best_in_distribution_score", "In-Dist"),
         ("Validation", "best_validation_score", "Valid"),
         ("OOD-1", "best_ood1_score", "OOD-1"),
@@ -62,7 +66,7 @@ for name, _, lab in SETS:
     for a in arms:
         v = [res[a][s][lab] for s in SEEDS if res[a][s][lab] is not None]
         print(f"   {a}: mediane {statistics.median(v):.1f}  succes>=10%: {sum(x >= 10 for x in v)}/12"
-              f"  invalides: {12 - len(v)}")
+              f"  succes>=30%: {sum(x >= 30 for x in v)}/12  invalides: {12 - len(v)}")
 
 for a in arms:
     tot = [usage(a, s) for s in SEEDS]
