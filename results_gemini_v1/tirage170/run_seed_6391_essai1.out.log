@@ -1,0 +1,64 @@
+2026-11-13T20:23:03.941169Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6391, Pop=170, MaxGens=1
+2026-11-13T20:27:31.968687Z  WARN nomad_operator::http_llm: Ollama request attempt 1/3 failed (HTTP request failed: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions: Network Error: Network Error: Error encountered in the status line: Une connexion établie a été abandonnée par un logiciel de votre ordinateur hôte. (os error 10053)). Retrying in 4s...
+2026-11-13T20:36:47.741134Z  INFO nomad_orchestrator::engine: Evaluating winning capsule c9df8a326ec4d809 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6391 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4205 bins (excess: +180), Efficiency: 95.72%, Fuel: 41107964
+ Best In-Dist (w/o Lookahead) : 4261 bins (excess: +236), Efficiency: 94.46%
+ Dynamic Trajectory: tLDR = 1.2120
+ Behavior Profile : DeadSpaceRatio: 13.5%, NewBinRatio: 42.0%, ResVar: 0.78
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.312
+ Validation Score : 4251 bins (excess: +194), Efficiency: 95.45%
+ OOD-1 Score      : 10199 bins (excess: +169), Efficiency: 98.34%
+ OOD-2 Score      : 3614 bins (excess: +88), Efficiency: 97.58%
+ Lineage Nodes    : 170, Transitions: 0
+ Best Heuristic   : LLM-Seed-118
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Reward perfect fits (Best Fit strategy)
+    if post_residual == 0 {
+        score -= 500.0;
+    }
+
+    // 2. Penalty for creating "dead space" (small fragments < 10 are hard to fill)
+    if post_residual > 0 && post_residual < 10 {
+        score += 150.0;
+    }
+
+    // 3. Aggressive 2-step lookahead: Favor placing if post_residual fits the next item
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 200.0;
+        // Further reward if it creates a near-perfect fit for the next item
+        if (post_residual - next_item_size) < 5 {
+            score -= 150.0;
+        }
+    }
+
+    // 4. Global balance: If this bin is the last chance for the current item, 
+    // prioritize it to avoid opening unnecessary new bins.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 100.0;
+    }
+
+    // 5. Penalize opening a new bin if we have many empty/under-utilized bins
+    if bin_residual == bin_capacity && open_bins_count > 0 {
+        let progress = step_index as f64 / total_items as f64;
+        // Late game: be more aggressive about opening bins if necessary, 
+        // early game: be conservative.
+        score += 100.0 * (1.0 - progress);
+        score += mean_residual * 0.5;
+    }
+
+    // 6. Penalty for creating a bin that deviates significantly from the mean residual
+    // (Keeps bin usage uniform)
+    let residual_diff = (post_residual as f64 - mean_residual).abs();
+    score += residual_diff * 0.2;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage170\run_seed_6391_tirage170.json.tmp

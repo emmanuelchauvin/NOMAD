@@ -1,0 +1,89 @@
+2026-11-13T19:16:56.828215Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6221, Pop=8, MaxGens=10
+2026-11-13T19:26:31.977158Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 07d133e92c02675a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6221 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4108 bins (excess: +84), Efficiency: 97.95%, Fuel: 51840152
+ Best In-Dist (w/o Lookahead) : 4119 bins (excess: +95), Efficiency: 97.69%
+ Dynamic Trajectory: tLDR = 1.3957
+ Behavior Profile : DeadSpaceRatio: 31.1%, NewBinRatio: 41.1%, ResVar: 0.37
+ MAP-Elites Niches: 11 active (11.0% coverage), QD-Score: 10.410
+ Validation Score : 4109 bins (excess: +88), Efficiency: 97.86%
+ OOD-1 Score      : 10320 bins (excess: +271), Efficiency: 97.37%
+ OOD-2 Score      : 3590 bins (excess: +78), Efficiency: 97.83%
+ Lineage Nodes    : 85, Transitions: 63
+ Best Heuristic   : LLM-Seed-006-mut-g5-mut-g6-mut-g6-mut-g7-mut-g7-mut-g8
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // 1. Lookahead Optimization: Shifted weighting to prioritize "future-proofing"
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            score -= (next_item_size as f64 * 5.2) + (if post_residual == next_item_size { 92.0 } else { 28.0 });
+        } else {
+            score += 88.0;
+        }
+    }
+
+    // 2. Adaptive Fragmentation: Refined sliver penalty to account for bin count pressure
+    if post_residual > 0 && post_residual < 32 {
+        let sliver_penalty = (32.0 - post_residual as f64).powf(2.4);
+        score += sliver_penalty * (22.0 / (fitting_bins_count as f64 + 0.8));
+    }
+
+    // 3. Dynamic Bin Opening: Aggressive cost scaling to prevent premature opening
+    if is_new_bin {
+        let base_new_bin_cost = 145.0 + (progress * 130.0);
+        let congestion_penalty = (open_bins_count as f64 * 12.0) * (1.2 - progress);
+        score += base_new_bin_cost + congestion_penalty;
+    }
+
+    // 4. Density Balancing: Penalize deviation from the mean, but favor tighter residuals relative to progression
+    score += (post_residual as f64 - (mean_residual * 0.95)).abs() * 1.6;
+
+    // 5. High-Efficiency Reward: Exponential boost, tightened for higher packing density
+    if post_residual < 12 {
+        score -= (14.0 - post_residual as f64).powf(2.4) * 14.0;
+    }
+
+    // 6. Terminal Consolidation: Late-stage pressure with non-linear thresholding
+    if progress > 0.85 {
+        if post_residual > (bin_capacity / 6) {
+            score += post_residual as f64 * 14.0;
+        } else {
+            score -= 110.0;
+        }
+    }
+
+    // 7. Scarcity Logic: Prioritize bins that fit the current item when few options exist
+    if fitting_bins_count > 0 && fitting_bins_count <= 4 {
+        score -= 1150.0 / (fitting_bins_count as f64 + 0.2);
+    }
+
+    // 8. Utilization reward: Penalize low capacity utilization (fill_ratio = 1 - residual/capacity)
+    let fill_ratio = (bin_capacity - post_residual) as f64 / bin_capacity as f64;
+    score -= (fill_ratio.powf(4.8)) * 125.0;
+
+    // 9. Entropy Reduction: Favor existing bins to minimize fragmentation, scaled by progress
+    if !is_new_bin {
+        score -= 22.0 * (1.0 - progress);
+    }
+
+    // 10. Harmonic Bias: Deepen alignment for common divisor residues (5, 10, 20)
+    if post_residual > 0 && (post_residual % 5 == 0 || (post_residual + item_size) % 10 == 0) {
+        score -= 30.0;
+    }
+
+    // 11. Residual Buffer: Penalize "dead-zone" residuals (1-7) that kill bin usability
+    if post_residual > 0 && post_residual < 8 {
+        score += 55.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6221_evolution.json.tmp

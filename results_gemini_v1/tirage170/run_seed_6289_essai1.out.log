@@ -1,0 +1,62 @@
+2026-11-13T20:25:26.206514Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6289, Pop=170, MaxGens=1
+2026-11-13T20:39:31.636082Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 6b4863a1ecef8854 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6289 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4160 bins (excess: +162), Efficiency: 96.11%, Fuel: 25752386
+ Best In-Dist (w/o Lookahead) : 4175 bins (excess: +177), Efficiency: 95.76%
+ Dynamic Trajectory: tLDR = 0.1960
+ Behavior Profile : DeadSpaceRatio: 64.3%, NewBinRatio: 41.6%, ResVar: 0.49
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 5.016
+ Validation Score : 4191 bins (excess: +175), Efficiency: 95.83%
+ OOD-1 Score      : 10435 bins (excess: +362), Efficiency: 96.53%
+ OOD-2 Score      : 3632 bins (excess: +85), Efficiency: 97.66%
+ Lineage Nodes    : 170, Transitions: 0
+ Best Heuristic   : LLM-Seed-029
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Objective: Minimize score. Lower score = better bin choice.
+    
+    let is_new_bin = bin_residual == bin_capacity;
+    let progress = step_index as f64 / total_items as f64;
+    
+    // 1. Base cost: The tighter the fit, the better (Best-Fit principle).
+    let mut score = post_residual as f64;
+
+    // 2. Penalty for opening new bins: Only do it if forced or if the fit is extremely poor elsewhere.
+    if is_new_bin {
+        // Only consider a new bin if we have many items left or if open bins are already highly fragmented.
+        score += 45.0 * (1.0 - progress);
+        if fitting_bins_count > 0 {
+            score += 60.0; // Strong penalty for opening a new bin if an existing one works.
+        }
+    } else {
+        // 3. Lookahead Logic: If the next item is large, favor bins that can accommodate it.
+        if next_item_size > 0 {
+            if post_residual >= next_item_size {
+                score -= 15.0; // Reward: This bin can fit the next item too.
+            } else if post_residual > 0 && post_residual < 20 {
+                score += 25.0; // Penalty: Creating 'dead space' that is too small for common items.
+            }
+        }
+    }
+
+    // 4. Global State awareness: If we have many open bins, prioritize consolidating into existing ones.
+    if open_bins_count > 5 {
+        score -= (open_bins_count as f64) * 0.5;
+    }
+
+    // 5. Fragmentation management: Avoid bins that deviate significantly from the mean residual.
+    let dev = (post_residual as f64 - mean_residual).abs();
+    score += dev * 0.2;
+
+    // 6. Last-chance logic: If this is the only bin that fits, prioritize it heavily.
+    if fitting_bins_count == 1 && !is_new_bin {
+        score -= 50.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage170\run_seed_6289_tirage170.json.tmp

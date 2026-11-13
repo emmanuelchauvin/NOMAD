@@ -1,0 +1,61 @@
+2026-11-13T19:51:09.825738Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6289, Pop=85, MaxGens=1
+2026-11-13T19:58:55.327863Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 6bb03af8a8cef146 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6289 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4165 bins (excess: +167), Efficiency: 95.99%, Fuel: 24514102
+ Best In-Dist (w/o Lookahead) : 4167 bins (excess: +169), Efficiency: 95.94%
+ Dynamic Trajectory: tLDR = 0.0678
+ Behavior Profile : DeadSpaceRatio: 69.0%, NewBinRatio: 41.6%, ResVar: 0.46
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 4.662
+ Validation Score : 4195 bins (excess: +179), Efficiency: 95.73%
+ OOD-1 Score      : 10479 bins (excess: +406), Efficiency: 96.13%
+ OOD-2 Score      : 3644 bins (excess: +97), Efficiency: 97.34%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-071
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Base penalty for creating "dead space" (small residuals that cannot fit common items)
+    // We prioritize keeping post_residual near 0 (Best Fit) or near specific harmonic thresholds.
+    if post_residual < 10 {
+        score -= 50.0; // Reward perfect/near-perfect fits
+    } else if post_residual < 20 {
+        score += 20.0; // Penalize creating "unusable" gaps
+    }
+
+    // 2. Harmonic Lookahead: If next_item_size is known, favor bins that can accommodate it.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            score -= 30.0; // Reward bins that can fit the next item (Lookahead synergy)
+        } else {
+            score += 15.0; // Penalize bins that will force an early new bin for the next item
+        }
+    }
+
+    // 3. Pressure management: If this is the only bin that fits, we must take it (lower score).
+    if fitting_bins_count == 1 && bin_residual >= item_size {
+        score -= 100.0; 
+    }
+
+    // 4. New Bin Thresholding: Discourage opening a new bin unless the current residuals are very poor.
+    if bin_residual == bin_capacity {
+        // Only open a new bin if the average residual of existing bins is already quite low
+        // (meaning existing bins are nearly full and inefficient for incoming sizes).
+        if mean_residual > 30.0 {
+            score += 10.0;
+        } else {
+            score += 80.0; // Heavily penalize opening new bins unless necessary
+        }
+    }
+
+    // 5. Progression scaling: As we approach the end of the stream, prioritize aggressive packing.
+    let progress = step_index as f64 / total_items as f64;
+    score += progress * 10.0;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage85\run_seed_6289_tirage85.json.tmp

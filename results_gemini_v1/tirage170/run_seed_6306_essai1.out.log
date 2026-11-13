@@ -1,0 +1,60 @@
+2026-11-13T19:08:19.213296Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6306, Pop=170, MaxGens=1
+2026-11-13T19:23:02.605663Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 8a033ab238f182a4 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6306 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4177 bins (excess: +160), Efficiency: 96.17%, Fuel: 26525830
+ Best In-Dist (w/o Lookahead) : 4177 bins (excess: +160), Efficiency: 96.17%
+ Dynamic Trajectory: tLDR = 0.3491
+ Behavior Profile : DeadSpaceRatio: 56.7%, NewBinRatio: 41.8%, ResVar: 0.52
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 5.068
+ Validation Score : 4153 bins (excess: +157), Efficiency: 96.22%
+ OOD-1 Score      : 10387 bins (excess: +319), Efficiency: 96.93%
+ OOD-2 Score      : 3619 bins (excess: +72), Efficiency: 98.01%
+ Lineage Nodes    : 170, Transitions: 0
+ Best Heuristic   : LLM-Seed-161
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Penalty for creating 'fragmented' space that is too small for common item sizes
+    // If post_residual is small but not zero, it's often a dead-end.
+    if post_residual > 0 && post_residual < 20 {
+        score += 45.0;
+    }
+
+    // Harmonic-inspired incentive: favor residuals that are multiples of common item sizes
+    // This encourages keeping space open for future items that might fit perfectly
+    if post_residual % 25 == 0 {
+        score -= 15.0;
+    }
+
+    // Lookahead logic: if next_item_size fits in this post_residual, reward this bin
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 25.0;
+    }
+
+    // If this is the only bin that can fit the item, we are forced to take it.
+    // However, if fitting_bins_count is 0, we are evaluating a new bin.
+    if bin_residual == bin_capacity {
+        // Penalty for opening a new bin: base cost + adjustment for current open bin density
+        score = 85.0 + (open_bins_count as f64 * 0.5);
+    } else if fitting_bins_count == 1 {
+        // High priority to use the last chance bin to avoid opening new ones
+        score -= 30.0;
+    }
+
+    // Calibration based on progression: as we near the end of the stream, 
+    // prioritize tighter packing (lower residuals) more aggressively.
+    let progress = step_index as f64 / total_items as f64;
+    score += progress * 10.0;
+
+    // Penalty for deviating from the mean residual (encourages uniform filling)
+    let residual_diff = (post_residual as f64 - mean_residual).abs();
+    score += residual_diff * 0.2;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage170\run_seed_6306_tirage170.json.tmp

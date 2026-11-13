@@ -1,0 +1,61 @@
+2026-11-13T20:18:20.557280Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6340, Pop=85, MaxGens=1
+2026-11-13T20:25:04.309834Z  INFO nomad_orchestrator::engine: Evaluating winning capsule fe1cfeccc11b84ea on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6340 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4204 bins (excess: +184), Efficiency: 95.63%, Fuel: 25334776
+ Best In-Dist (w/o Lookahead) : 4207 bins (excess: +187), Efficiency: 95.56%
+ Dynamic Trajectory: tLDR = 0.2382
+ Behavior Profile : DeadSpaceRatio: 69.7%, NewBinRatio: 42.0%, ResVar: 0.53
+ MAP-Elites Niches: 4 active (4.0% coverage), QD-Score: 3.567
+ Validation Score : 4191 bins (excess: +178), Efficiency: 95.75%
+ OOD-1 Score      : 10386 bins (excess: +383), Efficiency: 96.31%
+ OOD-2 Score      : 3634 bins (excess: +89), Efficiency: 97.55%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-071
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Best Fit Decreasing (BFD) logic: penalize large post_residual
+    // 2. Harmonic/Modulo logic: reward post_residuals that are multiples of common item sizes (20, 25, 50)
+    // to keep bins aligned for potential future items.
+    let harmonic_penalty = ((post_residual % 20) as f64) * 0.5;
+    score += harmonic_penalty;
+
+    // 3. Lookahead coupling: If next item fits in the current post_residual, reward this bin
+    if next_item_size > 0 && next_item_size <= post_residual {
+        score -= 45.0;
+    }
+
+    // 4. Scarcity/Efficiency: Penalize opening new bins unless the current best fit is poor.
+    // If bin_residual == bin_capacity, it's a new bin candidate.
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            // Only open a new bin if the current mean residual suggests we are wasting space
+            // or if the item is very large (e.g., > 70).
+            if item_size > 70 || mean_residual < 15.0 {
+                score += 10.0;
+            } else {
+                score += 100.0; // High penalty for opening new bin if better fits exist
+            }
+        }
+    } else {
+        // Reward filling bins to near-capacity (Best Fit logic)
+        // If post_residual is small, it's a tight fit.
+        if post_residual < 10 {
+            score -= 20.0;
+        }
+    }
+
+    // 5. Progression awareness: As we near the end of the stream, be more conservative with new bins
+    let progress = step_index as f64 / total_items as f64;
+    if progress > 0.9 {
+        score += (post_residual as f64) * 0.2;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage85\run_seed_6340_tirage85.json.tmp

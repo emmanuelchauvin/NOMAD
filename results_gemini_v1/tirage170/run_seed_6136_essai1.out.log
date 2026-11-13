@@ -1,0 +1,66 @@
+2026-11-13T19:39:59.405196Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6136, Pop=170, MaxGens=1
+2026-11-13T19:54:19.196128Z  INFO nomad_orchestrator::engine: Evaluating winning capsule e9c19a44ed2c874d on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6136 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4216 bins (excess: +163), Efficiency: 96.14%, Fuel: 26357052
+ Best In-Dist (w/o Lookahead) : 4218 bins (excess: +165), Efficiency: 96.09%
+ Dynamic Trajectory: tLDR = 0.5062
+ Behavior Profile : DeadSpaceRatio: 58.5%, NewBinRatio: 42.2%, ResVar: 0.53
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.937
+ Validation Score : 4198 bins (excess: +159), Efficiency: 96.22%
+ OOD-1 Score      : 10348 bins (excess: +312), Efficiency: 96.99%
+ OOD-2 Score      : 3651 bins (excess: +76), Efficiency: 97.92%
+ Lineage Nodes    : 170, Transitions: 0
+ Best Heuristic   : LLM-Seed-091
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // The goal is to minimize score.
+    // Base score is the post_residual (Best Fit principle).
+    let mut score = post_residual as f64;
+
+    // Harmonic/Modulo logic: Penalize residuals that cannot easily accommodate standard item sizes.
+    // We treat post_residual as a potential "dead zone". 
+    // If post_residual is in (0, 20), it is very likely to become stranded/wasted space.
+    if post_residual > 0 && post_residual < 20 {
+        score += 45.0;
+    }
+
+    // Lookahead logic: If a next_item exists, prioritize bins where the post_residual 
+    // can accommodate the next item.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            score -= 30.0;
+        }
+    }
+
+    // Harmonic class logic: Favor bins that leave a residual which is a multiple of 25 (e.g., 0, 25, 50, 75).
+    // These are "clean" residuals that fit many common item sizes.
+    if post_residual % 25 == 0 {
+        score -= 15.0;
+    }
+
+    // Multi-bin pressure: If we have many open bins, penalize opening a new one 
+    // (where bin_residual == bin_capacity) to force consolidation.
+    if bin_residual == bin_capacity {
+        if open_bins_count > 0 {
+            score += 50.0 + (open_bins_count as f64 * 2.0);
+        }
+    }
+
+    // Scarcity adjustment: If only one bin can fit the item, we are forced to use it
+    // unless we open a new one. We make existing bins very attractive here.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 20.0;
+    }
+
+    // Progression scaling: As we approach the end of the stream, be more aggressive
+    // about filling bins to reduce total count.
+    let progress = step_index as f64 / total_items as f64;
+    score += progress * 10.0;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage170\run_seed_6136_tirage170.json.tmp

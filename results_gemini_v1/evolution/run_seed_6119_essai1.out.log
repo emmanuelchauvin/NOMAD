@@ -1,0 +1,76 @@
+2026-11-13T20:14:34.927121Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6119, Pop=8, MaxGens=10
+2026-11-13T20:22:45.551302Z  INFO nomad_orchestrator::engine: Evaluating winning capsule cf0e2807a6725eb3 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6119 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4200 bins (excess: +158), Efficiency: 96.24%, Fuel: 27877043
+ Best In-Dist (w/o Lookahead) : 4255 bins (excess: +213), Efficiency: 95.00%
+ Dynamic Trajectory: tLDR = -0.0563
+ Behavior Profile : DeadSpaceRatio: 62.5%, NewBinRatio: 42.0%, ResVar: 0.51
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 5.563
+ Validation Score : 4155 bins (excess: +150), Efficiency: 96.39%
+ OOD-1 Score      : 10425 bins (excess: +362), Efficiency: 96.53%
+ OOD-2 Score      : 3624 bins (excess: +70), Efficiency: 98.07%
+ Lineage Nodes    : 85, Transitions: 57
+ Best Heuristic   : LLM-Seed-016-mut-g3-mut-g4
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Start with the primary goal: minimize residual space (Best Fit)
+    let mut score = post_residual as f64;
+
+    // 1. Adaptive Gap Penalty: Penalize "sliver" gaps that are likely to become stranded dead space.
+    // Expanded penalty range to catch mid-sized gaps that are inefficient.
+    if post_residual > 0 && post_residual < 28 {
+        score += 85.0 - (post_residual as f64 * 3.2);
+    }
+
+    // 2. Lookahead Coupling: Prioritize bins that accommodate the next item perfectly.
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 75.0; // Increased reward for perfect lookahead fit
+        } else if post_residual < next_item_size && post_residual > 3 {
+            // Penalize creating a bin that is slightly too small for the next item
+            score += (next_item_size - post_residual) as f64 * 6.5;
+        }
+    }
+
+    // 3. Efficiency Scaling: Favor high-density bins to consolidate items.
+    let fill_ratio = (bin_capacity - bin_residual) as f64 / bin_capacity as f64;
+    score -= fill_ratio * 45.0;
+
+    // 4. New Bin Management: 
+    // Dynamically increase the cost of opening new bins as the process nears the end.
+    if bin_residual == bin_capacity {
+        let progress = step_index as f64 / total_items as f64;
+        // Base cost is higher to force reuse; scaled by open_bins_count to prevent excessive fragmentation.
+        score = 72.0 + (open_bins_count as f64 * 2.2) + (progress * 55.0);
+    } else {
+        // 5. Fragmentation Control:
+        // If multiple fitting bins exist, select the one that most closely aligns with the mean_residual.
+        if fitting_bins_count > 1 {
+            let deviation = (post_residual as f64 - mean_residual).abs();
+            score += deviation * 1.8;
+            
+            // If this is the only fitting bin, provide a stronger "emergency" discount.
+            if fitting_bins_count == 1 {
+                score -= 30.0;
+            }
+        }
+        
+        // 6. Tight-Fit Bonus: Reward very tight fits that leave almost no room, 
+        // effectively closing the bin window.
+        if post_residual < 8 {
+            score -= 22.0;
+        }
+
+        // 7. Residual Balancing: If the bin is very empty, penalize it to force consolidation.
+        if bin_residual > (bin_capacity * 3 / 4) {
+            score += 12.0;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6119_evolution.json.tmp

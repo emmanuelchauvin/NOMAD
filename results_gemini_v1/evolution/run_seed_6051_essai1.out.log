@@ -1,0 +1,77 @@
+2026-11-13T19:38:08.561977Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6051, Pop=8, MaxGens=10
+2026-11-13T19:46:58.318234Z  INFO nomad_orchestrator::engine: Evaluating winning capsule a1204b31bd0acb9a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6051 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4216 bins (excess: +184), Efficiency: 95.64%, Fuel: 27768324
+ Best In-Dist (w/o Lookahead) : 4221 bins (excess: +189), Efficiency: 95.52%
+ Dynamic Trajectory: tLDR = 0.1189
+ Behavior Profile : DeadSpaceRatio: 69.5%, NewBinRatio: 42.2%, ResVar: 0.51
+ MAP-Elites Niches: 3 active (3.0% coverage), QD-Score: 2.801
+ Validation Score : 4195 bins (excess: +185), Efficiency: 95.59%
+ OOD-1 Score      : 10455 bins (excess: +408), Efficiency: 96.10%
+ OOD-2 Score      : 3656 bins (excess: +90), Efficiency: 97.54%
+ Lineage Nodes    : 85, Transitions: 54
+ Best Heuristic   : LLM-Seed-018-mut-g3-mut-g3
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    let progress = step_index as f64 / total_items as f64;
+
+    // 1. Refined Fragmentation Control:
+    // Increased penalty for new bins to force better utilization of existing "poor" fits.
+    if is_new_bin {
+        let density_penalty = (open_bins_count as f64 * 0.18) + (progress * 35.0);
+        score += 55.0 + density_penalty;
+        
+        if fitting_bins_count > 0 {
+            // Exponentially increase penalty for new bins when existing space is available.
+            score += 120.0 + (fitting_bins_count as f64 * 15.0);
+        }
+    }
+
+    // 2. Predictive Lookahead Optimization:
+    // Incorporate the relationship between current post_residual and next_item_size.
+    if next_item_size > 0 {
+        let fit_margin = post_residual as f64 - next_item_size as f64;
+        if fit_margin < 0.0 {
+            // Penalize leaving "unusable" space that cannot accommodate the next item.
+            score += next_item_size as f64 * 1.15;
+        } else {
+            // Reward fits that leave exactly enough room for the next item (synergy).
+            let synergy = 1.0 / (fit_margin + 0.5);
+            score -= synergy * 8.0;
+        }
+    }
+
+    // 3. Dynamic Residual Balancing:
+    // Focus on minimizing variance from the mean, but shift bias towards lower residuals.
+    let residual_deviation = (post_residual as f64 - (mean_residual * 0.85)).abs();
+    score += residual_deviation * 0.28;
+
+    // 4. Critical Path & Scarcity Logic:
+    // Prioritize bins that are nearly full to reduce the count of "lingering" bins.
+    if fitting_bins_count == 1 && !is_new_bin {
+        score -= 35.0;
+    }
+
+    // 5. Aggressive Seal Threshold:
+    // Use a tighter threshold for sealing to improve overall bin density.
+    // If we are nearing the end of the stream, be even more aggressive.
+    let seal_threshold = (bin_capacity / 10) + (if progress > 0.8 { 5 } else { 0 });
+    if post_residual < seal_threshold {
+        score -= 15.0 + (1.0 / (post_residual as f64 + 0.1));
+    }
+
+    // 6. Penalty for "Wasted Potential":
+    // If the current bin is empty but the item is small, penalize opening it.
+    if is_new_bin && item_size < (bin_capacity / 4) {
+        score += 20.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6051_evolution.json.tmp

@@ -1,0 +1,74 @@
+2026-11-13T19:08:19.090180Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6204, Pop=8, MaxGens=10
+2026-11-13T19:16:35.005409Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 77dda3cb2a0c91f4 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6204 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4163 bins (excess: +153), Efficiency: 96.33%, Fuel: 26449472
+ Best In-Dist (w/o Lookahead) : 4174 bins (excess: +164), Efficiency: 96.07%
+ Dynamic Trajectory: tLDR = 0.5820
+ Behavior Profile : DeadSpaceRatio: 63.4%, NewBinRatio: 41.6%, ResVar: 0.47
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 4.909
+ Validation Score : 4182 bins (excess: +157), Efficiency: 96.25%
+ OOD-1 Score      : 10372 bins (excess: +346), Efficiency: 96.66%
+ OOD-2 Score      : 3637 bins (excess: +75), Efficiency: 97.93%
+ Lineage Nodes    : 85, Transitions: 54
+ Best Heuristic   : LLM-Seed-003-mut-g1-mut-g1-mut-g1-mut-g5-mut-g9
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    
+    // Base score: Favor tight fit (Best Fit)
+    let mut score = post_residual as f64;
+
+    if bin_residual == bin_capacity {
+        // Refined threshold for new bins:
+        // Increase penalty to prevent premature bin creation, but allow it if mean_residual is low (packing is loose).
+        score += 155.0 + (mean_residual * 1.8) + (progress * 25.0);
+    } else {
+        // Targeted sliver penalty: strictly avoid creating space smaller than common item lower-bounds.
+        if post_residual > 0 && post_residual < 22 {
+            score += 52.0 * (1.0 - (progress * 0.3));
+        }
+
+        // Lookahead: If next_item_size fits perfectly, prioritize that bin to reduce fragmentation.
+        if next_item_size > 0 {
+            if post_residual >= next_item_size {
+                score -= 35.0;
+            }
+            let diff = (post_residual as i32 - next_item_size as i32).abs() as f64;
+            score += diff * 0.75;
+        }
+
+        // Priority for constrained bins: If only one bin works, prioritize it to conserve capacity.
+        if fitting_bins_count == 1 {
+            score -= 135.0;
+        }
+
+        // Adaptive packing: 
+        // Early: favor bins that leave larger space for future large items.
+        // Late: pack as tightly as possible to close bins.
+        if progress < 0.4 {
+            score += (35.0 - post_residual as f64).max(0.0) * 1.5;
+        } else {
+            score -= (bin_capacity - post_residual) as f64 * 0.35;
+        }
+
+        // Entropy control: Consolidate if too many bins are open.
+        if open_bins_count > 6 {
+            score += (post_residual as f64) * 0.8;
+        }
+        
+        // Variance dampening: Strongly reward near-perfect packing.
+        if post_residual < 4 {
+            score -= 28.0;
+        }
+
+        // Harmonic alignment: Penalize residuals that don't fit into common 25-unit blocks.
+        score += ((post_residual % 25) as f64) * 0.4;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6204_evolution.json.tmp

@@ -1,0 +1,66 @@
+2026-11-13T19:39:43.042849Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6068, Pop=85, MaxGens=1
+2026-11-13T19:47:58.692040Z  INFO nomad_orchestrator::engine: Evaluating winning capsule c914fc3486f42fb7 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6068 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4175 bins (excess: +155), Efficiency: 96.29%, Fuel: 26535509
+ Best In-Dist (w/o Lookahead) : 4187 bins (excess: +167), Efficiency: 96.01%
+ Dynamic Trajectory: tLDR = 0.5142
+ Behavior Profile : DeadSpaceRatio: 58.3%, NewBinRatio: 41.8%, ResVar: 0.52
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.263
+ Validation Score : 4172 bins (excess: +145), Efficiency: 96.53%
+ OOD-1 Score      : 10353 bins (excess: +308), Efficiency: 97.03%
+ OOD-2 Score      : 3630 bins (excess: +71), Efficiency: 98.05%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-018
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Heuristic: Aggressive 2-step lookahead matching.
+    // We prioritize bins that result in a post_residual that perfectly accommodates 
+    // the next item, while penalizing new bin creation unless necessary.
+    
+    let mut score = post_residual as f64;
+    let progress = step_index as f64 / total_items as f64;
+
+    // 1. If this is a new bin (bin_residual == bin_capacity), penalize it 
+    // unless it is the only option (fitting_bins_count == 0).
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            score += 150.0 + (50.0 * (1.0 - progress));
+        } else {
+            return 0.0; // Forced to open new bin
+        }
+    }
+
+    // 2. Lookahead optimization: If the post_residual is close to the next_item_size,
+    // we reward this placement to keep bins tightly packed.
+    if next_item_size > 0 {
+        let diff = (post_residual as i32 - next_item_size as i32).abs() as f64;
+        // Reward tighter alignment for the next step
+        score -= (100.0 - diff) * 0.5;
+    }
+
+    // 3. Penalty for fragmentation: If the post_residual is smaller than 
+    // the average item size (implicitly 30-40) but large enough to create 
+    // "unusable" space, penalize it.
+    if post_residual > 0 && post_residual < 20 {
+        score += 30.0;
+    }
+
+    // 4. Balance current bin usage vs. mean residual: 
+    // If a bin deviates significantly from the mean, we penalize it to 
+    // encourage uniformity in bin fullness.
+    let deviation = (post_residual as f64 - mean_residual).abs();
+    score += deviation * 0.2;
+
+    // 5. Urgency factor: As we reach the end of the stream, prioritize 
+    // finishing off existing bins.
+    if progress > 0.9 {
+        score -= (bin_capacity - post_residual) as f64 * 0.8;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage85\run_seed_6068_tirage85.json.tmp

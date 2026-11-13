@@ -1,0 +1,73 @@
+2026-11-13T19:27:07.132596Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6238, Pop=8, MaxGens=10
+2026-11-13T19:37:01.519875Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 3ea32d16677bce2c on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6238 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4129 bins (excess: +129), Efficiency: 96.87%, Fuel: 70927052
+ Best In-Dist (w/o Lookahead) : 4188 bins (excess: +188), Efficiency: 95.51%
+ Dynamic Trajectory: tLDR = 3.7596
+ Behavior Profile : DeadSpaceRatio: 48.2%, NewBinRatio: 41.3%, ResVar: 0.97
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.801
+ Validation Score : 4143 bins (excess: +131), Efficiency: 96.84%
+ OOD-1 Score      : 10315 bins (excess: +302), Efficiency: 97.07%
+ OOD-2 Score      : 3661 bins (excess: +122), Efficiency: 96.67%
+ Lineage Nodes    : 85, Transitions: 63
+ Best Heuristic   : LLM-Seed-005-mut-g1-mut-g2-mut-g3-mut-g5-mut-g6
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let post = post_residual as f64;
+    let capacity_used = (bin_capacity - bin_residual) as f64;
+    
+    // Core logic: Tightness (Best Fit) with quadratic penalty for larger remaining space.
+    // Increased quadratic penalty to strongly discourage "medium" gaps that block future items.
+    let mut score = post * 2.95 + (post * post) * 0.155;
+
+    // Lookahead: Anticipation logic focused on chain-fitting.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Reward placements that leave a remainder that is either 0 or favorable for further packing.
+            let slack_after_next = (post_residual - next_item_size) as f64;
+            score -= (next_item_size as f64) * 6.8;
+            score += slack_after_next * 1.85;
+        } else {
+            // Increased penalty for blocking the next item, modulated by progress.
+            score += 2650.0 * (1.25 - progress).max(0.3);
+        }
+    }
+
+    // New-Bin Logic: Dynamically modulate cost based on global state.
+    if bin_residual == bin_capacity {
+        // Evaluate the cost of opening a new bin vs reusing existing ones.
+        // Sensitivity to mean_residual to prevent premature new bin creation when existing ones are underutilized.
+        let fragmentation_penalty = if mean_residual > 22.0 { 1250.0 } else { 450.0 };
+        score += 610.0 + (fragmentation_penalty * (1.0 - progress)) + (open_bins_count as f64 * 0.85);
+    } else {
+        // Encourage using existing bins that are significantly tighter than the global average.
+        // Penalty reduction scaled by progress to optimize long-tail packing.
+        if post < mean_residual {
+            score -= 550.0 * (progress + 0.25);
+        }
+        // Entropy dampener: Slightly favor bins that are already open to minimize the active set size.
+        score -= (open_bins_count as f64) * 0.25;
+    }
+
+    // Pressure Valve: If this is the only bin that fits, prioritize it massively.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 9200.0;
+    }
+
+    // Global density normalization:
+    // As we near the end of the stream, prioritize filling bins with higher capacity to minimize the number of trailing bins.
+    let fill_level = (bin_capacity - bin_residual) as f64;
+    if progress > 0.85 {
+        score -= fill_level * 4.2;
+    } else if progress > 0.45 {
+        score -= fill_level * 0.95;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6238_evolution.json.tmp

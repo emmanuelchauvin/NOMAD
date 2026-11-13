@@ -1,0 +1,57 @@
+2026-11-13T19:24:21.976899Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6238, Pop=85, MaxGens=1
+2026-11-13T19:32:58.383649Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 0036c79dc67a5529 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6238 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4179 bins (excess: +179), Efficiency: 95.72%, Fuel: 24936256
+ Best In-Dist (w/o Lookahead) : 4189 bins (excess: +189), Efficiency: 95.49%
+ Dynamic Trajectory: tLDR = 0.2242
+ Behavior Profile : DeadSpaceRatio: 68.1%, NewBinRatio: 41.8%, ResVar: 0.51
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 4.346
+ Validation Score : 4194 bins (excess: +182), Efficiency: 95.66%
+ OOD-1 Score      : 10394 bins (excess: +381), Efficiency: 96.33%
+ OOD-2 Score      : 3626 bins (excess: +87), Efficiency: 97.60%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-024
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Base score: We prefer smaller post_residuals (Best Fit logic).
+    let mut score = post_residual as f64;
+
+    // Penalty for opening a new bin: Only do this if the fit is truly abysmal in existing bins.
+    if is_new_bin {
+        // If we have many options, opening a new bin is usually inefficient.
+        // As we near the end of the stream, we become more conservative about opening new bins.
+        score = 25.0 + (progress * 50.0) + (open_bins_count as f64 * 0.5);
+    } else {
+        // Reward bins that are already "fuller" (lower residual) to consolidate space.
+        score -= (bin_capacity - bin_residual) as f64 * 0.1;
+
+        // Lookahead: If the next item is large, prioritize bins that have enough space left to accommodate it.
+        if next_item_size > 0 {
+            if post_residual >= next_item_size {
+                score -= 15.0; // Strong reward for "pairing" capability.
+            } else if post_residual > 0 && post_residual < 20 {
+                // Penalize "sliver" residuals that are too small to be useful.
+                score += 10.0;
+            }
+        }
+    }
+
+    // Dynamic adjustment based on global congestion.
+    // If the mean residual is high, we are wasting space; be more aggressive in filling bins.
+    score += (mean_residual - post_residual as f64) * 0.2;
+
+    // Criticality: If this is the only bin that fits, we must take it (lower the score).
+    if fitting_bins_count == 1 && !is_new_bin {
+        score -= 40.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage85\run_seed_6238_tirage85.json.tmp

@@ -1,0 +1,75 @@
+2026-11-13T19:26:46.579730Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6034, Pop=8, MaxGens=10
+2026-11-13T19:37:34.975890Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 713c5a63899194c3 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6034 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4069 bins (excess: +69), Efficiency: 98.30%, Fuel: 69738298
+ Best In-Dist (w/o Lookahead) : 4154 bins (excess: +154), Efficiency: 96.29%
+ Dynamic Trajectory: tLDR = 2.5003
+ Behavior Profile : DeadSpaceRatio: 36.6%, NewBinRatio: 40.7%, ResVar: 0.54
+ MAP-Elites Niches: 9 active (9.0% coverage), QD-Score: 7.607
+ Validation Score : 4116 bins (excess: +74), Efficiency: 98.20%
+ OOD-1 Score      : 10162 bins (excess: +139), Efficiency: 98.63%
+ OOD-2 Score      : 3605 bins (excess: +61), Efficiency: 98.31%
+ Lineage Nodes    : 85, Transitions: 60
+ Best Heuristic   : LLM-Seed-006-mut-g3-mut-g4-mut-g6-mut-g6
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Base score: prioritize tight fills, but use a sharper power law for post-residual
+    let mut score = (post_residual as f64).powf(1.08) * 1.22;
+
+    // 1. Refined Dead-Gap Penalty: Focused on the 1-28 range to minimize unusable slivers.
+    if post_residual > 0 && post_residual < 29 {
+        score += 52.0 - (post_residual as f64 * 0.55);
+    }
+
+    // 2. Lookahead Synergy: Strengthen the preference for fitting the next item precisely.
+    // If next_item fits, we prioritize this bin significantly to reduce fragmentation.
+    if next_item_size > 0 && next_item_size <= post_residual {
+        let future_gap = (post_residual - next_item_size) as f64;
+        score -= (88.0 - future_gap * 1.15);
+    }
+
+    // 3. New Bin Dynamics: Calibrate the "New Bin" cost.
+    if bin_residual == bin_capacity {
+        // Dynamic thresholding: if mean_residual is low, we have capacity, so penalize opening a new bin harder.
+        let density_factor = (open_bins_count as f64).min(32.0) * 4.2;
+        score += 82.0 + (mean_residual * 0.42) - density_factor;
+    } else {
+        // 4. Harmonic Alignment: Shift to 16-unit alignment for better fit with standard item sizes.
+        let remainder = post_residual % 16;
+        score += (remainder as f64) * 0.72;
+        
+        // 5. Aggressive Closure: If a bin is near completion, force it to finish.
+        if post_residual < 10 {
+            score -= 36.0;
+        }
+    }
+
+    // 6. Terminal Compaction: Exponentially scale pressure to fill gaps in the final 20% of stream.
+    let progress = step_index as f64 / total_items as f64;
+    if progress > 0.80 {
+        score += (post_residual as f64) * (2.2 + (progress - 0.80) * 25.0);
+    } else {
+        score += (post_residual as f64) * 0.22;
+    }
+
+    // 7. Global Load Balancing: Avoid creating fragmented bins if we have sufficient fitting options.
+    if open_bins_count > 8 && post_residual < 18 {
+        score += 24.0;
+    }
+    
+    // 8. Scarcity Adjustment: If few bins can fit, prioritize the ones that can to prevent premature new bin opening.
+    if fitting_bins_count < 4 {
+        score -= 28.0;
+    }
+
+    // 9. Residual Variance Dampening: Penalize bins that deviate significantly from the mean_residual.
+    let variance_penalty = ((post_residual as f64) - mean_residual).abs() * 0.15;
+    score += variance_penalty;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6034_evolution.json.tmp

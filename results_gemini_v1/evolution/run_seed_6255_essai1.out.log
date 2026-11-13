@@ -1,0 +1,72 @@
+2026-11-13T19:37:42.421730Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6255, Pop=8, MaxGens=10
+2026-11-13T19:46:07.026595Z  INFO nomad_orchestrator::engine: Evaluating winning capsule edabdde74a15cb16 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6255 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4195 bins (excess: +189), Efficiency: 95.50%, Fuel: 26514762
+ Best In-Dist (w/o Lookahead) : 4197 bins (excess: +191), Efficiency: 95.45%
+ Dynamic Trajectory: tLDR = 0.2461
+ Behavior Profile : DeadSpaceRatio: 66.7%, NewBinRatio: 42.0%, ResVar: 0.53
+ MAP-Elites Niches: 3 active (3.0% coverage), QD-Score: 2.580
+ Validation Score : 4181 bins (excess: +181), Efficiency: 95.67%
+ OOD-1 Score      : 10439 bins (excess: +404), Efficiency: 96.13%
+ OOD-2 Score      : 3631 bins (excess: +90), Efficiency: 97.52%
+ Lineage Nodes    : 85, Transitions: 48
+ Best Heuristic   : LLM-Seed-016-mut-g1
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Mutation: Adaptive Best-Fit with Non-Linear Slippage Penalization and Greedy Lookahead
+    let progress = step_index as f64 / total_items as f64;
+    let post_res = post_residual as f64;
+    
+    // 1. Base Score: Minimize residual quadratically to prefer tighter fits (Best-Fit principle).
+    // Using a quadratic penalty discourages large wasted gaps.
+    let mut score = post_res * post_res;
+
+    // 2. Slippage Penalty: If the post-residual creates a "dead zone" that is smaller than 
+    // the average item size (approx 15-20), we penalize it heavily to force better bin utilization.
+    if post_residual > 0 && post_residual < 18 {
+        score += 85.0 * (1.0 + progress);
+    }
+
+    // 3. New Bin Thresholding: 
+    // Dynamically increase the cost of opening a new bin as the stream progresses.
+    if bin_residual == bin_capacity {
+        let base_new_bin_cost = (bin_capacity as f64).powi(2) * 0.75;
+        score += base_new_bin_cost * (1.0 + progress * 1.5);
+        
+        // If we have other bins that can fit this, increase penalty to force reuse.
+        if fitting_bins_count > 0 {
+            score += 200.0 * (1.0 - progress);
+        }
+    }
+
+    // 4. Lookahead Trade-off:
+    // If the next item is large, prioritize bins that can accommodate it.
+    // If post_residual is slightly larger than next_item_size, it's a 'perfect' future buffer.
+    if next_item_size > 0 {
+        let room_for_next = post_res - next_item_size as f64;
+        if room_for_next >= 0.0 && room_for_next < 5.0 {
+            score -= 120.0 * (1.0 - progress); // Reward near-perfect fit
+        } else if room_for_next < 0.0 {
+            score += 60.0; // Penalize forcing a new bin for the next item
+        }
+    }
+
+    // 5. Mean residual equilibrium:
+    // Prevent localized bin starvation by keeping bins near the running mean.
+    let deviation = (post_res - mean_residual).abs();
+    score += deviation * 0.8;
+
+    // 6. Hard constraint for single-bin availability:
+    // If only one bin fits, ensure it is selected regardless of score, 
+    // but only if it's not a brand new bin (to avoid premature bin creation).
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 5000.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6255_evolution.json.tmp
