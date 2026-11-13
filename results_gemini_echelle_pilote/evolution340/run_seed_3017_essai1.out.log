@@ -1,0 +1,74 @@
+2026-11-13T23:21:43.540510Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=3017, Pop=8, MaxGens=37
+2026-11-13T23:43:06.240280Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 7bff2fe1c13a58c1 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3017 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4128 bins (excess: +114), Efficiency: 97.25%, Fuel: 62047158
+ Best In-Dist (w/o Lookahead) : 4237 bins (excess: +223), Efficiency: 94.75%
+ Dynamic Trajectory: tLDR = 1.8270
+ Behavior Profile : DeadSpaceRatio: 0.2%, NewBinRatio: 41.3%, ResVar: 0.53
+ MAP-Elites Niches: 14 active (14.0% coverage), QD-Score: 12.675
+ Validation Score : 4168 bins (excess: +144), Efficiency: 96.55%
+ OOD-1 Score      : 10302 bins (excess: +247), Efficiency: 97.60%
+ OOD-2 Score      : 3710 bins (excess: +156), Efficiency: 95.79%
+ Lineage Nodes    : 340, Transitions: 174
+ Best Heuristic   : LLM-Seed-070-mut-g4-mut-g12-mut-g13-mut-g13-mut-g14-mut-g17
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Core objective: Minimize post_residual, adjusted by current fill ratio to favor denser bins
+    let fill_ratio = (bin_capacity - bin_residual) as f64 / bin_capacity as f64;
+    let mut score = post_residual as f64 * (1.0 + fill_ratio * 0.22);
+
+    if is_new_bin {
+        // Dynamic thresholding: discourage opening new bins unless current utilization is high
+        let utilization = 1.0 - (mean_residual / bin_capacity as f64);
+        score = 152.0 + (progress * 135.0) + (open_bins_count as f64 * 1.55) - (utilization * 52.0);
+        if fitting_bins_count == 0 {
+            score -= 135.0; // Force open if no other choice
+        }
+    } else {
+        // 1. Fragment Avoidance: Increased penalty for "unusable" small gaps (25 range)
+        // Using exponent 1.5 to aggressively penalize very small residuals
+        if post_residual > 0 && post_residual < 25 {
+            score += (25.0 - post_residual as f64).powf(1.5) * 22.5;
+        }
+
+        // 2. Lookahead Anticipation: Heavier penalty for trapping large items
+        if next_item_size > 0 && post_residual < next_item_size && post_residual > 0 {
+            score += (next_item_size - post_residual) as f64 * 14.2;
+        }
+
+        // 3. Density Balancing: Penalize residual variance to keep bin levels consistent
+        score += (post_residual as f64 - mean_residual).abs() * 1.15;
+    }
+
+    // 4. Global Pressure: Escalating cost of opening new bins as stream progresses
+    score += (open_bins_count as f64 * (0.2 + 0.8 * progress)) * 8.2;
+
+    // 5. Critical Fit Bonus: Reward for closing a bin or achieving perfect utilization
+    if post_residual == 0 {
+        score -= 65.0;
+    } else if fitting_bins_count == 1 {
+        score -= 115.0;
+    }
+
+    // 6. Large Item Priority: Bias to pack large items into existing bins with high remaining capacity
+    // Adjusted to specifically target bins that can comfortably fit the large item
+    if item_size > 60 {
+        let capacity_available = bin_residual;
+        score -= (capacity_available as f64 / bin_capacity as f64) * 60.0 * (1.0 - progress * 0.3);
+    }
+    
+    // 7. Adaptive Penalty: Fine-tuned penalty to force tighter convergence on mean_residual
+    if !is_new_bin && (bin_capacity - bin_residual) < (mean_residual as u32 / 2) {
+        score += 32.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle_pilote\evolution340\run_seed_3017_evolution340.json.tmp
