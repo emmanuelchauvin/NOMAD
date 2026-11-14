@@ -241,7 +241,10 @@ impl HttpLlamaOperator {
             }
         }
 
-        let max_attempts = 3;
+        // Attente avant chaque nouvel essai. Une coupure reseau de quelques minutes ne doit
+        // pas faire perdre un run entier : un long run represente plus de mille appels.
+        const RETRY_DELAYS_SECS: [u64; 5] = [4, 15, 45, 90, 180];
+        let max_attempts = RETRY_DELAYS_SECS.len() + 1;
         let mut last_err = String::new();
 
         for attempt in 1..=max_attempts {
@@ -252,26 +255,22 @@ impl HttpLlamaOperator {
             }
             match request.send_json(&request_body) {
                 Ok(resp) => {
-                    let response: ChatCompletionResponse = resp.into_json().map_err(|e| {
-                        OperatorError::InferenceError(format!(
-                            "Failed to parse JSON response: {}",
-                            e
-                        ))
-                    })?;
-
-                    self.record_usage(response.usage, started.elapsed());
-
-                    let raw_text = response
-                        .choices
-                        .first()
-                        .and_then(|c| c.message.content.clone())
-                        .ok_or_else(|| {
-                            OperatorError::InferenceError(
-                                "Empty choices returned by LLM".to_string(),
-                            )
-                        })?;
-
-                    return Ok(raw_text);
+                    // Une reponse coupee en cours de lecture ou vide est un incident de
+                    // transport comme un autre : nouvel essai, pas un arret du run.
+                    match resp.into_json::<ChatCompletionResponse>() {
+                        Ok(response) => {
+                            self.record_usage(response.usage, started.elapsed());
+                            match response
+                                .choices
+                                .first()
+                                .and_then(|c| c.message.content.clone())
+                            {
+                                Some(raw_text) => return Ok(raw_text),
+                                None => last_err = "Empty choices returned by LLM".to_string(),
+                            }
+                        }
+                        Err(e) => last_err = format!("Failed to parse JSON response: {}", e),
+                    }
                 }
                 Err(ureq::Error::Status(code, resp)) => {
                     let err_text = resp.into_string().unwrap_or_default();
@@ -283,13 +282,15 @@ impl HttpLlamaOperator {
             }
 
             if attempt < max_attempts {
+                let delay = RETRY_DELAYS_SECS[attempt - 1];
                 tracing::warn!(
-                    "Ollama request attempt {}/{} failed ({}). Retrying in 4s...",
+                    "Ollama request attempt {}/{} failed ({}). Retrying in {}s...",
                     attempt,
                     max_attempts,
-                    last_err
+                    last_err,
+                    delay
                 );
-                std::thread::sleep(Duration::from_secs(4));
+                std::thread::sleep(Duration::from_secs(delay));
             }
         }
 
