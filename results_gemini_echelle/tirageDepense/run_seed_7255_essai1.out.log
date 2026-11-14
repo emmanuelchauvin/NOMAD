@@ -1,0 +1,61 @@
+2026-11-14T01:49:31.673023Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7255, Pop=455, MaxGens=1
+2026-11-14T02:31:24.824908Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 282f6e8df1a2bd3a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7255 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4198 bins (excess: +146), Efficiency: 96.53%, Fuel: 38546104
+ Best In-Dist (w/o Lookahead) : 4281 bins (excess: +229), Efficiency: 94.65%
+ Dynamic Trajectory: tLDR = 1.3241
+ Behavior Profile : DeadSpaceRatio: 21.4%, NewBinRatio: 42.0%, ResVar: 0.74
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 7.948
+ Validation Score : 4124 bins (excess: +125), Efficiency: 96.97%
+ OOD-1 Score      : 10260 bins (excess: +193), Efficiency: 98.12%
+ OOD-2 Score      : 3644 bins (excess: +84), Efficiency: 97.70%
+ Lineage Nodes    : 455, Transitions: 0
+ Best Heuristic   : LLM-Seed-071
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Exact fit reward: Strongest signal to minimize fragmentation.
+    if post_residual == 0 {
+        score -= 200.0;
+    }
+
+    // 2. Lookahead optimization: If next item fits in the remaining space, reward this bin.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 150.0;
+        // Reward tighter alignment for lookahead
+        score -= (post_residual - next_item_size) as f64 * 0.5;
+    }
+
+    // 3. Harmonic class awareness: Penalize small "dead" spaces (1-9) that are unlikely to accommodate 
+    // future items (given the 10-80 distribution), unless it's an exact fit.
+    if post_residual > 0 && post_residual < 10 {
+        score += 80.0;
+    }
+
+    // 4. Fitting constraints: If this is the only bin that can fit the item, prioritize it.
+    if fitting_bins_count == 1 {
+        score -= 300.0;
+    }
+
+    // 5. New Bin threshold: If bin is empty, apply a base cost to discourage opening new bins 
+    // unless the fit quality in existing bins is poor.
+    if bin_residual == bin_capacity {
+        score += 45.0; 
+        // Adjust new-bin penalty based on progress: open more freely early, be conservative later.
+        let progress = step_index as f64 / total_items as f64;
+        score += progress * 50.0;
+    }
+
+    // 6. Distribution balancing: Penalize bins that deviate significantly from the mean residual.
+    // This encourages filling bins somewhat uniformly to avoid "orphan" bins.
+    let residual_diff = (post_residual as f64 - mean_residual).abs();
+    score += residual_diff * 0.2;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\tirageDepense\run_seed_7255_tirageDepense.json.tmp

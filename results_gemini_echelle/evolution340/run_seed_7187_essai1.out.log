@@ -1,0 +1,78 @@
+2026-11-14T05:18:38.004702Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7187, Pop=8, MaxGens=37
+2026-11-14T05:38:43.694638Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 24843b74f6a485a1 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7187 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4186 bins (excess: +154), Efficiency: 96.32%, Fuel: 28176954
+ Best In-Dist (w/o Lookahead) : 4183 bins (excess: +151), Efficiency: 96.39%
+ Dynamic Trajectory: tLDR = 0.5155
+ Behavior Profile : DeadSpaceRatio: 61.9%, NewBinRatio: 41.9%, ResVar: 0.47
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 6.341
+ Validation Score : 4193 bins (excess: +160), Efficiency: 96.18%
+ OOD-1 Score      : 10416 bins (excess: +327), Efficiency: 96.86%
+ OOD-2 Score      : 3617 bins (excess: +72), Efficiency: 98.01%
+ Lineage Nodes    : 340, Transitions: 198
+ Best Heuristic   : LLM-Seed-131-mut-g30-mut-g30-mut-g30
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+
+    // 1. Refined Residual Penalty: Avoid the "Dead Zone" (1-22)
+    // Adjusted to be more aggressive in late-stage packing to prevent stranded small items
+    if post_residual > 0 && post_residual <= 22 {
+        score += 58.0 + (progress * 35.0);
+    }
+
+    // 2. Adaptive Lookahead Synergy
+    // Heavily reward bins that perfectly accommodate the next item to minimize future fragmentation
+    if next_item_size > 0 {
+        if post_residual == 0 {
+            score -= 35.0;
+        } else if post_residual >= next_item_size {
+            let slack = (post_residual - next_item_size) as f64;
+            // Non-linear reward for high-precision packing
+            score -= 28.0 * (1.0 - (slack / bin_capacity as f64).powf(0.7));
+        } else if !is_new_bin {
+            // Penalty for stranding the next item in an existing bin
+            score += 55.0 * (1.0 - (progress * 0.5));
+        }
+    }
+
+    // 3. New Bin Thresholding
+    // Increased dynamic cost of new bins based on current packing density
+    if is_new_bin {
+        let density_factor = 1.0 - (mean_residual / bin_capacity as f64);
+        let open_penalty = 75.0 + (open_bins_count as f64 * 5.5) + (progress * 65.0) + (density_factor * 40.0);
+        score += open_penalty;
+    }
+
+    // 4. Fragmentation Avoidance
+    // If only one bin fits, prioritize it heavily to avoid opening a new bin unnecessarily
+    if fitting_bins_count == 1 && !is_new_bin {
+        score -= 95.0;
+    }
+
+    // 5. Mean Residual Calibration
+    // Reward bins that pull the system toward the mean residual, reducing variance
+    if (bin_residual as f64) < mean_residual {
+        score -= 12.0;
+    }
+    
+    // Tight-fit reward for bins nearing completion
+    if post_residual < 8 && post_residual > 0 {
+        score -= 18.0;
+    }
+
+    // 6. Entropy dampening: discourage picking the same bin if it is very empty
+    // unless necessary, to keep "fresher" bins open for potential large items
+    if !is_new_bin && bin_residual > (bin_capacity * 3 / 4) {
+        score += 15.0 * progress;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7187_evolution340.json.tmp

@@ -1,0 +1,64 @@
+2026-11-14T01:51:10.317241Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7068, Pop=340, MaxGens=1
+2026-11-14T02:24:04.150361Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4dc9422c30bd0dd4 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7068 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4186 bins (excess: +169), Efficiency: 95.96%, Fuel: 26230431
+ Best In-Dist (w/o Lookahead) : 4180 bins (excess: +163), Efficiency: 96.10%
+ Dynamic Trajectory: tLDR = 0.4327
+ Behavior Profile : DeadSpaceRatio: 58.3%, NewBinRatio: 41.9%, ResVar: 0.51
+ MAP-Elites Niches: 11 active (11.0% coverage), QD-Score: 7.584
+ Validation Score : 4142 bins (excess: +143), Efficiency: 96.55%
+ OOD-1 Score      : 10390 bins (excess: +326), Efficiency: 96.86%
+ OOD-2 Score      : 3637 bins (excess: +69), Efficiency: 98.10%
+ Lineage Nodes    : 340, Transitions: 0
+ Best Heuristic   : LLM-Seed-156
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Harmonic penalty: Heavily penalize residuals that are small but non-zero (the "fragmentation trap").
+    // We target residuals that leave space too small for the majority of expected items.
+    if post_residual > 0 && post_residual < 20 {
+        score += 45.0;
+    }
+
+    // 2. Lookahead coupling: If next_item_size is known, favor bins that can accommodate it.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            score -= 25.0; // Strong reward for keeping the bin useful for the next step
+        } else {
+            score += 10.0; // Penalty for stranding the bin
+        }
+    }
+
+    // 3. Structural efficiency: Reward filling bins to "harmonic" thresholds (e.g., 50, 75, 100).
+    // This reduces the variance of the remaining space in the bin pool.
+    if post_residual == 0 {
+        score -= 30.0; // Perfect fit reward
+    } else if post_residual % 25 == 0 {
+        score -= 15.0; // Harmonic alignment reward
+    }
+
+    // 4. Global state pressure: If we have many open bins, become more conservative.
+    // Discourage opening new bins (bin_residual == bin_capacity) unless the fit is excellent.
+    if bin_residual == bin_capacity {
+        if open_bins_count > 0 {
+            score += 40.0 + (open_bins_count as f64 * 2.0);
+        }
+    }
+
+    // 5. Mean residual normalization: Avoid bins that deviate significantly from the current mean.
+    let residual_diff = (post_residual as f64 - mean_residual).abs();
+    score += residual_diff * 0.5;
+
+    // 6. Last-chance logic: If this is the only bin that fits, prioritize it over opening new ones.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 50.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\tirage340\run_seed_7068_tirage340.json.tmp

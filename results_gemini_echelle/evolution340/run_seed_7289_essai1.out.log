@@ -1,0 +1,80 @@
+2026-11-14T02:57:46.639847Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7289, Pop=8, MaxGens=37
+2026-11-14T03:35:00.869011Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 2d0081f989cd9170 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7289 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4080 bins (excess: +65), Efficiency: 98.41%, Fuel: 59559946
+ Best In-Dist (w/o Lookahead) : 4090 bins (excess: +75), Efficiency: 98.17%
+ Dynamic Trajectory: tLDR = 2.2613
+ Behavior Profile : DeadSpaceRatio: 8.1%, NewBinRatio: 40.8%, ResVar: 0.47
+ MAP-Elites Niches: 22 active (22.0% coverage), QD-Score: 20.553
+ Validation Score : 4118 bins (excess: +88), Efficiency: 97.86%
+ OOD-1 Score      : 10160 bins (excess: +93), Efficiency: 99.08%
+ OOD-2 Score      : 3643 bins (excess: +73), Efficiency: 98.00%
+ Lineage Nodes    : 340, Transitions: 195
+ Best Heuristic   : LLM-Seed-079-mut-g2-mut-g6-mut-g6-mut-g7-mut-g7-mut-g8-mut-g8-mut-g9-mut-g15-mut-g17
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    let mut score = post_residual as f64;
+
+    if is_new_bin {
+        // Refined new bin cost: Increased penalty to force deeper search of open bins.
+        // Adjusted density_weight to be more sensitive to small residual accumulation.
+        let end_game_multiplier = if progress > 0.82 { 7.5 } else { 1.0 };
+        let density_weight = (mean_residual / 24.0).clamp(0.8, 4.5);
+        let new_bin_base_penalty = 225.0 + (mean_residual * 1.45);
+        let population_penalty = (open_bins_count as f64).sqrt() * 40.0;
+        
+        score = (new_bin_base_penalty + (fitting_bins_count as f64 * 72.0) * (2.0 - progress).max(0.3) * density_weight + population_penalty) * end_game_multiplier;
+    } else {
+        // Enhanced Lookahead: Prioritize bins that maintain "flexible" residuals for the next item.
+        if next_item_size > 0 {
+            if post_residual >= next_item_size {
+                score -= 125.0; 
+                if post_residual == next_item_size { score -= 115.0; }
+                // Tight fit lookahead: prioritize bins that become "near-empty" after next_item_size
+                if post_residual < (next_item_size + 8) { score -= 55.0; }
+            } else {
+                score += 110.0; // Escalated penalty for blocking the next item.
+            }
+        }
+
+        // Adaptive Fragmentation Penalty: Aggressive avoidance of small unfillable gaps.
+        // Focused on the 1-50 range, increasing the curve sharpness.
+        if post_residual > 0 && post_residual < 52 {
+            score += (54.0 - post_residual as f64).powf(2.05) * (3.2 - progress).max(0.6);
+        }
+
+        // Dynamic Load Balancing: Reduce variance of residual space across open bins.
+        // Added a penalty for bins that are significantly larger than the mean_residual (wasted capacity).
+        if open_bins_count > 1 {
+            let target_residual = mean_residual * (1.0 - (progress * 0.45));
+            let deviation = (target_residual - post_residual as f64).abs();
+            score += (deviation / bin_capacity as f64) * 150.0 * (1.0 + progress * 0.7);
+            if post_residual as f64 > (mean_residual * 1.5) {
+                score += 35.0;
+            }
+        }
+    }
+
+    // Perfect fit reward: Non-linear scaling favoring exact matches to eliminate waste.
+    if post_residual == 0 {
+        score -= 250.0;
+    } else if post_residual < 2 {
+        score -= 140.0;
+    } else if post_residual < 5 {
+        score -= 95.0;
+    } else if post_residual < 10 {
+        score -= 65.0;
+    } else if post_residual < 18 {
+        score -= 35.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7289_evolution340.json.tmp

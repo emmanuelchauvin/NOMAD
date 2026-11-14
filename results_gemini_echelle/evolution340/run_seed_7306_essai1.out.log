@@ -1,0 +1,90 @@
+2026-11-14T03:35:35.918347Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7306, Pop=8, MaxGens=37
+2026-11-14T04:14:13.308675Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 226858c1c35bbfef on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7306 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4105 bins (excess: +87), Efficiency: 97.88%, Fuel: 113929073
+ Best In-Dist (w/o Lookahead) : 4195 bins (excess: +177), Efficiency: 95.78%
+ Dynamic Trajectory: tLDR = 4.4136
+ Behavior Profile : DeadSpaceRatio: 30.0%, NewBinRatio: 41.1%, ResVar: 0.90
+ MAP-Elites Niches: 21 active (21.0% coverage), QD-Score: 15.578
+ Validation Score : 4104 bins (excess: +88), Efficiency: 97.86%
+ OOD-1 Score      : 10402 bins (excess: +332), Efficiency: 96.81%
+ OOD-2 Score      : 3667 bins (excess: +100), Efficiency: 97.27%
+ Lineage Nodes    : 340, Transitions: 195
+ Best Heuristic   : LLM-Seed-071-mut-g3-mut-g3-mut-g3-mut-g3-mut-g5-mut-g5-mut-g7-mut-g7-mut-g8-mut-g9-mut-g19
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let is_new_bin = bin_residual == bin_capacity;
+    let progress = step_index as f64 / total_items as f64;
+    
+    let mut score = post_residual as f64;
+
+    if is_new_bin {
+        if fitting_bins_count > 0 {
+            // Refined adaptive threshold: balance new bin creation with current mean utilization
+            let density_factor = (mean_residual / bin_capacity as f64).powf(0.88);
+            let barrier = 162.0 + (progress * 275.0) + (open_bins_count as f64 * 6.2) - (density_factor * 295.0);
+            score = barrier;
+        } else {
+            score = -55000.0;
+        }
+    } else {
+        // Lookahead: Dynamic slack optimization with non-linear penalty for "stranded" space
+        if next_item_size > 0 {
+            if post_residual < next_item_size {
+                score += (next_item_size - post_residual) as f64 * 52.0;
+            } else {
+                let slack = post_residual - next_item_size;
+                score -= (next_item_size as f64 * 11.2) - (slack as f64 * 6.2);
+                if slack == 0 { score -= 280.0; }
+                else if slack < 5 { score -= 140.0; }
+            }
+        }
+
+        // Consolidation: Scale fragmentation penalty by open_bins_count
+        score += (open_bins_count as f64).sqrt() * (post_residual as f64) * 1.55;
+
+        // Anti-fragmentation: Multi-tier penalty for dead zones (dead zones < 10 are highly problematic)
+        if post_residual > 0 {
+            if post_residual < 10 { score += 180.0; }
+            else if post_residual < 20 { score += 90.0; }
+            else if post_residual > (bin_capacity / 2) { score += 85.0; }
+        }
+        
+        // Tight-fit reward: Increased incentive for near-perfect fills
+        if post_residual == 0 {
+            score -= 850.0;
+        } else if post_residual < 3 {
+            score -= 420.0;
+        }
+        
+        // Entropy control: Bias towards maintaining residuals near the moving average, 
+        // with ramped stringency for long-term stability
+        let entropy_weight = 3.2 + (progress * 8.5);
+        score += (post_residual as f64 - mean_residual).abs() * entropy_weight;
+        
+        // Parity-based density penalty: discourage odd-numbered residuals that complicate future fits
+        if post_residual > 3 && (post_residual % 2 != 0) {
+            score += 65.0;
+        }
+        
+        // Late-stage compaction: Aggressive cleanup to avoid trailing bins when near capacity
+        if progress > 0.78 {
+            score += (post_residual as f64) * 45.0;
+        }
+
+        // Density pressure: Cubic penalty for low-density bins, tuned to squeeze more items into existing bins
+        score += (post_residual as f64 / bin_capacity as f64).powi(3) * 175.0;
+        
+        // Efficiency reward: Prioritize bins that reach high density (below 1/10th capacity)
+        if post_residual < (bin_capacity / 10) {
+            score -= 210.0;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7306_evolution340.json.tmp

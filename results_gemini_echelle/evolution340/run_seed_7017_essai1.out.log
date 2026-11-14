@@ -1,0 +1,74 @@
+2026-11-14T00:18:42.022596Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7017, Pop=8, MaxGens=37
+2026-11-14T00:53:24.779402Z  INFO nomad_orchestrator::engine: Evaluating winning capsule d6f687eedad1a6c8 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7017 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4194 bins (excess: +160), Efficiency: 96.19%, Fuel: 29357663
+ Best In-Dist (w/o Lookahead) : 4201 bins (excess: +167), Efficiency: 96.03%
+ Dynamic Trajectory: tLDR = 0.3748
+ Behavior Profile : DeadSpaceRatio: 65.4%, NewBinRatio: 41.9%, ResVar: 0.47
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.212
+ Validation Score : 4197 bins (excess: +167), Efficiency: 96.02%
+ OOD-1 Score      : 10404 bins (excess: +355), Efficiency: 96.59%
+ OOD-2 Score      : 3603 bins (excess: +71), Efficiency: 98.03%
+ Lineage Nodes    : 340, Transitions: 204
+ Best Heuristic   : LLM-Seed-003-mut-g3-mut-g4-mut-g11-mut-g18-mut-g33-mut-g35
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let is_new_bin = bin_residual == bin_capacity;
+    let progress = step_index as f64 / total_items as f64;
+    let mut score = post_residual as f64;
+
+    // 1. Refined New Bin Penalty: Stricter gating to force reuse of existing bins.
+    if is_new_bin {
+        let density_bias = (mean_residual / bin_capacity as f64) * 72.0;
+        score += 185.0 + (open_bins_count as f64 * 5.2) + density_bias + (progress * 95.0);
+    } else {
+        // 2. High-Density Reward: Emphasize perfect fits and near-perfect residual gaps.
+        if post_residual == 0 {
+            score -= 245.0;
+        } else if post_residual < 8 {
+            score -= 115.0 + (8.0 - post_residual as f64) * 18.0;
+        }
+    }
+
+    // 3. Lookahead Optimization: Non-linear reward for future-proofing.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            let space_after_next = post_residual - next_item_size;
+            // Reward bins that leave a "sweet spot" (low residual) after the next item.
+            score -= 155.0 + (if space_after_next == 0 { 95.0 } else if space_after_next < 12 { 55.0 } else { 0.0 });
+        } else if post_residual > 0 {
+            // Penalize stranding space that is useless for the immediate next item.
+            score += 125.0 * (1.0 - (post_residual as f64 / next_item_size as f64).powf(0.85));
+        }
+    }
+
+    // 4. Fragmentation Control: Targeted suppression of "Dead Zones" (slivers).
+    // Shifted center to target tighter residual gaps (8-18) to avoid stranded small items.
+    if post_residual >= 4 && post_residual <= 20 {
+        score += 125.0 * (1.0 - (post_residual as f64 - 12.0).abs() / 8.0);
+    }
+
+    // 5. Dynamic Mean Deviation: Coupling mean_residual with progress to tighten packing.
+    if mean_residual > 0.0 {
+        score += (post_residual as f64 - mean_residual).abs() * (0.95 + progress * 2.0);
+    }
+
+    // 6. Scarcity Constraint: Force consolidation when options are limited.
+    if fitting_bins_count <= 2 && !is_new_bin {
+        score -= 225.0;
+    }
+
+    // 7. Temporal Pressure: Progressive tightening of the packing constraint.
+    score += (progress.powf(2.5)) * 240.0;
+
+    // 8. Residual normalization: Logarithmic penalty for large remaining capacities to favor compact bins.
+    // Increased exponent to punish large residuals more aggressively as the bin nears capacity exhaustion.
+    score += (post_residual as f64 / bin_capacity as f64).powf(1.4) * 45.0;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7017_evolution340.json.tmp

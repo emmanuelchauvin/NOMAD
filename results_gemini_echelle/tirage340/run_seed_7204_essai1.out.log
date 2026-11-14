@@ -1,0 +1,60 @@
+2026-11-14T01:51:16.914629Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7204, Pop=340, MaxGens=1
+2026-11-14T02:23:42.232610Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 08a4a1081654db5a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7204 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4215 bins (excess: +180), Efficiency: 95.73%, Fuel: 25735308
+ Best In-Dist (w/o Lookahead) : 4226 bins (excess: +191), Efficiency: 95.48%
+ Dynamic Trajectory: tLDR = 0.1267
+ Behavior Profile : DeadSpaceRatio: 71.1%, NewBinRatio: 42.1%, ResVar: 0.43
+ MAP-Elites Niches: 11 active (11.0% coverage), QD-Score: 7.468
+ Validation Score : 4167 bins (excess: +171), Efficiency: 95.90%
+ OOD-1 Score      : 10419 bins (excess: +385), Efficiency: 96.30%
+ OOD-2 Score      : 3643 bins (excess: +100), Efficiency: 97.26%
+ Lineage Nodes    : 340, Transitions: 0
+ Best Heuristic   : LLM-Seed-021
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Harmonic Penalty: Heavily penalize residuals that are small but non-zero (fragments)
+    // if they cannot accommodate the lookahead item.
+    if post_residual > 0 && post_residual < next_item_size {
+        score += 50.0 + (next_item_size - post_residual) as f64 * 0.5;
+    }
+
+    // 2. Best-Fit/First-Fit Hybrid: Favor bins that leave a residual which is a multiple of 
+    // common item sizes (e.g., 20, 25, 50) to increase packing density potential.
+    let remainder = post_residual % 25;
+    score += remainder as f64 * 0.8;
+
+    // 3. New Bin Thresholding: Discourage opening a new bin unless the existing fit is extremely poor.
+    // If this is a new bin (bin_residual == bin_capacity), add a threshold cost.
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            // Only open new if we are forced or if existing fits are all "bad" (> 30 residual)
+            score += 35.0; 
+        } else {
+            score -= 10.0; // Must open a new bin if nothing fits
+        }
+    }
+
+    // 4. Lookahead Coupling: Reward bins that leave space for the next item.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 20.0;
+        // Further reward perfect fits for the next item
+        if post_residual == next_item_size {
+            score -= 30.0;
+        }
+    }
+
+    // 5. Global Density Constraint: As the stream progresses, prioritize closing bins
+    // by penalizing empty space more aggressively.
+    let progress = step_index as f64 / total_items as f64;
+    score += (bin_residual as f64) * progress * 0.5;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\tirage340\run_seed_7204_tirage340.json.tmp

@@ -1,0 +1,77 @@
+2026-11-14T02:04:46.063700Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7068, Pop=8, MaxGens=37
+2026-11-14T02:39:17.032890Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 32bd6c05b5d9f362 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7068 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4180 bins (excess: +163), Efficiency: 96.10%, Fuel: 29032298
+ Best In-Dist (w/o Lookahead) : 4184 bins (excess: +167), Efficiency: 96.01%
+ Dynamic Trajectory: tLDR = 0.4930
+ Behavior Profile : DeadSpaceRatio: 61.2%, NewBinRatio: 41.8%, ResVar: 0.48
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.443
+ Validation Score : 4148 bins (excess: +149), Efficiency: 96.41%
+ OOD-1 Score      : 10394 bins (excess: +330), Efficiency: 96.83%
+ OOD-2 Score      : 3643 bins (excess: +75), Efficiency: 97.94%
+ Lineage Nodes    : 340, Transitions: 177
+ Best Heuristic   : LLM-Seed-062-mut-g11-mut-g13
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Base score: favor tightest fit (post_residual)
+    let mut score = post_residual as f64;
+
+    // Fragmentation penalty: 
+    // Gaps between 1 and 21 are highly likely to be wasted.
+    if post_residual > 0 && post_residual < 22 {
+        score += 44.0 * (1.1 - (progress * 0.35));
+    }
+
+    // Lookahead:
+    // If we can't fit the next item, penalize the bin. 
+    // Scale penalty by progress to ensure we don't block large items late in the stream.
+    if post_residual < next_item_size {
+        score += 35.0 * (0.5 + (progress * 0.5));
+    }
+
+    // New Bin Gatekeeping:
+    // Tightened to force usage of existing bins unless they are truly inefficient.
+    if is_new_bin {
+        let density_factor = (bin_capacity as f64 - mean_residual) / bin_capacity as f64;
+        // Higher penalty for opening new bins when many bins are already active
+        let base_new_bin_penalty = 64.0 + (open_bins_count as f64 * 1.5);
+        let saturation_penalty = base_new_bin_penalty * (1.0 - progress).powf(0.7);
+        
+        // If we have many fitting options, opening a new bin is heavily discouraged.
+        let scarcity_factor = (fitting_bins_count as f64).min(8.0) * 14.0;
+        
+        score += (saturation_penalty + (density_factor * 12.0) + scarcity_factor);
+    } else {
+        // Encourage filling bins that are currently emptier than the mean
+        if (bin_capacity - bin_residual) as f64 > mean_residual {
+            score -= 14.0 * (1.0 - progress);
+        }
+    }
+
+    // Efficiency constraint:
+    // Non-linear penalty for bin sprawl.
+    if open_bins_count > 5 {
+        score += (open_bins_count as f64).powf(1.4) * 0.45;
+    }
+
+    // Reward perfect fits
+    if post_residual == 0 {
+        score -= 26.0;
+    }
+
+    // Final adjustment: penalize deviations from the global mean to maintain density
+    // We use a tighter weighting for deviation as we progress to stabilize the packing.
+    let target_residual = mean_residual * 0.85;
+    let deviation = (post_residual as f64 - target_residual).abs();
+    score += 0.4 * deviation * (0.5 + progress);
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7068_evolution340.json.tmp

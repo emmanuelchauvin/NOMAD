@@ -1,0 +1,88 @@
+2026-11-14T04:13:51.454837Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7136, Pop=8, MaxGens=37
+2026-11-14T04:35:16.234285Z  INFO nomad_orchestrator::engine: Evaluating winning capsule ae58c98fd4648d65 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7136 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4099 bins (excess: +77), Efficiency: 98.12%, Fuel: 49853902
+ Best In-Dist (w/o Lookahead) : 4318 bins (excess: +296), Efficiency: 93.15%
+ Dynamic Trajectory: tLDR = 2.3693
+ Behavior Profile : DeadSpaceRatio: 51.1%, NewBinRatio: 41.0%, ResVar: 0.29
+ MAP-Elites Niches: 11 active (11.0% coverage), QD-Score: 8.640
+ Validation Score : 4079 bins (excess: +68), Efficiency: 98.33%
+ OOD-1 Score      : 10292 bins (excess: +262), Efficiency: 97.45%
+ OOD-2 Score      : 3592 bins (excess: +58), Efficiency: 98.39%
+ Lineage Nodes    : 340, Transitions: 195
+ Best Heuristic   : LLM-Seed-110-mut-g18-mut-g21-mut-g21-mut-g22-mut-g23-mut-g26
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let post_res = post_residual as f64;
+    let capacity = bin_capacity as f64;
+
+    // 1. Refined Best-Fit with aggressive slack minimization
+    // Increased power factor to 1.52 to punish larger residual chunks more severely
+    let mut score = post_res.powf(1.52) * 1.42;
+    
+    // Enhanced reward for near-perfect fills to minimize slivers
+    if post_residual == 0 {
+        score -= 92.0;
+    } else if post_residual < 4 {
+        score -= (4.0 - post_res) * 26.0;
+    } else if post_residual < 12 {
+        score += post_res * 0.52;
+    }
+
+    // 2. Predictive Lookahead: Enhanced chain-fitting with non-linear penalty for fragmentation
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            score -= (next_item_size as f64) * 7.2;
+            let next_post_res = (post_residual - next_item_size) as f64;
+            
+            // Penalize micro-gaps more harshly; they are the primary source of waste
+            if next_post_res > 0.0 && next_post_res < 6.0 {
+                score += 28.0 + (next_post_res * 2.5);
+            } else {
+                score += next_post_res * 0.72;
+            }
+        } else {
+            // Penalize bins that block the next item from fitting, scaled by proximity to capacity
+            score += (next_item_size as f64) * 6.2;
+        }
+    }
+
+    // 3. Adaptive Entropy Control
+    // Increased sensitivity to mean residual to force convergence toward uniform bin density
+    let density_deviation = (post_res - mean_residual).abs();
+    score += density_deviation * 1.85;
+
+    // 4. New Bin Candidate Logic
+    if bin_residual == bin_capacity {
+        // Dynamic gating: increase base penalty to force higher utilization of existing bins
+        // Added a log factor to scale penalty with total_items to prevent early bin sprawl
+        let base_penalty = 128.0 + (open_bins_count as f64 * 0.95) + (progress * 55.0) + (fitting_bins_count as f64 * 12.0);
+        score = base_penalty;
+        
+        // If we are in the late-game, make opening a new bin prohibitively expensive
+        if progress > 0.8 && fitting_bins_count > 0 {
+            score += 150.0;
+        }
+        
+        if fitting_bins_count == 0 {
+            score = -450.0;
+        }
+    } else {
+        // 5. Consolidation Bias
+        // Late-stage packing prefers dense bins; early-stage prefers balanced distribution
+        let fullness = (capacity - bin_residual as f64) / capacity;
+        score -= fullness * (40.0 * (1.0 - progress));
+        
+        // Non-linear penalty for excessive bin count relative to current step
+        let fragmentation_penalty = (open_bins_count as f64).powf(1.22) / (step_index as f64 + 10.0).sqrt();
+        score += fragmentation_penalty * 9.5;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7136_evolution340.json.tmp

@@ -1,0 +1,93 @@
+2026-11-14T00:18:26.664172Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7221, Pop=8, MaxGens=37
+2026-11-14T01:04:22.687921Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 3f41d12672ed4ede on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7221 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4089 bins (excess: +62), Efficiency: 98.48%, Fuel: 45335038
+ Best In-Dist (w/o Lookahead) : 4195 bins (excess: +168), Efficiency: 95.99%
+ Dynamic Trajectory: tLDR = 1.2779
+ Behavior Profile : DeadSpaceRatio: 50.1%, NewBinRatio: 40.9%, ResVar: 0.27
+ MAP-Elites Niches: 20 active (20.0% coverage), QD-Score: 15.715
+ Validation Score : 4087 bins (excess: +69), Efficiency: 98.32%
+ OOD-1 Score      : 10148 bins (excess: +112), Efficiency: 98.90%
+ OOD-2 Score      : 3599 bins (excess: +52), Efficiency: 98.56%
+ Lineage Nodes    : 340, Transitions: 204
+ Best Heuristic   : LLM-Seed-041-mut-g7-mut-g10-mut-g11-mut-g14-mut-g15-mut-g16-mut-g17
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let post = post_residual as f64;
+    let capacity = bin_capacity as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+
+    // Base objective: Minimize post_residual, heavily penalized for slivers
+    let mut score = post * 2.65;
+
+    // 1. Enhanced Lookahead:
+    if next_item_size > 0 {
+        let n = next_item_size as f64;
+        if post == n {
+            score -= 510.0; // Stronger reward for exact fit
+        } else if post < n && post > 2.0 {
+            // Sharpened penalty for blocking the next item
+            score += (n - post).powf(2.7) * 75.0 * (1.15 + progress);
+        } else if post > n && (post - n) < 14.0 {
+            // Penalty for leaving "unusable" space relative to next item
+            score += 65.0 * (1.0 - (post - n) / 14.0);
+        }
+    }
+
+    // 2. Dynamic New Bin Pressure:
+    if is_new_bin {
+        // Increased threshold to resist opening new bins
+        let scarcity_penalty = (open_bins_count as f64).powf(1.1) * 125.0;
+        score += 200.0 + (progress * 380.0) + (mean_residual * 11.0) + (fitting_bins_count as f64 * 65.0) + scarcity_penalty;
+    }
+
+    // 3. Fragmentation Mitigation:
+    // Targeted dead zones (1-14)
+    if post > 1.0 && post < 15.0 {
+        score += 330.0 * (1.05 - (progress * 0.45));
+    }
+
+    // 4. Utilization Density & Flexibility:
+    if !is_new_bin {
+        let utilization = (capacity - bin_residual as f64) / capacity;
+        score -= utilization * 280.0;
+        
+        if post == 0.0 {
+            score -= 275.0; // Aggressive completion reward
+        } else if post < 7.0 {
+            score -= 145.0 * (1.0 - progress);
+        }
+
+        // Penalty if we have many fitting options, to prioritize tighter packing
+        if fitting_bins_count > 1 {
+            score += (fitting_bins_count as f64).ln() * 55.0;
+        }
+    }
+
+    // 5. Harmonic Consolidation:
+    // Modulo-based alignment to reduce variance in remaining bin capacities
+    let alignment = if post_residual % 25 == 0 { 120.0 } 
+                    else if post_residual % 20 == 0 { 90.0 } 
+                    else if post_residual % 10 == 0 { 60.0 } 
+                    else if post_residual % 5 == 0 { 35.0 }
+                    else { 0.0 };
+    score -= alignment;
+
+    // 6. Global Uniformity:
+    let residual_deviation = (post - mean_residual).abs();
+    score += (residual_deviation / capacity) * 210.0 * (0.5 + progress);
+
+    // 7. Final-Phase Aggression:
+    // Exponentially increase pressure to close bins as the stream reaches end
+    if progress > 0.75 {
+        score -= (capacity - post) * 6.5; 
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7221_evolution340.json.tmp

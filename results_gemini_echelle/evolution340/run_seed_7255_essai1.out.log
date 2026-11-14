@@ -1,0 +1,77 @@
+2026-11-14T01:40:47.936759Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7255, Pop=8, MaxGens=37
+2026-11-14T02:21:18.775605Z  INFO nomad_orchestrator::engine: Evaluating winning capsule dc3981006ab41590 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7255 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4106 bins (excess: +54), Efficiency: 98.68%, Fuel: 70155076
+ Best In-Dist (w/o Lookahead) : 4154 bins (excess: +102), Efficiency: 97.54%
+ Dynamic Trajectory: tLDR = 2.8465
+ Behavior Profile : DeadSpaceRatio: 22.5%, NewBinRatio: 41.1%, ResVar: 0.58
+ MAP-Elites Niches: 16 active (16.0% coverage), QD-Score: 13.956
+ Validation Score : 4057 bins (excess: +58), Efficiency: 98.57%
+ OOD-1 Score      : 10167 bins (excess: +100), Efficiency: 99.02%
+ OOD-2 Score      : 3605 bins (excess: +45), Efficiency: 98.75%
+ Lineage Nodes    : 340, Transitions: 192
+ Best Heuristic   : LLM-Seed-046-mut-g1-mut-g1-mut-g7-mut-g10-mut-g18
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+
+    // 1. Refined Fragment Mitigation: Focus on high-risk dead zones (1-32)
+    if post_residual > 0 && post_residual <= 32 {
+        score += 145.0 - (post_residual as f64 * 2.1);
+    }
+
+    // 2. Predictive Lookahead: Non-linear reward for perfect fit
+    if next_item_size > 0 {
+        if next_item_size <= post_residual {
+            let tightness = (post_residual - next_item_size) as f64;
+            score -= (150.0 - tightness * 4.5).max(0.0);
+        } else if post_residual > 0 {
+            // Penalty for creating gaps that cannot accommodate the next item
+            score += 72.0 * (1.0 + (next_item_size - post_residual) as f64 / bin_capacity as f64).min(2.5);
+        }
+    }
+
+    // 3. Dynamic Thresholding: Stricter gate for new bin creation using residual density
+    if is_new_bin {
+        if fitting_bins_count == 0 {
+            score = -50.0;
+        } else {
+            // Delay new bin creation by weighting mean_residual against local progress
+            score = 140.0 + (mean_residual * 2.8) - (progress * 135.0);
+        }
+    } else {
+        // 4. Tightness Bias: Increased penalty for leaving excessive residual
+        score += (bin_capacity - bin_residual) as f64 * 0.95;
+    }
+
+    // 5. Late Game Compaction: Aggressive closing of gaps
+    if progress > 0.35 {
+        let late_factor = (progress - 0.35) / 0.65;
+        score -= (bin_capacity - post_residual) as f64 * 2.5 * late_factor;
+        score += post_residual as f64 * late_factor * 4.2;
+    }
+
+    // 6. Adaptive Congestion Control: Adjusted target_bins for higher density
+    let target_bins = (total_items as f64 / (bin_capacity as f64 * 0.0195)).max(12.0);
+    if open_bins_count as f64 > target_bins {
+        let congestion_ratio = (open_bins_count as f64 / target_bins).min(8.0);
+        score += post_residual as f64 * congestion_ratio * 4.0;
+    }
+    
+    // 7. Small Item Consolidation: Target large bin residuals for small items
+    if item_size < 18 {
+        let residual_pct = bin_residual as f64 / bin_capacity as f64;
+        if residual_pct > 0.3 {
+            score -= 35.0 * residual_pct;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7255_evolution340.json.tmp
