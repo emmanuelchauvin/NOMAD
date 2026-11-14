@@ -34,6 +34,11 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $log = Join-Path $out "arm_${From}_${To}.log"
 
 if (-not $env:GEMINI_API_KEY) {
+    # Processus lance hors d'une session interactive : la variable est lue au niveau
+    # utilisateur.
+    $env:GEMINI_API_KEY = [Environment]::GetEnvironmentVariable('GEMINI_API_KEY', 'User')
+}
+if (-not $env:GEMINI_API_KEY) {
     Add-Content $log "$(Get-Date -Format s) GEMINI_API_KEY absente"
     exit 1
 }
