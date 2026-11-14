@@ -112,8 +112,9 @@ lieu de 0,05, pour tenir compte du second regard. Aucune autre extension.
   baisser d'un palier au suivant.
 - Les paliers d'une même seed ne sont pas indépendants : ils viennent du même run.
 - Sans champ `seed`, les réponses du modèle ne sont pas reproductibles.
-- Un tiers environ des appels de l'évolution sont des propositions fraîches de relance
-  (constaté sur l'essai préalable) : le bras d'évolution contient une part de tirage.
+- Un quart environ des appels de l'évolution sont des propositions fraîches de relance
+  (23 % et 29 % sur les deux runs de l'essai préalable) : le bras d'évolution contient une
+  part de tirage.
 - Les propositions fraîches reçoivent un des cinq « archétypes » du prompt de génération,
   dont un proche de l'astuce de la référence manuelle. Le prompt de mutation n'en contient
   pas.
