@@ -1,0 +1,92 @@
+[2m2026-11-14T13:49:31.080276Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8017, Pop=8, MaxGens=192
+[2m2026-11-14T16:56:29.032439Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 585cc9c2231b17b1 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8017 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4080 bins (excess: +82), Efficiency: 97.99%, Fuel: 95922014
+ Best In-Dist (w/o Lookahead) : 4188 bins (excess: +190), Efficiency: 95.47%
+ Dynamic Trajectory: tLDR = 1.8486
+ Behavior Profile : DeadSpaceRatio: 30.7%, NewBinRatio: 40.8%, ResVar: 0.65
+ MAP-Elites Niches: 17 active (17.0% coverage), QD-Score: 12.690
+ Validation Score : 4088 bins (excess: +90), Efficiency: 97.80%
+ OOD-1 Score      : 10243 bins (excess: +174), Efficiency: 98.30%
+ OOD-2 Score      : 3584 bins (excess: +73), Efficiency: 97.97%
+ Lineage Nodes    : 1359, Transitions: 863
+ Best Heuristic   : LLM-Seed-026-mut-g69-mut-g72-mut-g82-mut-g83-mut-g86-mut-g109-mut-g109-mut-g115-mut-g119-mut-g120-mut-g122
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = (post_residual as f64) * 1.62;
+    let progress = step_index as f64 / total_items as f64;
+    let capacity_ratio = post_residual as f64 / bin_capacity as f64;
+
+    // 1. Refined Fragmentation Management:
+    // Tightened the sliver penalty and added a non-linear penalty for mid-sized gaps that resist packing.
+    if post_residual > 0 {
+        if post_residual < 18 {
+            score += 610.0 - (post_residual as f64 * 18.0);
+        } else if (post_residual as f64) < (mean_residual * 0.85) {
+            score -= 185.0; 
+        } else if post_residual < (bin_capacity / 3) {
+            score += 120.0;
+        }
+    }
+
+    // 2. Predictive Lookahead:
+    // Refined the lookahead to favor bins that can accommodate BOTH current and next items.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            let scarcity = (open_bins_count as f64) / (fitting_bins_count as f64 + 0.1);
+            score -= 420.0 + (scarcity * 160.0) + (next_item_size as f64 * 6.5) + (capacity_ratio * 140.0);
+        } else {
+            score += 450.0 + (progress * 220.0);
+        }
+    }
+
+    // 3. Dynamic Pressure Management:
+    // Dampened the late-game bias to prevent over-eager bin opening as the stream concludes.
+    let late_game_bias = (progress.powf(2.5) * 60.0).exp() * 0.25;
+    score += (open_bins_count as f64).powf(1.8) * (1.1 + late_game_bias);
+
+    // 4. Forced Selection Logic:
+    if fitting_bins_count == 1 {
+        score -= 850.0;
+    }
+
+    // 5. New Bin Gate:
+    // Heavier penalty for opening new bins when mean_residual suggests existing bins are under-utilized.
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            score += 1350.0 + (mean_residual * 11.0) + (progress * 750.0);
+        } else {
+            score -= 520.0; 
+        }
+    }
+
+    // 6. Harmonic Alignment:
+    // Prioritize high-utilization states; added a specific penalty for "near-perfect" but unreachable states.
+    if post_residual == 0 {
+        score -= 1150.0;
+    } else if post_residual > (bin_capacity * 75 / 100) {
+        score -= 410.0; 
+    } else if post_residual % 5 == 0 {
+        score -= 180.0;
+    }
+
+    // 7. Uniformity:
+    // Penalize variance from the mean scaled by the bin's depth.
+    let deviation = (post_residual as f64 - mean_residual).abs();
+    score += (deviation * 4.0) * (1.0 - capacity_ratio.powi(2));
+
+    // 8. Lookahead-Residual Symmetry:
+    // Tightened the "anti-deadlock" for specific gaps matching the next item size.
+    if post_residual > 0 && post_residual < (next_item_size + 8) {
+        score += 550.0;
+    } else if post_residual == next_item_size {
+        score -= 650.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8017_evolution.json.tmp

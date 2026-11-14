@@ -1,0 +1,60 @@
+[2m2026-11-14T11:52:14.348223Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8017, Pop=1359, MaxGens=1
+[2m2026-11-14T15:00:17.343421Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 3584dd6eb4ae63e5 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8017 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4139 bins (excess: +141), Efficiency: 96.59%, Fuel: 25884652
+ Best In-Dist (w/o Lookahead) : 4141 bins (excess: +143), Efficiency: 96.55%
+ Dynamic Trajectory: tLDR = 0.6388
+ Behavior Profile : DeadSpaceRatio: 53.6%, NewBinRatio: 41.4%, ResVar: 0.50
+ MAP-Elites Niches: 20 active (20.0% coverage), QD-Score: 13.490
+ Validation Score : 4144 bins (excess: +146), Efficiency: 96.48%
+ OOD-1 Score      : 10385 bins (excess: +316), Efficiency: 96.96%
+ OOD-2 Score      : 3573 bins (excess: +62), Efficiency: 98.26%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-856
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Harmonic Penalty: Heavily penalize residuals that are small but non-zero (fragments)
+    // Especially if they cannot accommodate common item sizes.
+    if post_residual > 0 && post_residual < 20 {
+        score += 45.0;
+    }
+
+    // 2. Lookahead Synergy: If the next item fits into the post_residual, reward this bin.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= (next_item_size as f64) * 0.8;
+    }
+
+    // 3. New Bin Threshold: If this is an empty bin, penalize it based on how many 
+    // bins are already open and the progress of the stream.
+    if bin_residual == bin_capacity {
+        let progress = step_index as f64 / total_items as f64;
+        // Only open a new bin if the current fit quality (post_residual) of 
+        // existing bins is significantly worse than the average.
+        score = 25.0 + (open_bins_count as f64 * 0.5) + (progress * 10.0);
+    } else {
+        // 4. Fitting Pressure: If this is the only bin that can fit the item, 
+        // prioritize it strongly to avoid unnecessary new bin creation.
+        if fitting_bins_count == 1 {
+            score -= 30.0;
+        }
+        
+        // 5. Residual Alignment: Favor bins where the residual stays close to the 
+        // global mean, preventing outlier bins with high/low waste.
+        score += (post_residual as f64 - mean_residual).abs() * 0.2;
+    }
+
+    // 6. Harmonic Class Bias: Prefer residuals that are multiples of 25 (e.g., 25, 50, 75)
+    // as they provide high flexibility for future items.
+    if post_residual % 25 == 0 && post_residual > 0 {
+        score -= 10.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\tirage\run_seed_8017_tirage.json.tmp

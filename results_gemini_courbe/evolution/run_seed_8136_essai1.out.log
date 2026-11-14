@@ -1,0 +1,81 @@
+[2m2026-11-14T08:58:07.336311Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8136, Pop=8, MaxGens=192
+[2m2026-11-14T12:34:38.204958Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule a990e395182eb504 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8136 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4156 bins (excess: +138), Efficiency: 96.68%, Fuel: 28314100
+ Best In-Dist (w/o Lookahead) : 4170 bins (excess: +152), Efficiency: 96.35%
+ Dynamic Trajectory: tLDR = 0.5308
+ Behavior Profile : DeadSpaceRatio: 59.2%, NewBinRatio: 41.6%, ResVar: 0.45
+ MAP-Elites Niches: 14 active (14.0% coverage), QD-Score: 9.518
+ Validation Score : 4184 bins (excess: +147), Efficiency: 96.49%
+ OOD-1 Score      : 10318 bins (excess: +297), Efficiency: 97.12%
+ OOD-2 Score      : 3636 bins (excess: +70), Efficiency: 98.07%
+ Lineage Nodes    : 1359, Transitions: 836
+ Best Heuristic   : LLM-Seed-032-mut-g37-mut-g38-mut-g54
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Base score: Favor filling to completion (minimize post_residual).
+    // Shifted power to penalize mid-sized gaps more heavily.
+    let mut score = (post_residual as f64).powf(1.22);
+
+    // 1. Refined Fragmentation Mitigation:
+    // Increased penalty for the "dead zone" (1-18 range) which prevents pairing of small items.
+    if post_residual > 0 && post_residual < 19 {
+        score += 215.0 * (1.0 - progress * 0.12);
+    }
+
+    // 2. Lookahead Synergy (Enhanced):
+    // Prioritize bins that accommodate next_item_size with minimal slack.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Strong reward for a fit, scaling with how close the fit is to the target.
+            score -= 285.0 + (1.0 / (post_residual - next_item_size + 1) as f64) * 150.0;
+        } else if post_residual > 0 && post_residual < 22 {
+            // Penalty for stranding an item that could have fit elsewhere.
+            score += 190.0 * (next_item_size as f64 / 100.0);
+        }
+    }
+
+    // 3. Adaptive Bin-Opening:
+    // Exponentially weight the cost of a new bin based on global packing density.
+    if is_new_bin {
+        let density_weight = (open_bins_count as f64).powf(1.42) * 14.5;
+        let penalty = 380.0 + density_weight;
+        // If we have many fitting options, opening a new bin is very expensive.
+        score += if fitting_bins_count > 0 { penalty * 6.5 } else { penalty * 0.08 };
+    } else {
+        // 4. Fitting Scarcity:
+        // Prioritize existing bins when the supply of fit-able containers is low.
+        if fitting_bins_count < 4 {
+            score -= 240.0 / (fitting_bins_count as f64 + 0.3);
+        }
+    }
+
+    // 5. Mean Residual Alignment:
+    // Penalize high variance from the mean to promote uniform bin usage.
+    score += (post_residual as f64 - mean_residual).abs() * 0.85;
+
+    // 6. Tightness/Completion Reward:
+    if post_residual == 0 {
+        score -= 650.0;
+    } else if post_residual < 4 {
+        score -= 180.0;
+    }
+
+    // 7. Late-stage Compaction:
+    // Aggressive consolidation as the stream ends.
+    if progress > 0.85 {
+        score -= (bin_capacity - post_residual) as f64 * 7.2;
+    } else if progress > 0.6 {
+        score -= (bin_capacity - post_residual) as f64 * 1.8;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8136_evolution.json.tmp

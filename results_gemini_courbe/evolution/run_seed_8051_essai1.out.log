@@ -1,0 +1,106 @@
+[2m2026-11-14T13:01:15.682974Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8051, Pop=8, MaxGens=192
+[2m2026-11-14T18:00:04.652559Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 871ced1ba980ea33 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8051 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4092 bins (excess: +70), Efficiency: 98.29%, Fuel: 293475553
+ Best In-Dist (w/o Lookahead) : 4166 bins (excess: +144), Efficiency: 96.56%
+ Dynamic Trajectory: tLDR = 4.8345
+ Behavior Profile : DeadSpaceRatio: 25.7%, NewBinRatio: 40.9%, ResVar: 0.94
+ MAP-Elites Niches: 25 active (25.0% coverage), QD-Score: 19.944
+ Validation Score : 4108 bins (excess: +68), Efficiency: 98.35%
+ OOD-1 Score      : 10465 bins (excess: +407), Efficiency: 96.11%
+ OOD-2 Score      : 3587 bins (excess: +55), Efficiency: 98.46%
+ Lineage Nodes    : 1359, Transitions: 806
+ Best Heuristic   : LLM-Seed-009-mut-g5-mut-g5-mut-g19-mut-g20-mut-g21-mut-g21-mut-g22
+ Logic Code       : pub fn score_bin(
+    item_size: u32,
+    bin_residual: u32,
+    bin_capacity: u32,
+    step_index: usize,
+    total_items: usize,
+    open_bins_count: usize,
+    mean_residual: f64,
+    next_item_size: u32,
+    post_residual: u32,
+    fitting_bins_count: usize,
+) -> f64 {
+    let progress = (step_index as f64 / total_items as f64).clamp(0.0, 1.0);
+    let is_new_bin = bin_residual == bin_capacity;
+    let post = post_residual as f64;
+    let cap = bin_capacity as f64;
+
+    let mut score = post.powf(2.18);
+
+    if is_new_bin {
+        // Shift base cost to account for the "fitting_bins_count" constraint
+        let base_cost = 3650.0 - (progress * 1200.0);
+        let scale_factor = (open_bins_count as f64).powf(0.75) * 340.0;
+        
+        // Adaptive lookahead pressure to prevent premature new bin opening
+        let lookahead_pressure = if next_item_size > 0 && (next_item_size as f64) < (mean_residual * 2.1) {
+            2350.0
+        } else {
+            0.0
+        };
+        score = base_cost + scale_factor + lookahead_pressure;
+    } else {
+        // Reward perfect fits
+        if post_residual == 0 {
+            score -= 6800.0 + (progress * 2800.0);
+        } else if post_residual < (bin_capacity / 40) {
+            score -= 4100.0;
+        }
+
+        // Penalty for blocking future items: dynamic sensitivity
+        if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+            let scarcity_penalty = if fitting_bins_count <= 3 { 5400.0 } else { 2100.0 };
+            score += scarcity_penalty * (1.0 + progress.sqrt());
+        }
+
+        // Targeted residual control
+        let target_residual = mean_residual * (0.62 + (progress * 0.18));
+        let deviation = (target_residual - post).abs();
+        score -= (deviation * 8.2) / (1.0 + (post / cap).sqrt());
+
+        // Favor closing bins when options are scarce
+        if fitting_bins_count == 1 {
+            score -= 16800.0;
+        }
+
+        // Density pressure
+        score += post * (progress.powf(0.95)) * 340.0;
+        
+        // Tightened "dead space" penalty
+        if post_residual < (bin_capacity / 10) && post_residual > 0 {
+            score += 2400.0 * (1.1 - progress * 0.6);
+        }
+        
+        // Lookahead optimization for next_item_size
+        if next_item_size > 0 {
+            if post_residual >= next_item_size {
+                score -= 1500.0 * (1.0 + progress * 0.5);
+                if (post_residual - next_item_size) == 0 {
+                    score -= 1400.0;
+                }
+            } else {
+                score += 1800.0;
+            }
+        }
+        
+        // Entropy adjustment: focus on density in final 25%
+        let entropy_penalty = (post - mean_residual).abs() * (1.25 - progress);
+        score += entropy_penalty * 920.0;
+        
+        // High density reward: prioritize closing bins that are nearly full
+        if post < (cap * 0.12) && post > 0.0 {
+            score -= 1300.0 * (1.0 - progress * 0.4);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8051_evolution.json.tmp

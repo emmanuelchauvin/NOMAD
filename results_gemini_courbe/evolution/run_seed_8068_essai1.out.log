@@ -1,0 +1,75 @@
+[2m2026-11-14T08:58:07.074612Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8068, Pop=8, MaxGens=192
+[2m2026-11-14T12:20:56.732881Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule a6123f626ff9c5ca on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8068 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4159 bins (excess: +157), Efficiency: 96.23%, Fuel: 26403080
+ Best In-Dist (w/o Lookahead) : 4192 bins (excess: +190), Efficiency: 95.47%
+ Dynamic Trajectory: tLDR = 0.4790
+ Behavior Profile : DeadSpaceRatio: 59.7%, NewBinRatio: 41.6%, ResVar: 0.50
+ MAP-Elites Niches: 14 active (14.0% coverage), QD-Score: 9.666
+ Validation Score : 4174 bins (excess: +159), Efficiency: 96.19%
+ OOD-1 Score      : 10386 bins (excess: +324), Efficiency: 96.88%
+ OOD-2 Score      : 3616 bins (excess: +76), Efficiency: 97.90%
+ Lineage Nodes    : 1359, Transitions: 872
+ Best Heuristic   : LLM-Seed-091-mut-g60-mut-g165
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let is_new_bin = bin_residual == bin_capacity;
+    let progress = step_index as f64 / total_items as f64;
+    
+    // Base score: Favor tightest fit (lower post_residual is better).
+    let mut score = post_residual as f64;
+
+    if is_new_bin {
+        // Dynamic barrier: Penalize opening a new bin based on how many bins are already open,
+        // but soften the penalty as we approach the end of the stream to ensure completion.
+        let new_bin_penalty = 125.0 + (open_bins_count as f64 * 2.5) - (progress * 45.0);
+        score += new_bin_penalty;
+    } else {
+        // 1. Lookahead: Prioritize bins that leave enough room for the next item.
+        if next_item_size > 0 {
+            if post_residual >= next_item_size {
+                score -= 75.0;
+            } else if post_residual > 0 && post_residual < 22 {
+                // Penalize "sliver" residuals that are too small to be useful.
+                score += 95.0 * (1.0 - (progress * 0.2));
+            }
+        }
+
+        // 2. Global Pressure: Favor bins that align with the current mean residual.
+        // This keeps the remaining space distribution uniform across bins.
+        let deviation = (post_residual as f64 - mean_residual).abs();
+        score += deviation * 0.55;
+
+        // 3. Mandatory Fit: Strong incentive to use the only viable bin to conserve capacity.
+        if fitting_bins_count == 1 {
+            score -= 115.0;
+        }
+
+        // 4. Perfect Fit Reward: Heavily prioritize zeroing out a bin.
+        if post_residual == 0 {
+            score -= 105.0;
+        }
+        
+        // 5. Harmonic Alignment: Bias towards common divisors of bin capacity (100).
+        if post_residual % 25 == 0 {
+            score -= 35.0;
+        } else if post_residual % 20 == 0 {
+            score -= 20.0;
+        }
+        
+        // 6. Saturation Strategy: Favor packing into bins that are already well-filled 
+        // to keep "fresh" bins available for larger items later.
+        if bin_residual <= (bin_capacity / 3) {
+            score -= 30.0;
+        } else if bin_residual >= (bin_capacity * 2 / 3) {
+            score += 25.0; 
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8068_evolution.json.tmp

@@ -1,0 +1,58 @@
+[2m2026-11-14T11:56:00.009072Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8153, Pop=1359, MaxGens=1
+[2m2026-11-14T15:00:16.344908Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 201d69e16e2922d6 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8153 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4181 bins (excess: +157), Efficiency: 96.25%, Fuel: 26429362
+ Best In-Dist (w/o Lookahead) : 4219 bins (excess: +195), Efficiency: 95.38%
+ Dynamic Trajectory: tLDR = 0.5067
+ Behavior Profile : DeadSpaceRatio: 60.5%, NewBinRatio: 41.8%, ResVar: 0.50
+ MAP-Elites Niches: 20 active (20.0% coverage), QD-Score: 13.120
+ Validation Score : 4156 bins (excess: +155), Efficiency: 96.27%
+ OOD-1 Score      : 10394 bins (excess: +322), Efficiency: 96.90%
+ OOD-2 Score      : 3638 bins (excess: +76), Efficiency: 97.92%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-1346
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Reward Best-Fit behavior: Minimize post_residual (the base heuristic)
+    // 2. Penalize opening new bins unless necessary
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            // Apply a heavy penalty for opening a new bin if other bins are available
+            score += 150.0 + (mean_residual * 2.0);
+        } else {
+            // If no other bin fits, this is a necessary new bin
+            score = 50.0;
+        }
+    }
+
+    // 3. Harmonic/Modulo coupling: Reward placements that leave room for specific common item sizes
+    // If the post_residual is a multiple of 20, it is likely to accommodate future items
+    if post_residual > 0 {
+        let remainder = post_residual % 20;
+        score += (remainder as f64) * 0.5;
+    }
+
+    // 4. Lookahead logic: If next_item_size is known, penalize residuals that are too small to fit it
+    if next_item_size > 0 && post_residual < next_item_size && post_residual > 0 {
+        // This placement creates "stranded" space that cannot fit the next item
+        score += (next_item_size - post_residual) as f64 * 1.5;
+    }
+
+    // 5. Global pressure: As the stream progresses, prioritize tighter packing
+    let progress = step_index as f64 / total_items as f64;
+    score += progress * (open_bins_count as f64 * 0.5);
+
+    // 6. Prefer filling bins that are already partially filled (lowering mean_residual)
+    if bin_residual < bin_capacity {
+        score -= (bin_capacity - bin_residual) as f64 * 0.2;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\tirage\run_seed_8153_tirage.json.tmp

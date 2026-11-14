@@ -1,0 +1,81 @@
+[2m2026-11-14T08:58:32.987606Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8000, Pop=8, MaxGens=192
+[2m2026-11-14T13:43:07.075844Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule b12902c4d5e205cb on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8000 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4097 bins (excess: +68), Efficiency: 98.34%, Fuel: 64945285
+ Best In-Dist (w/o Lookahead) : 4215 bins (excess: +186), Efficiency: 95.59%
+ Dynamic Trajectory: tLDR = 2.4060
+ Behavior Profile : DeadSpaceRatio: 8.3%, NewBinRatio: 41.0%, ResVar: 0.57
+ MAP-Elites Niches: 17 active (17.0% coverage), QD-Score: 14.294
+ Validation Score : 4107 bins (excess: +80), Efficiency: 98.05%
+ OOD-1 Score      : 10157 bins (excess: +102), Efficiency: 99.00%
+ OOD-2 Score      : 3589 bins (excess: +56), Efficiency: 98.44%
+ Lineage Nodes    : 1359, Transitions: 875
+ Best Heuristic   : LLM-Seed-018-mut-g1-mut-g1-mut-g1-mut-g2-mut-g7-mut-g8-mut-g9-mut-g10-mut-g29-mut-g31-mut-g53-mut-g107-mut-g120-mut-g140-mut-g156-mut-g174-mut-g175-mut-g179
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = step_index as f64 / total_items as f64;
+
+    // 1. Refined Fragmentation: Increased penalty for slivers that prevent future fitting
+    if post_residual > 0 && post_residual < next_item_size {
+        let sliver_gap = (next_item_size - post_residual) as f64;
+        score += 810.0 + (sliver_gap.powf(2.6) * 22.4);
+    }
+
+    // 2. Compaction: Non-linear reward for tight packing
+    if post_residual == 0 {
+        score -= 1150.0;
+    } else {
+        score -= 520.0 / (post_residual as f64 + 0.05).powf(1.15);
+    }
+
+    // 3. Predictive Lookahead: Favor bins leaving specific residual for next_item_size
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let leftover = (post_residual - next_item_size) as f64;
+        score -= 750.0 - (leftover * 4.2) + (if leftover < 0.5 { 550.0 } else if leftover < 2.0 { 200.0 } else { 0.0 });
+    }
+
+    // 4. Dynamic Bin Opening: Adaptive thresholding to prevent premature creation
+    if bin_residual == bin_capacity {
+        if open_bins_count == 0 {
+            score = -6200.0;
+        } else {
+            let density_factor = (mean_residual / bin_capacity as f64).clamp(0.02, 0.95);
+            let late_game_penalty = if progress > 0.8 { 3200.0 + (progress * 2800.0) } else { 0.0 };
+            score += 2100.0 + (mean_residual * 14.2) + (open_bins_count as f64 * 4.5 * (1.0 + progress.powf(4.0))) + (late_game_penalty / density_factor);
+        }
+    } else {
+        if fitting_bins_count <= 8 {
+            score -= 1100.0 / (fitting_bins_count as f64 + 0.15).powf(1.3);
+        }
+    }
+
+    // 5. Temporal Horizon: Aggressive late-game compaction
+    score += (progress.powf(7.0)) * 2200.0;
+
+    // 6. Variance Control: Penalize deviations to keep residual distribution uniform
+    let dev = (post_residual as f64 - mean_residual).abs();
+    score += dev * 7.2;
+    
+    // Stricter check for residual bloat relative to local packing
+    if post_residual as f64 > mean_residual * 1.05 {
+        score += 850.0;
+    }
+
+    // 7. Adaptive Weighting: Differentiate strategy based on next item size
+    let large_threshold = (bin_capacity as f64 * 0.65) as u32;
+    if next_item_size > large_threshold {
+        let fit_proximity = (post_residual as i32 - next_item_size as i32).abs() as f64;
+        score += fit_proximity * 12.5;
+    } else if next_item_size > 0 {
+        // Higher penalty for small items creating unusable residual space
+        score += (post_residual as f64) * 4.2;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8000_evolution.json.tmp

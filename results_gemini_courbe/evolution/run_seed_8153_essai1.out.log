@@ -1,0 +1,84 @@
+[2m2026-11-14T12:37:44.516915Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8153, Pop=8, MaxGens=192
+[2m2026-11-14T16:15:44.534664Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule bdae7e192612a6bf on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8153 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4137 bins (excess: +113), Efficiency: 97.27%, Fuel: 49769708
+ Best In-Dist (w/o Lookahead) : 4222 bins (excess: +198), Efficiency: 95.31%
+ Dynamic Trajectory: tLDR = 1.9011
+ Behavior Profile : DeadSpaceRatio: 4.2%, NewBinRatio: 41.4%, ResVar: 0.59
+ MAP-Elites Niches: 24 active (24.0% coverage), QD-Score: 19.853
+ Validation Score : 4114 bins (excess: +113), Efficiency: 97.26%
+ OOD-1 Score      : 10278 bins (excess: +206), Efficiency: 98.00%
+ OOD-2 Score      : 3633 bins (excess: +71), Efficiency: 98.05%
+ Lineage Nodes    : 1359, Transitions: 848
+ Best Heuristic   : LLM-Seed-149-mut-g99
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    let post_residual_f = post_residual as f64;
+    
+    // Core objective: Minimize post_residual with a high-order penalty to prioritize Best-Fit.
+    // We shift the exponent to 1.9 to aggressively discourage large empty gaps.
+    let mut score = post_residual_f.powf(1.9);
+
+    if !is_new_bin {
+        // Fragmentation pressure: Penalize bins that leave awkward gaps.
+        // The weight increases as we progress to force tighter packing when bins are plentiful.
+        score += (post_residual_f / bin_capacity as f64) * 45.0 * (1.0 + progress);
+
+        // Advanced Lookahead:
+        // Use a non-linear penalty for "dead zones" (gaps smaller than the next item).
+        if next_item_size > 0 {
+            if post_residual > 0 && post_residual < next_item_size {
+                score += ((next_item_size - post_residual) as f64).powf(2.5) * 20.0;
+            } else if post_residual >= next_item_size {
+                // Reward bins that maintain "utility" for the immediate future.
+                score -= (next_item_size as f64) * (5.5 + progress * 5.0);
+            }
+        }
+        
+        // Entropy control: Keep residuals near the mean to prevent extreme bin variances.
+        score += (post_residual_f - mean_residual).abs() * 1.5;
+        
+        // Local scarcity: If this is the only bin that fits, we must take it.
+        if fitting_bins_count == 1 {
+            score -= 85.0;
+        }
+    } else {
+        // New bin decision matrix:
+        if fitting_bins_count > 0 {
+            // Calculate a "cost" to open a new bin based on existing fragmentation.
+            // If mean_residual is low, existing bins are well-packed, so opening a new one is costly.
+            let density_pressure = (open_bins_count as f64).powf(1.1) * 25.0;
+            let fragmentation_relief = (1.0 - (mean_residual / bin_capacity as f64)) * 105.0;
+            score += 180.0 + (mean_residual * 1.8) + density_pressure - fragmentation_relief;
+        } else {
+            // If no existing bin can fit, force new bin opening with a strong negative bias.
+            score -= 500.0;
+        }
+    }
+
+    // Late-stage compaction: Aggressively finalize near-full bins.
+    if progress > 0.55 {
+        let filled_amount = (bin_capacity - bin_residual) as f64;
+        // Reward high-density completion to reduce active open_bins_count.
+        score -= filled_amount.powf(1.7) * 4.8;
+        
+        // Dynamic barrier: Increasing cost to open new bins as we approach stream exhaustion.
+        if is_new_bin {
+            score += 130.0 * (progress - 0.55).powf(1.3);
+        }
+    }
+
+    // Secondary outlier constraint: Penalize "too empty" bins relative to the current mean.
+    if !is_new_bin && post_residual_f > mean_residual * 1.6 {
+        score += (post_residual_f - mean_residual) * 2.5;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8153_evolution.json.tmp
