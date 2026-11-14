@@ -1,0 +1,95 @@
+2026-11-14T07:48:53.312889Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=3051, Pop=8, MaxGens=95
+2026-11-14T07:54:07.197104Z  WARN nomad_operator::http_llm: Ollama request attempt 1/3 failed (HTTP request failed: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions: Network Error: Network Error: Error encountered in the status line: Une connexion établie a été abandonnée par un logiciel de votre ordinateur hôte. (os error 10053)). Retrying in 4s...
+2026-11-14T08:29:39.616028Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 3e9e9b6107662afe on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3051 | Generations: 95
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4188 bins (excess: +159), Efficiency: 96.21%, Fuel: 29751440
+ Best In-Dist (w/o Lookahead) : 4185 bins (excess: +156), Efficiency: 96.27%
+ Dynamic Trajectory: tLDR = 0.5328
+ Behavior Profile : DeadSpaceRatio: 61.7%, NewBinRatio: 41.9%, ResVar: 0.53
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 5.957
+ Validation Score : 4208 bins (excess: +162), Efficiency: 96.15%
+ OOD-1 Score      : 10365 bins (excess: +320), Efficiency: 96.91%
+ OOD-2 Score      : 3621 bins (excess: +79), Efficiency: 97.82%
+ Lineage Nodes    : 680, Transitions: 460
+ Best Heuristic   : LLM-Seed-019-mut-g2-mut-g3-mut-g16-mut-g52-mut-g52
+ Logic Code       : pub fn score_bin(
+    item_size: u32,
+    bin_residual: u32,
+    bin_capacity: u32,
+    step_index: usize,
+    total_items: usize,
+    open_bins_count: usize,
+    mean_residual: f64,
+    next_item_size: u32,
+    post_residual: u32,
+    fitting_bins_count: usize,
+) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Base score: prioritize smaller residuals (tight packing)
+    // Shifted base weight to favor bin utilization more aggressively
+    let mut score = post_residual as f64 * 1.15;
+
+    // 1. Lookahead Synergy: Target specific residual ranges to accommodate next item
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 125.0; // Increased perfect fit reward
+        } else if post_residual > next_item_size && post_residual < (next_item_size + 12) {
+            score -= 55.0; // Increased "Good enough" fit reward
+        } else if post_residual < next_item_size && post_residual > 0 {
+            score += 50.0; // Increased penalty: stranded space
+        }
+    }
+
+    // 2. Adaptive New-Bin Thresholding: 
+    // Stricter barrier to prevent opening new bins when capacity exists
+    if is_new_bin {
+        if fitting_bins_count > 0 {
+            score += 260.0 + (progress * 180.0) + (open_bins_count as f64 * 1.8);
+        } else {
+            score = 5.0 + (mean_residual * 0.08);
+        }
+    } else {
+        // 3. Fragmentation Penalty: Target "Dead Zones" (1-22)
+        // Increased penalty to prevent small unusable gaps
+        if post_residual > 0 && post_residual < 22 {
+            score += 75.0 + (progress * 40.0);
+        }
+        
+        // 4. Scarcity Pressure: Force utilization of unique fits
+        if fitting_bins_count == 1 {
+            score -= 95.0 * (1.0 - progress * 0.05);
+        }
+        
+        // 5. Residual Variance: Penalize large deviations from mean
+        let deviation = (post_residual as f64 - mean_residual).abs();
+        score += deviation * 0.85;
+    }
+
+    // 6. Tail-end consolidation: Force usage of existing bins when pool is low
+    // Increased slope to drive compaction near completion
+    if progress > 0.85 {
+        score += (post_residual as f64) * 4.5;
+    } else if progress > 0.50 {
+        score += (post_residual as f64) * 0.6;
+    }
+
+    // 7. Small Item Logic: Force small items into fuller bins to preserve empty space
+    // Specifically target bins that are nearing capacity to maximize density
+    if !is_new_bin && item_size < 30 && (bin_capacity - bin_residual) < (bin_capacity / 3) {
+        score -= 25.0;
+    }
+
+    // 8. Global Efficiency Bias: Reward high utilization bins
+    // Increased weight of the utilization bonus
+    score -= (bin_capacity - post_residual) as f64 * 0.08;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe_pilote\evolution\run_seed_3051_evolution.json.tmp

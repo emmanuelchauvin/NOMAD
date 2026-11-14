@@ -1,0 +1,88 @@
+2026-11-14T07:56:06.990411Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=3068, Pop=8, MaxGens=95
+2026-11-14T08:39:07.360357Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 8ebcbe2b19a2f17c on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3068 | Generations: 95
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4055 bins (excess: +39), Efficiency: 99.04%, Fuel: 81606862
+ Best In-Dist (w/o Lookahead) : 4176 bins (excess: +160), Efficiency: 96.18%
+ Dynamic Trajectory: tLDR = 1.8436
+ Behavior Profile : DeadSpaceRatio: 8.1%, NewBinRatio: 40.6%, ResVar: 0.46
+ MAP-Elites Niches: 14 active (14.0% coverage), QD-Score: 12.625
+ Validation Score : 4075 bins (excess: +47), Efficiency: 98.86%
+ OOD-1 Score      : 10125 bins (excess: +45), Efficiency: 99.56%
+ OOD-2 Score      : 3552 bins (excess: +29), Efficiency: 99.19%
+ Lineage Nodes    : 680, Transitions: 502
+ Best Heuristic   : LLM-Seed-082-mut-g67-mut-g67-mut-g68-mut-g69-mut-g69-mut-g71-mut-g74-mut-g74-mut-g78
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Base score: Favor tighter residual packing
+    let mut score = post_residual as f64 * 0.72;
+
+    // 1. Predictive Lookahead: Enhanced sensitivity to "Next Item" fitment
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Reward high-precision fits for the next item
+            let slack = post_residual - next_item_size;
+            score -= 335.0 * (1.0 - (slack as f64 / bin_capacity as f64).sqrt());
+        } else if post_residual > 0 {
+            // Penalize fragmentation that blocks the next item
+            score += 380.0 * (1.0 - (post_residual as f64 / next_item_size as f64).powf(1.9));
+        }
+    }
+
+    // 2. Dead Space Mitigation: Target "slivers" that are too small to be useful
+    // Refined threshold to 28 to capture more mid-sized slivers
+    if post_residual > 0 && post_residual <= 28 {
+        let scarcity_factor = if fitting_bins_count < 8 { 4.8 } else { 2.3 };
+        score += (620.0 / (post_residual as f64).powf(0.96)) * scarcity_factor;
+    }
+
+    // 3. Adaptive Bin Opening: Dynamic cost based on stream velocity
+    if is_new_bin {
+        // Higher resistance to opening new bins, scaled by density
+        let density_factor = 1.0 - (open_bins_count as f64 / (step_index as f64 / 8.5 + 6.0).sqrt());
+        let efficiency_penalty = (mean_residual / bin_capacity as f64) * 1300.0;
+        score += efficiency_penalty * (1.0 + (progress * 8.0)) * density_factor.max(0.32);
+    } else {
+        // Consolidation reward: stronger pull toward filling deep bins
+        score -= (bin_capacity - bin_residual) as f64 * 1.05;
+    }
+
+    // 4. Tight Packing Rewards:
+    if post_residual == 0 {
+        score -= 680.0; 
+    } else if post_residual < 12 {
+        score -= 200.0 * (1.0 - (post_residual as f64 / 12.0));
+    }
+
+    // 5. Global Compaction Strategy:
+    if progress > 0.94 {
+        score += (post_residual as f64) * 85.0;
+        if is_new_bin {
+            score += 2600.0; 
+        }
+    } else if post_residual > 12 && post_residual < 70 {
+        // Mid-game: prevent premature fragmentation by favoring existing bins
+        if open_bins_count < 30 {
+            score -= 175.0;
+        }
+    }
+
+    // 6. Entropy stabilizer: Adaptive penalty for active bin count
+    let entropy_penalty = (open_bins_count as f64).sqrt() * (mean_residual / bin_capacity as f64) * 75.0;
+    score += entropy_penalty;
+
+    // 7. Residual Variance dampener: 
+    // Increased sensitivity to variance to force uniform filling across bins
+    if post_residual as f64 > (mean_residual + 11.0) {
+        score += 100.0 * (1.0 - (post_residual as f64 / bin_capacity as f64).powf(0.48));
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe_pilote\evolution\run_seed_3068_evolution.json.tmp
