@@ -319,6 +319,72 @@ mod tests {
         assert_eq!(engine.fresh_seed_counter, 10);
     }
 
+    fn journal_run(max_generations: usize) -> crate::engine::ExperimentRunReport {
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupD,
+            rng_seed: 42,
+            population_size: 4,
+            max_generations,
+            initial_population_size: 6,
+            stagnation_patience: 2,
+            informed_mutation: true,
+            ..Default::default()
+        };
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        engine.execute_run().expect("Run execution should succeed")
+    }
+
+    #[test]
+    fn test_proposal_journal_records_every_proposal_and_the_champion_trail() {
+        let report = journal_run(6);
+        let calls = report.budget_consumed.llm_calls_consumed;
+        assert_eq!(calls, 6 + 5 * 3);
+
+        // Une entree par appel, dans l'ordre.
+        assert_eq!(report.proposals.len(), calls);
+        for (i, p) in report.proposals.iter().enumerate() {
+            assert_eq!(p.index, i + 1);
+            assert_eq!(p.llm_calls_consumed, i + 1);
+            assert!(!p.logic_code.is_empty());
+        }
+        assert!(report.proposals[..6].iter().all(|p| p.kind == "fresh"));
+        assert!(report.proposals[0].is_new_best);
+
+        // Le dernier champion du journal est le champion du rapport, avec les memes scores.
+        let last_best = report.proposals.iter().rev().find(|p| p.is_new_best).unwrap();
+        assert_eq!(last_best.capsule_id, report.best_capsule.id.0);
+        assert_eq!(last_best.total_bins, report.best_in_distribution_score.total_bins);
+        let validation = report.best_validation_score.as_ref().unwrap();
+        assert_eq!(last_best.validation_is_valid, Some(validation.is_valid));
+        assert_eq!(last_best.validation_bins, Some(validation.total_bins));
+
+        // La validation n'est notee que pour les champions successifs.
+        for p in &report.proposals {
+            assert_eq!(p.validation_bins.is_some(), p.is_new_best);
+        }
+    }
+
+    #[test]
+    fn test_a_long_run_cut_short_is_the_short_run() {
+        let short = journal_run(3);
+        let long = journal_run(6);
+        let n = short.proposals.len();
+        assert_eq!(n, 6 + 2 * 3);
+        for (a, b) in short.proposals.iter().zip(&long.proposals[..n]) {
+            assert_eq!(a.capsule_id, b.capsule_id);
+            assert_eq!(a.kind, b.kind);
+            assert_eq!(a.total_bins, b.total_bins);
+            assert_eq!(a.is_new_best, b.is_new_best);
+            assert_eq!(a.validation_bins, b.validation_bins);
+        }
+        // Le champion du run court est le champion du run long arrete au meme point.
+        let cut_best = long.proposals[..n].iter().rev().find(|p| p.is_new_best).unwrap();
+        assert_eq!(cut_best.capsule_id, short.best_capsule.id.0);
+    }
+
     #[test]
     fn test_stagnation_injects_fresh_proposals_within_the_same_budget() {
         let config = ExperimentConfig {

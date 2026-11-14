@@ -47,6 +47,38 @@ pub struct GenerationRecord {
     pub crossover_rejected_count: usize,
 }
 
+/// Une proposition evaluee pendant la recherche, dans l'ordre ou elle a ete produite.
+///
+/// La suite complete permet de relire un run a n'importe quel budget intermediaire : le
+/// champion apres `k` propositions est la derniere d'entre elles marquee `is_new_best`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProposalRecord {
+    /// Rang de la proposition dans le run, a partir de 1.
+    pub index: usize,
+    /// Appels au modele consommes une fois cette proposition produite.
+    pub llm_calls_consumed: usize,
+    pub generation: usize,
+    /// `fresh` (proposition independante), `mutation` ou `crossover`.
+    pub kind: String,
+    pub capsule_id: String,
+    pub capsule_name: String,
+    pub parent_ids: Vec<String>,
+    /// Score a l'entrainement.
+    pub is_valid: bool,
+    pub total_bins: usize,
+    pub total_fuel: u64,
+    /// Vrai si cette proposition bat strictement toutes les precedentes a l'entrainement
+    /// (ordre de `BenchmarkScore`) : elle devient le champion du run a ce stade.
+    pub is_new_best: bool,
+    /// Score sur la validation, calcule en fin de run pour les seules propositions
+    /// `is_new_best`. N'intervient ni dans la selection ni dans le budget.
+    #[serde(default)]
+    pub validation_is_valid: Option<bool>,
+    #[serde(default)]
+    pub validation_bins: Option<usize>,
+    pub logic_code: String,
+}
+
 /// The complete final output of an experimental run for scientific analysis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExperimentRunReport {
@@ -75,6 +107,9 @@ pub struct ExperimentRunReport {
     pub crossover_not_evaluable_count: usize,
     #[serde(default)]
     pub crossover_rejected_count: usize,
+    /// Toutes les propositions evaluees, dans l'ordre (absent des rapports anterieurs).
+    #[serde(default)]
+    pub proposals: Vec<ProposalRecord>,
 }
 
 /// ============================================================================
@@ -107,6 +142,12 @@ pub struct EvolutionEngine<'a> {
     pub stagnant_generations: usize,
     /// Index de la prochaine proposition fraiche (prolonge le cycle des archetypes).
     pub fresh_seed_counter: usize,
+    /// Journal de toutes les propositions evaluees, dans l'ordre.
+    pub proposals: Vec<ProposalRecord>,
+    /// Capsules des champions successifs, avec leur position dans `proposals`.
+    best_trail: Vec<(usize, SkillCapsule)>,
+    /// Meilleur score d'entrainement rencontre jusqu'ici.
+    best_proposal_score: Option<BenchmarkScore>,
 }
 
 impl<'a> EvolutionEngine<'a> {
@@ -135,7 +176,67 @@ impl<'a> EvolutionEngine<'a> {
             crossover_rejected_count: 0,
             stagnant_generations: 0,
             fresh_seed_counter: 0,
+            proposals: Vec::new(),
+            best_trail: Vec::new(),
+            best_proposal_score: None,
         }
+    }
+
+    /// Ajoute une proposition evaluee au journal. Purement passif : ne modifie ni la
+    /// selection, ni l'archive, ni le budget.
+    fn record_proposal(&mut self, capsule: &SkillCapsule, score: &BenchmarkScore, kind: &str) {
+        let is_new_best = match &self.best_proposal_score {
+            None => true,
+            Some(best) => score < best,
+        };
+        if is_new_best {
+            self.best_proposal_score = Some(score.clone());
+            self.best_trail.push((self.proposals.len(), capsule.clone()));
+        }
+        self.proposals.push(ProposalRecord {
+            index: self.proposals.len() + 1,
+            llm_calls_consumed: self.budget.llm_calls_consumed,
+            generation: capsule.generation,
+            kind: kind.to_string(),
+            capsule_id: capsule.id.0.clone(),
+            capsule_name: capsule.name.clone(),
+            parent_ids: capsule.parent_ids.iter().map(|p| p.0.clone()).collect(),
+            is_valid: score.is_valid,
+            total_bins: score.total_bins,
+            total_fuel: score.total_fuel,
+            is_new_best,
+            validation_is_valid: None,
+            validation_bins: None,
+            logic_code: capsule.logic_code.clone(),
+        });
+    }
+
+    /// Note sur la validation chaque champion successif du journal. Appele une fois, en
+    /// fin de run : la validation n'intervient jamais dans la recherche.
+    fn score_best_trail_on_validation(&mut self) {
+        let trail = std::mem::take(&mut self.best_trail);
+        for (position, capsule) in &trail {
+            let score = if self.config.domain == ProblemDomain::MultiResourceScheduling {
+                match self.scheduling_oracle {
+                    Some(sched) => sched.evaluate_validation(
+                        capsule,
+                        self.sandbox,
+                        self.config.fuel_limit_per_call,
+                    ),
+                    None => continue,
+                }
+            } else {
+                self.oracle.evaluate_validation(
+                    capsule,
+                    self.sandbox,
+                    self.config.fuel_limit_per_call,
+                )
+            };
+            let record = &mut self.proposals[*position];
+            record.validation_is_valid = Some(score.is_valid);
+            record.validation_bins = Some(score.total_bins);
+        }
+        self.best_trail = trail;
     }
 
     /// Associe un oracle de scheduling multi-ressources au moteur d'évolution.
@@ -323,7 +424,10 @@ impl<'a> EvolutionEngine<'a> {
                 )
             };
 
+        self.score_best_trail_on_validation();
+
         Ok(ExperimentRunReport {
+            proposals: self.proposals.clone(),
             group: self.config.group,
             rng_seed: self.config.rng_seed,
             total_generations: generation_records.len(),
@@ -390,6 +494,7 @@ impl<'a> EvolutionEngine<'a> {
             let (capsule, score) = self.evaluate_and_validate(capsule);
             let (capsule, score) = self.maybe_optimize_constants(capsule, score, seed);
             self.phylogeny.insert_capsule(&capsule);
+            self.record_proposal(&capsule, &score, "fresh");
             self.lineages.register_seed(capsule.id.clone());
             self.archive.insert(capsule.clone(), score.clone());
             population.push(EvaluatedIndividual::new(capsule, score));
@@ -520,6 +625,7 @@ impl<'a> EvolutionEngine<'a> {
                     let (mutated, score) = self.evaluate_and_validate(mutated);
                     let (mutated, score) = self.maybe_optimize_constants(mutated, score, seed);
                     self.phylogeny.insert_capsule(&mutated);
+                    self.record_proposal(&mutated, &score, "mutation");
                     next_population.push(EvaluatedIndividual::new(mutated, score));
                 }
             }
@@ -545,6 +651,7 @@ impl<'a> EvolutionEngine<'a> {
                     let (mutated, score) = self.evaluate_and_validate(mutated);
                     let (mutated, score) = self.maybe_optimize_constants(mutated, score, seed);
                     self.phylogeny.insert_capsule(&mutated);
+                    self.record_proposal(&mutated, &score, "mutation");
                     next_population.push(EvaluatedIndividual::new(mutated, score));
                 }
             }
@@ -586,6 +693,7 @@ impl<'a> EvolutionEngine<'a> {
                         let (fresh, score) = self.evaluate_and_validate(fresh);
                         let (fresh, score) = self.maybe_optimize_constants(fresh, score, seed);
                         self.phylogeny.insert_capsule(&fresh);
+                        self.record_proposal(&fresh, &score, "fresh");
                         self.lineages.register_seed(fresh.id.clone());
                         self.archive.insert(fresh.clone(), score.clone());
                         next_population.push(EvaluatedIndividual::new(fresh, score));
@@ -615,6 +723,7 @@ impl<'a> EvolutionEngine<'a> {
                     let (mutated, score) = self.evaluate_and_validate(mutated);
                     let (mutated, score) = self.maybe_optimize_constants(mutated, score, seed);
                     self.phylogeny.insert_capsule(&mutated);
+                    self.record_proposal(&mutated, &score, "mutation");
 
                     let is_improved = if let Some(elite) = self.archive.best_elite() {
                         score < elite.fitness
@@ -669,6 +778,7 @@ impl<'a> EvolutionEngine<'a> {
                     let (mutated, score) = self.evaluate_and_validate(mutated);
                     let (mutated, score) = self.maybe_optimize_constants(mutated, score, seed);
                     self.phylogeny.insert_capsule(&mutated);
+                    self.record_proposal(&mutated, &score, "mutation");
 
                     let is_validation_passed = match &mutated.validation {
                         nomad_core::ValidationStatus::PassedLevel3Behavioral
@@ -820,6 +930,7 @@ impl<'a> EvolutionEngine<'a> {
                             let (child_capsule, score) =
                                 self.maybe_optimize_constants(child_capsule, score, seed);
                             self.phylogeny.insert_capsule(&child_capsule);
+                            self.record_proposal(&child_capsule, &score, "crossover");
 
                             // Validation bloquante Anti-Dead-Code pour le crossover (Niveau 3 C_null obligatoire)
                             let is_crossover_passed = matches!(
