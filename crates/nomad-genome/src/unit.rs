@@ -67,45 +67,108 @@ pub fn collect_dependencies(stmt: &Stmt) -> Vec<String> {
     deps
 }
 
-/// Visiteur ne retenant que les variables lues : chemins à un seul segment (`x`), et non les
-/// noms de méthode (`.powi(..)`), de champ, de type ou de chemin (`f64::MAX`). Note aussi les
-/// noms liés à l'intérieur du fragment (`let`, paramètres de fermeture, boucle `for`).
+/// Visiteur ne retenant que les variables lues sans être liées dans le fragment : chemins à
+/// un seul segment (`x`), et non les noms de méthode (`.powi(..)`), de champ, de type ou de
+/// chemin (`f64::MAX`). Les liaisons (`let`, fermeture, `for`, `if let`, `match`) suivent la
+/// portée de Rust : un nom n'est lié qu'après son initialisation et jusqu'à la fin du bloc.
 struct FreeVariableCollector {
-    used: HashSet<String>,
-    bound: HashSet<String>,
+    free: HashSet<String>,
+    scopes: Vec<HashSet<String>>,
 }
 
 impl FreeVariableCollector {
+    fn new() -> Self {
+        Self {
+            free: HashSet::new(),
+            scopes: vec![HashSet::new()],
+        }
+    }
+
     fn bind_pat(&mut self, pat: &syn::Pat) {
         match pat {
             syn::Pat::Ident(p) => {
-                self.bound.insert(p.ident.to_string());
+                self.scopes.last_mut().unwrap().insert(p.ident.to_string());
             }
             syn::Pat::Type(t) => self.bind_pat(&t.pat),
-            syn::Pat::Tuple(t) => t.elems.iter().for_each(|p| self.bind_pat(p)),
+            syn::Pat::Paren(p) => self.bind_pat(&p.pat),
             syn::Pat::Reference(r) => self.bind_pat(&r.pat),
+            syn::Pat::Tuple(t) => t.elems.iter().for_each(|p| self.bind_pat(p)),
+            syn::Pat::TupleStruct(t) => t.elems.iter().for_each(|p| self.bind_pat(p)),
+            syn::Pat::Or(o) => o.cases.iter().for_each(|p| self.bind_pat(p)),
             _ => {}
         }
+    }
+
+    fn scoped(&mut self, f: impl FnOnce(&mut Self)) {
+        self.scopes.push(HashSet::new());
+        f(self);
+        self.scopes.pop();
     }
 }
 
 impl<'ast> Visit<'ast> for FreeVariableCollector {
     fn visit_expr_path(&mut self, node: &'ast syn::ExprPath) {
         if node.qself.is_none() && node.path.segments.len() == 1 {
-            self.used.insert(node.path.segments[0].ident.to_string());
+            let name = node.path.segments[0].ident.to_string();
+            if !self.scopes.iter().any(|s| s.contains(&name)) {
+                self.free.insert(name);
+            }
         }
     }
+    fn visit_block(&mut self, node: &'ast syn::Block) {
+        self.scoped(|c| syn::visit::visit_block(c, node));
+    }
     fn visit_local(&mut self, node: &'ast Local) {
+        // L'initialisation est lue avant que le nom ne soit lié : `let x = x + 1.0` lit `x`.
+        if let Some(init) = &node.init {
+            self.visit_expr(&init.expr);
+            if let Some((_, diverge)) = &init.diverge {
+                self.visit_expr(diverge);
+            }
+        }
         self.bind_pat(&node.pat);
-        syn::visit::visit_local(self, node);
     }
     fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
-        node.inputs.iter().for_each(|p| self.bind_pat(p));
-        syn::visit::visit_expr_closure(self, node);
+        self.scoped(|c| {
+            node.inputs.iter().for_each(|p| c.bind_pat(p));
+            c.visit_expr(&node.body);
+        });
     }
     fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+        self.visit_expr(&node.expr);
+        self.scoped(|c| {
+            c.bind_pat(&node.pat);
+            c.visit_block(&node.body);
+        });
+    }
+    fn visit_expr_let(&mut self, node: &'ast syn::ExprLet) {
+        self.visit_expr(&node.expr);
         self.bind_pat(&node.pat);
-        syn::visit::visit_expr_for_loop(self, node);
+    }
+    fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
+        // Un `if let` lie ses noms pour la branche `then` seulement.
+        self.scoped(|c| {
+            c.visit_expr(&node.cond);
+            c.visit_block(&node.then_branch);
+        });
+        if let Some((_, else_branch)) = &node.else_branch {
+            self.visit_expr(else_branch);
+        }
+    }
+    fn visit_expr_while(&mut self, node: &'ast syn::ExprWhile) {
+        self.scoped(|c| {
+            c.visit_expr(&node.cond);
+            c.visit_block(&node.body);
+        });
+    }
+    fn visit_arm(&mut self, node: &'ast syn::Arm) {
+        self.scoped(|c| {
+            c.bind_pat(&node.pat);
+            if let Some((_, guard)) = &node.guard {
+                c.visit_expr(guard);
+            }
+            c.visit_expr(&node.body);
+        });
     }
 }
 
@@ -113,22 +176,9 @@ impl<'ast> Visit<'ast> for FreeVariableCollector {
 /// que la greffe compile. Le nom défini par un `let` de premier niveau n'est requis que s'il
 /// est aussi lu dans son initialisation (`let score = score * 2.0`).
 pub fn collect_free_variables(stmt: &Stmt) -> Vec<String> {
-    let mut c = FreeVariableCollector {
-        used: HashSet::new(),
-        bound: HashSet::new(),
-    };
-    match stmt {
-        Stmt::Local(local) => {
-            if let Some(init) = &local.init {
-                c.visit_expr(&init.expr);
-                if let Some((_, diverge)) = &init.diverge {
-                    c.visit_expr(diverge);
-                }
-            }
-        }
-        _ => c.visit_stmt(stmt),
-    }
-    let mut free: Vec<String> = c.used.difference(&c.bound).cloned().collect();
+    let mut c = FreeVariableCollector::new();
+    c.visit_stmt(stmt);
+    let mut free: Vec<String> = c.free.into_iter().collect();
     free.sort();
     free
 }
@@ -251,6 +301,24 @@ mod free_variable_tests {
         assert_eq!(
             collect_free_variables(&s),
             vec!["k", "next_item_size", "post_residual", "score"]
+        );
+    }
+
+    /// Portee de Rust : l'initialisation d'un `let` interne lit le nom externe, et un nom
+    /// lie dans un bloc n'est plus lie apres ce bloc.
+    #[test]
+    fn bindings_follow_rust_scoping() {
+        assert_eq!(
+            collect_free_variables(&stmt("if c { let x = x + 1.0; score += x; }")),
+            vec!["c", "score", "x"]
+        );
+        assert_eq!(
+            collect_free_variables(&stmt("{ if c { let t = 1.0; score += t; } score += t; }")),
+            vec!["c", "score", "t"]
+        );
+        assert_eq!(
+            collect_free_variables(&stmt("if let Some(v) = opt { score += v; } else { score += w; }")),
+            vec!["opt", "score", "w"]
         );
     }
 
