@@ -1,0 +1,101 @@
+[2m2026-11-15T05:33:55.237686Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8323, Pop=8, MaxGens=192
+[2m2026-11-15T08:01:21.531238Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Ollama HTTP 503: [{
+  "error": {
+    "code": 503,
+    "message": "The service is currently unavailable.",
+    "status": "UNAVAILABLE"
+  }
+}
+]). Retrying in 4s...
+[2m2026-11-15T08:47:38.965563Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule bbea79c7dd601e31 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8323 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4103 bins (excess: +98), Efficiency: 97.61%, Fuel: 45782912
+ Best In-Dist (w/o Lookahead) : 4178 bins (excess: +173), Efficiency: 95.86%
+ Dynamic Trajectory: tLDR = 1.5999
+ Behavior Profile : DeadSpaceRatio: 34.8%, NewBinRatio: 41.0%, ResVar: 0.43
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 8.036
+ Validation Score : 4136 bins (excess: +104), Efficiency: 97.49%
+ OOD-1 Score      : 10176 bins (excess: +151), Efficiency: 98.52%
+ OOD-2 Score      : 3631 bins (excess: +68), Efficiency: 98.13%
+ Lineage Nodes    : 1359, Transitions: 935
+ Best Heuristic   : LLM-Seed-036-mut-g134-mut-g180-mut-g188-mut-g190-mut-g190-mut-g191
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Base score derived from post-packing residual, skewed to prefer tighter fits
+    let mut score = (post_residual as f64).powf(1.32);
+
+    // 1. Adaptive Fragmentation Control: penalize small residual "slivers" that trap space
+    if post_residual > 0 && post_residual < 24 {
+        score += 215.0 - (post_residual as f64 * 1.85);
+    }
+
+    // 2. Lookahead Synergy: prioritized bin selection if it accommodates the next item
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            score -= 175.0 + (progress * 110.0);
+            // Extra incentive for leaving "useful" space after next_item_size
+            if post_residual >= (next_item_size + 24) {
+                score -= 65.0;
+            }
+        } else {
+            score += 130.0;
+        }
+    }
+
+    // 3. Scarcity Constraint: favor utilizing bins that are already partially filled
+    if fitting_bins_count > 0 && fitting_bins_count <= 8 {
+        score -= 275.0 / (fitting_bins_count as f64).powf(0.85);
+    }
+
+    // 4. Mean-Alignment: force residuals to gravitate toward the current mean to avoid outlier fragmentation
+    let dev = post_residual as f64 - (mean_residual * 0.92);
+    score += if dev > 0.0 { dev * 1.35 } else { dev.abs() * 0.55 };
+
+    // 5. New-Bin Hurdle: Dynamically scale cost based on stream progression
+    if is_new_bin {
+        score += 195.0 + (progress * 240.0);
+        // Penalty for opening a new bin for a very small item
+        if item_size < 35 {
+            score += 95.0;
+        }
+    } else {
+        score += (bin_capacity - bin_residual) as f64 * 0.38;
+    }
+
+    // 6. Perfect Fit Bonus: extremely high incentive
+    if post_residual == 0 {
+        score -= 310.0;
+    }
+
+    // 7. Global Consolidation: prevent excessive open bin count early in the stream
+    if open_bins_count > 2 {
+        score += (open_bins_count as f64 - 2.0) * 32.0 * (1.2 - (progress * 0.5)).max(0.2);
+    }
+
+    // 8. Size-Specific Bias: prioritize filling large items into nearly-full bins
+    if item_size > 60 {
+        score -= (bin_capacity - bin_residual) as f64 * 1.15;
+    } else if item_size < 12 {
+        score += (bin_capacity - bin_residual) as f64 * 0.85;
+    }
+
+    // 9. Entropy Penalty: avoid "awkward" gaps that are difficult to fill later
+    if post_residual >= 14 && post_residual <= 28 {
+        score += 65.0;
+    }
+
+    // 10. Tail-end Consolidation: aggressively finish off existing bins
+    if progress > 0.94 && !is_new_bin {
+        score -= (bin_capacity - bin_residual) as f64 * 0.65;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8323_evolution.json.tmp

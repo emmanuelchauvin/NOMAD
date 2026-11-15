@@ -1,0 +1,58 @@
+[2m2026-11-15T04:15:51.191217Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8255, Pop=1359, MaxGens=1
+[2m2026-11-15T07:20:04.696314Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule ae9b73ab55222ec2 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8255 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4175 bins (excess: +142), Efficiency: 96.60%, Fuel: 25737613
+ Best In-Dist (w/o Lookahead) : 4178 bins (excess: +145), Efficiency: 96.53%
+ Dynamic Trajectory: tLDR = 0.4978
+ Behavior Profile : DeadSpaceRatio: 59.5%, NewBinRatio: 41.7%, ResVar: 0.47
+ MAP-Elites Niches: 19 active (19.0% coverage), QD-Score: 13.517
+ Validation Score : 4165 bins (excess: +156), Efficiency: 96.26%
+ OOD-1 Score      : 10331 bins (excess: +306), Efficiency: 97.04%
+ OOD-2 Score      : 3673 bins (excess: +75), Efficiency: 97.96%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-081
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // ARCHETYPE: Harmonic classes logic
+    // We prioritize Best-Fit while penalizing "fragmentation" (small residuals) 
+    // unless the next item is likely to fit perfectly into the remaining space.
+
+    let mut score = post_residual as f64;
+
+    // 1. Penalize creating "dead space" that is too small for common items (e.g., < 20)
+    // unless it's a perfect fit (post_residual == 0).
+    if post_residual > 0 && post_residual < 20 {
+        score += 45.0; 
+    }
+
+    // 2. Harmonic Lookahead: If the next item can fit perfectly into the post_residual,
+    // we reward this placement heavily.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let diff = (post_residual - next_item_size) as f64;
+        // Reward placements where the remaining space is exactly or closely filled by next_item
+        score -= (30.0 / (1.0 + diff));
+    }
+
+    // 3. Penalty for opening a new bin prematurely: 
+    // If this is a new bin (bin_residual == bin_capacity) and other bins could fit the item.
+    if bin_residual == bin_capacity && fitting_bins_count > 0 {
+        score += 60.0;
+    }
+
+    // 4. Harmonic Scaling: Balance against the mean residual of the system
+    // to keep bins packed similarly (avoids isolated empty bins).
+    let deviation = (post_residual as f64 - mean_residual).abs();
+    score += deviation * 0.1;
+
+    // 5. Progression adjustment: As the stream nears completion, become more aggressive
+    // about packing into existing bins (reduce the penalty for tight fits).
+    let progress = step_index as f64 / total_items as f64;
+    score -= progress * 10.0;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\tirage\run_seed_8255_tirage.json.tmp

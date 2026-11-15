@@ -1,0 +1,101 @@
+[2m2026-11-15T01:10:28.478211Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8340, Pop=8, MaxGens=192
+[2m2026-11-15T07:02:05.138607Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule d81bf9b385f67394 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8340 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4123 bins (excess: +97), Efficiency: 97.65%, Fuel: 108978040
+ Best In-Dist (w/o Lookahead) : 4206 bins (excess: +180), Efficiency: 95.72%
+ Dynamic Trajectory: tLDR = 2.8099
+ Behavior Profile : DeadSpaceRatio: 5.7%, NewBinRatio: 41.2%, ResVar: 0.61
+ MAP-Elites Niches: 30 active (30.0% coverage), QD-Score: 25.679
+ Validation Score : 4125 bins (excess: +102), Efficiency: 97.53%
+ OOD-1 Score      : 10112 bins (excess: +84), Efficiency: 99.17%
+ OOD-2 Score      : 3597 bins (excess: +70), Efficiency: 98.06%
+ Lineage Nodes    : 1359, Transitions: 797
+ Best Heuristic   : LLM-Seed-001-mut-g4-mut-g5-mut-g5-mut-g6-mut-g6-mut-g6-mut-g7-mut-g8-mut-g9
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = step_index as f64 / total_items as f64;
+    let fill_ratio = (bin_capacity - bin_residual) as f64 / bin_capacity as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+
+    // 1. Refined Dead Zone: Heavily penalize mid-range residuals that prevent future placement
+    if post_residual > 0 && post_residual < 48 {
+        score += 125.0 + (48.0 - post_residual as f64) * 9.5;
+    }
+
+    // 2. Harmonic Residual Smoothing: Favor residuals that align with common item distributions
+    score += (post_residual % 13) as f64 * 1.4;
+
+    // 3. Lookahead Optimization: Enhanced fit-bonus for immediate future items
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            let fit_bonus = 95.0 + (next_item_size as f64 * 1.1);
+            score -= if post_residual == next_item_size { fit_bonus * 4.2 } else { fit_bonus * 2.1 };
+        } else if post_residual > 0 {
+            score += 115.0 * (1.0 - (post_residual as f64 / next_item_size as f64));
+        }
+    }
+
+    // 4. Fitting Scarcity: Exponentially punish opening new bins when capacity is available
+    if fitting_bins_count > 0 && fitting_bins_count <= 18 {
+        score -= (19.0 - fitting_bins_count as f64).powf(2.8) * 52.0;
+    }
+
+    // 5. New Bin Adaptive Cost: Increased cost for new bins, scaling with progress
+    if is_new_bin {
+        let avg_fill = (bin_capacity as f64 - mean_residual) / bin_capacity as f64;
+        score += 165.0 - (avg_fill * 110.0) + (progress * 260.0);
+        if mean_residual < 28.0 { score += 55.0; }
+        if item_size < 40 { score += 95.0; }
+    } else {
+        score -= progress * 130.0;
+    }
+
+    // 6. Fill Density Bias: Quadratic reward for high-utilization
+    if fill_ratio > 0.45 {
+        score -= 130.0 * (fill_ratio.powi(2));
+    }
+
+    // 7. Variance Damping: Penalize bins that deviate from the global mean residual
+    let dev = (post_residual as f64 - mean_residual).abs();
+    if dev > 4.0 {
+        score += dev * 4.2;
+    }
+
+    // 8. Global Coupling: Penalize open bin count to force consolidation
+    if open_bins_count > 2 && progress < 0.99 {
+        score += (open_bins_count as f64 * 5.5) * (1.0 + progress);
+    }
+
+    // 9. Residual Tail-End Check: Hard penalty for microscopic gaps
+    if post_residual > 0 && post_residual < 14 {
+        score += 95.0;
+    }
+
+    // 10. Density-Residual Interaction: If bin is nearly full, prioritize perfect fits
+    if fill_ratio > 0.92 && post_residual < 18 {
+        score -= 85.0;
+    }
+
+    // 11. Anti-fragmentation: Specifically target mid-to-large items
+    if item_size > 40 && item_size < 80 && post_residual > 0 && post_residual < 30 {
+        score -= 55.0 * (1.0 - (post_residual as f64 / 30.0));
+    }
+
+    // 12. Strategic New Bin Avoidance: Bonus for fitting large items in existing bins
+    if item_size > 55 && !is_new_bin {
+        score -= 70.0;
+    }
+
+    // 13. Late-stage compaction correction
+    if progress > 0.9 && !is_new_bin {
+        score -= (post_residual as f64) * 0.5;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8340_evolution.json.tmp

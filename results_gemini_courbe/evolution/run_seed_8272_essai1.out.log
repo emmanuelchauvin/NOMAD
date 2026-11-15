@@ -1,0 +1,102 @@
+[2m2026-11-15T01:10:28.367006Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8272, Pop=8, MaxGens=192
+[2m2026-11-15T06:10:44.805259Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 1d4d9596c8ddc30e on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8272 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4094 bins (excess: +83), Efficiency: 97.98%, Fuel: 53461796
+ Best In-Dist (w/o Lookahead) : 4198 bins (excess: +187), Efficiency: 95.55%
+ Dynamic Trajectory: tLDR = 1.3621
+ Behavior Profile : DeadSpaceRatio: 31.5%, NewBinRatio: 40.9%, ResVar: 0.42
+ MAP-Elites Niches: 19 active (19.0% coverage), QD-Score: 15.292
+ Validation Score : 4133 bins (excess: +83), Efficiency: 97.99%
+ OOD-1 Score      : 10236 bins (excess: +199), Efficiency: 98.06%
+ OOD-2 Score      : 3610 bins (excess: +71), Efficiency: 98.03%
+ Lineage Nodes    : 1359, Transitions: 854
+ Best Heuristic   : LLM-Seed-005-mut-g1-mut-g2-mut-g5-mut-g6-mut-g7-mut-g7-mut-g8-mut-g8-mut-g9-mut-g11-mut-g14-mut-g14-mut-g17-mut-g24-mut-g26-mut-g28-mut-g185-mut-g190-mut-g190
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = (step_index as f64 / total_items as f64).clamp(0.0, 1.0);
+    let post = post_residual as f64;
+    let capacity = bin_capacity as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    let mut score = (post * post) * 0.082;
+    score -= 245.0 / (1.0 + (post * 0.48));
+
+    if next_item_size > 0 {
+        let n = next_item_size as f64;
+        if post > 0.0 && post < n {
+            score += (n - post) * 62.0;
+        } else if post >= n {
+            score -= 88.0 * (1.0 - ((post - n) / capacity).powf(0.82)) * (1.15 - progress * 0.45);
+        }
+    }
+
+    if is_new_bin {
+        let density_pressure = (open_bins_count as f64 / (total_items as f64 / 92.0)).clamp(0.12, 8.5);
+        score += 195.0 + (progress * 240.0) + (fitting_bins_count as f64 * 52.0 * density_pressure * (1.25 - progress));
+        
+        if progress > 0.94 {
+            score += 650.0;
+        }
+    } else {
+        let utilization = 1.0 - (post / capacity);
+        let mean_utilization = 1.0 - (mean_residual / capacity);
+        
+        score += (utilization - mean_utilization).abs() * 192.0;
+        
+        let threshold = capacity * 0.16;
+        if post < threshold {
+            score -= 215.0 * (1.0 - (post / threshold).powf(0.75));
+        }
+        
+        if utilization < 0.55 {
+            score += 175.0 * (1.0 - progress.powf(0.62));
+        }
+        
+        if post < (capacity * 0.06) {
+            score -= 190.0;
+        }
+        
+        if open_bins_count > (total_items / 85) {
+            score += (post / capacity) * 115.0;
+        }
+
+        if post > mean_residual * 1.28 {
+            score += 92.0 * (post / (mean_residual + 0.1));
+        }
+        
+        if post > 0.0 && post < 12.0 {
+            score -= 85.0;
+        }
+        
+        if progress < 0.35 && post > capacity * 0.75 {
+            score -= 140.0;
+        }
+        
+        if post > mean_residual && post < (mean_residual * 1.5) {
+            score += 62.0 * (post / (mean_residual + 0.5));
+        }
+        
+        if post > 0.0 && post < (mean_residual * 0.30) {
+            score -= 72.0;
+        }
+        
+        if progress > 0.85 && post < (capacity * 0.28) {
+            score -= 135.0 * (1.0 - (post / capacity));
+        }
+        
+        // Refined lookahead: penalize nearly-full bins that block the next item
+        if next_item_size > 0 {
+            let n = next_item_size as f64;
+            if post < n && post > (capacity * 0.04) {
+                score += 145.0 * (1.0 - (post / n).powf(0.5));
+            }
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8272_evolution.json.tmp
