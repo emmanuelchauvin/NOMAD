@@ -8,7 +8,7 @@ use thiserror::Error;
 use nomad_core::{GraftManifest, PolicyKind, SkillCapsule, ValidationStatus};
 
 use crate::ast::{compute_structural_fingerprint, normalize_source, parse_heuristic_fn, AstError};
-use crate::unit::{collect_dependencies, extract_logical_units, LogicalUnit};
+use crate::unit::{collect_dependencies, collect_free_variables, extract_logical_units, LogicalUnit};
 
 #[derive(Debug, Error)]
 pub enum CrossoverError {
@@ -18,6 +18,8 @@ pub enum CrossoverError {
     NoExtractableUnits(String),
     #[error("Host capsule {0} has an empty function body")]
     EmptyHostBody(String),
+    #[error("No donor unit of {0} can be grafted: unresolved dependencies in the host")]
+    UnresolvedDependencies(String),
 }
 
 fn is_builtin_or_method(name: &str) -> bool {
@@ -102,7 +104,7 @@ pub fn resolve_dependencies_with_backward_slice(
     }
 
     let mut needed_donor_indices = BTreeSet::new();
-    let mut worklist = collect_dependencies(stmt_to_insert);
+    let mut worklist = collect_free_variables(stmt_to_insert);
     let mut visited_vars = HashSet::new();
 
     while let Some(var) = worklist.pop() {
@@ -116,7 +118,7 @@ pub fn resolve_dependencies_with_backward_slice(
         // Tenter de localiser la déclaration amont dans le donneur
         if let Some((idx, def_stmt)) = find_donor_definition(donor_stmts, &var) {
             needed_donor_indices.insert(idx);
-            for dep in collect_dependencies(&def_stmt) {
+            for dep in collect_free_variables(&def_stmt) {
                 if !in_scope.contains(&dep) && !is_builtin_or_method(&dep) {
                     worklist.push(dep);
                 }
@@ -232,7 +234,9 @@ pub fn deterministic_ast_crossover(
         }
     }
 
-    let graft_stmts = resolved_graft.unwrap_or_else(|| vec![chosen_unit.stmt.clone()]);
+    // Aucune unité greffable : refuser plutôt qu'insérer un fragment qui ne compilerait pas.
+    let graft_stmts =
+        resolved_graft.ok_or_else(|| CrossoverError::UnresolvedDependencies(donor.id.0.clone()))?;
 
     for (offset, stmt) in graft_stmts.iter().enumerate() {
         stmts.insert(locus_idx + offset, stmt.clone());
@@ -403,7 +407,7 @@ pub fn multi_locus_ast_crossover(
         &host_params,
         locus1,
     )
-    .unwrap_or_else(|| vec![stmt1.clone()]);
+    .ok_or_else(|| CrossoverError::UnresolvedDependencies(donor.id.0.clone()))?;
 
     let mut loci_indices = Vec::new();
     let mut fragment_hashes = Vec::new();
@@ -501,7 +505,7 @@ pub fn multi_locus_ast_crossover(
         &host_params,
         locus2,
     )
-    .unwrap_or_else(|| vec![stmt2.clone()]);
+    .ok_or_else(|| CrossoverError::UnresolvedDependencies(donor.id.0.clone()))?;
 
     for (offset, s) in slice2.iter().enumerate() {
         let actual_idx = locus2 + offset;
@@ -589,6 +593,55 @@ pub fn multi_locus_ast_crossover(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SIG: &str = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32,         step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64";
+
+    fn capsule(name: &str, body: &str) -> SkillCapsule {
+        SkillCapsule::new_v2(
+            name,
+            "Interface",
+            format!("{SIG} {{ {body} }}"),
+            vec![],
+            1,
+            HashMap::new(),
+            "ScorePolicyV1",
+            PolicyKind::ScorePolicy,
+            None,
+            vec![],
+            ValidationStatus::Unvalidated,
+            None,
+        )
+    }
+
+    /// Une regle qui declare son propre `let` et appelle des methodes est greffable.
+    #[test]
+    fn rule_with_inner_let_and_methods_is_grafted() {
+        let host = capsule("Host", "let mut score = bin_residual as f64; score");
+        let donor = capsule(
+            "Donor",
+            "let mut score = bin_residual as f64;              if bin_residual < 20 { let gap = (20 - bin_residual) as f64; score += gap.powi(2).clamp(0.0, 400.0); }              score",
+        );
+        let (child, _) = deterministic_ast_crossover(&host, &donor, 3, 1).unwrap();
+        assert!(child.logic_code.contains("powi"), "{}", child.logic_code);
+        parse_heuristic_fn(&child.logic_code).unwrap();
+    }
+
+    /// Si aucune unite du donneur n'est resoluble dans l'hote, le croisement echoue au lieu
+    /// d'inserer un fragment qui ne compilerait pas.
+    #[test]
+    fn unresolvable_donor_is_refused() {
+        let host = capsule("Host", "let mut score = bin_residual as f64; score");
+        let donor = capsule(
+            "Donor",
+            "let mut score = mystery_input * 2.0; score += mystery_input; score",
+        );
+        for seed in 0..8 {
+            assert!(matches!(
+                deterministic_ast_crossover(&host, &donor, seed, 1),
+                Err(CrossoverError::UnresolvedDependencies(_))
+            ));
+        }
+    }
 
     #[test]
     fn test_deterministic_ast_crossover_success() {

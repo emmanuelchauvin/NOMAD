@@ -67,6 +67,72 @@ pub fn collect_dependencies(stmt: &Stmt) -> Vec<String> {
     deps
 }
 
+/// Visiteur ne retenant que les variables lues : chemins à un seul segment (`x`), et non les
+/// noms de méthode (`.powi(..)`), de champ, de type ou de chemin (`f64::MAX`). Note aussi les
+/// noms liés à l'intérieur du fragment (`let`, paramètres de fermeture, boucle `for`).
+struct FreeVariableCollector {
+    used: HashSet<String>,
+    bound: HashSet<String>,
+}
+
+impl FreeVariableCollector {
+    fn bind_pat(&mut self, pat: &syn::Pat) {
+        match pat {
+            syn::Pat::Ident(p) => {
+                self.bound.insert(p.ident.to_string());
+            }
+            syn::Pat::Type(t) => self.bind_pat(&t.pat),
+            syn::Pat::Tuple(t) => t.elems.iter().for_each(|p| self.bind_pat(p)),
+            syn::Pat::Reference(r) => self.bind_pat(&r.pat),
+            _ => {}
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for FreeVariableCollector {
+    fn visit_expr_path(&mut self, node: &'ast syn::ExprPath) {
+        if node.qself.is_none() && node.path.segments.len() == 1 {
+            self.used.insert(node.path.segments[0].ident.to_string());
+        }
+    }
+    fn visit_local(&mut self, node: &'ast Local) {
+        self.bind_pat(&node.pat);
+        syn::visit::visit_local(self, node);
+    }
+    fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
+        node.inputs.iter().for_each(|p| self.bind_pat(p));
+        syn::visit::visit_expr_closure(self, node);
+    }
+    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+        self.bind_pat(&node.pat);
+        syn::visit::visit_expr_for_loop(self, node);
+    }
+}
+
+/// Variables qu'un fragment lit sans les définir lui-même : ce que l'hôte doit fournir pour
+/// que la greffe compile. Le nom défini par un `let` de premier niveau n'est requis que s'il
+/// est aussi lu dans son initialisation (`let score = score * 2.0`).
+pub fn collect_free_variables(stmt: &Stmt) -> Vec<String> {
+    let mut c = FreeVariableCollector {
+        used: HashSet::new(),
+        bound: HashSet::new(),
+    };
+    match stmt {
+        Stmt::Local(local) => {
+            if let Some(init) = &local.init {
+                c.visit_expr(&init.expr);
+                if let Some((_, diverge)) = &init.diverge {
+                    c.visit_expr(diverge);
+                }
+            }
+        }
+        _ => c.visit_stmt(stmt),
+    }
+    let mut free: Vec<String> = c.used.difference(&c.bound).cloned().collect();
+    free.sort();
+    free
+}
+
 /// Parcourt récursivement une expression AST pour lister toutes les variables référencées.
 pub fn collect_expr_dependencies(expr: &Expr) -> Vec<String> {
     let mut collector = DependencyCollector {
@@ -165,5 +231,35 @@ mod tests {
         assert!(conditionals[0]
             .dependencies
             .contains(&"bin_residual".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod free_variable_tests {
+    use super::*;
+
+    fn stmt(code: &str) -> Stmt {
+        syn::parse_str(code).unwrap()
+    }
+
+    #[test]
+    fn methods_paths_and_inner_bindings_are_not_free() {
+        let s = stmt(
+            "if post_residual > 0 { let gap = (next_item_size - post_residual) as f64; \
+             score += gap.powi(2).clamp(0.0, f64::MAX) * k; }",
+        );
+        assert_eq!(
+            collect_free_variables(&s),
+            vec!["k", "next_item_size", "post_residual", "score"]
+        );
+    }
+
+    #[test]
+    fn top_level_let_needs_only_its_initialiser() {
+        assert_eq!(collect_free_variables(&stmt("let gap = a - b;")), vec!["a", "b"]);
+        assert_eq!(
+            collect_free_variables(&stmt("let score = score * 2.0;")),
+            vec!["score"]
+        );
     }
 }
