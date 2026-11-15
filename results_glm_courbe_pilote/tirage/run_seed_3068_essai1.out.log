@@ -1,0 +1,67 @@
+[2m2026-11-15T11:34:14.800192Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=3068, Pop=680, MaxGens=1
+[2m2026-11-15T11:48:53.309833Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Ollama HTTP 429: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"z-ai/glm-5.3-flash is temporarily rate-limited upstream. Please retry shortly, or add your own provider key to use your own limits: https://openrouter.ai/workspaces/default/byok","provider_name":"Relace","is_byok":false,"limit_source":"upstream_provider_shared_pool","remedy_hint":"Retry shortly, add your own provider key to use your own limits (https://openrouter.ai/workspaces/default/byok), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing."}},"user_id":"user_2vtv0iBBQd5MJ0Hs5J7UufjL2GG"}). Retrying in 4s...
+[2m2026-11-15T14:02:31.374360Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 030f208f0b85ab1a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3068 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4144 bins (excess: +128), Efficiency: 96.92%, Fuel: 39897872
+ Best In-Dist (w/o Lookahead) : 4244 bins (excess: +228), Efficiency: 94.64%
+ Dynamic Trajectory: tLDR = 1.2732
+ Behavior Profile : DeadSpaceRatio: 19.0%, NewBinRatio: 41.4%, ResVar: 0.64
+ MAP-Elites Niches: 23 active (23.0% coverage), QD-Score: 16.623
+ Validation Score : 4164 bins (excess: +136), Efficiency: 96.74%
+ OOD-1 Score      : 10224 bins (excess: +144), Efficiency: 98.59%
+ OOD-2 Score      : 3593 bins (excess: +70), Efficiency: 98.06%
+ Lineage Nodes    : 680, Transitions: 0
+ Best Heuristic   : LLM-Seed-428
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit bonus
+    if post_residual == 0 {
+        score -= 500.0;
+    }
+
+    // 2-step lookahead: strongly reward when next item exactly fills post_residual
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 400.0;
+        } else if post_residual >= next_item_size {
+            // next item fits: mild reward proportional to leftover after next
+            let after_next = post_residual - next_item_size;
+            score -= 100.0 + after_next as f64 * 0.5;
+        } else {
+            // dead space for next item: penalize the unusable gap
+            let gap = next_item_size - post_residual;
+            score += gap as f64 * 2.0;
+        }
+    }
+
+    // Penalize small unusable residuals relative to typical item sizes
+    if post_residual > 0 && post_residual < 10 {
+        score += 60.0;
+    }
+
+    // Compare residual against mean residual: prefer filling below-mean (wasted) bins
+    score -= (mean_residual - post_residual as f64) * 0.3;
+
+    // Last-chance bin: strongly favor using it to avoid opening a new bin
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 150.0;
+    }
+
+    // New-bin candidate: keep it neutral-ish, only attractive when current fit is bad
+    if bin_residual == bin_capacity {
+        score += 80.0;
+    }
+
+    // Late in stream: prefer closing bins tightly
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score -= progress * 20.0 * (bin_capacity - bin_residual) as f64 / bin_capacity as f64;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_glm_courbe_pilote\tirage\run_seed_3068_tirage.json.tmp

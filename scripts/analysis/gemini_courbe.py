@@ -1,6 +1,8 @@
 """Depouille le protocole docs/PROTOCOLE_GEMINI_COURBE.md.
 
-Usage : python scripts/analysis/gemini_courbe.py [controle] [--seeds24]
+Usage : python scripts/analysis/gemini_courbe.py [controle] [--seeds24 | --glm]
+  --glm     : depouille docs/PROTOCOLE_GLM_COURBE.md (memes calculs, autre dossier, autres
+              seeds, autres prix).
   controle  : fait tous les calculs mais n'affiche que des controles de coherence, aucun
               score (pour verifier le script avant le depouillement).
   --seeds24 : depouillement de l'extension prevue (24 seeds, seuil 0,025).
@@ -17,6 +19,14 @@ BUDGET = 1359
 PALIERS = [85, 170, 340, 680, 1359]
 INIT_POP = 22  # propositions fraiches du depart de l'evolution
 PRICE_IN, PRICE_OUT = 0.25, 1.50  # dollars par million de tokens, gemini-3.1-flash-lite
+GLM = "--glm" in sys.argv
+if GLM:
+    # docs/PROTOCOLE_GLM_COURBE.md : 24 seeds d'emblee, un seul regard, seuil 0,05.
+    OUT = "results_glm_courbe"
+    N_SEEDS = 24
+    SEEDS = [9000 + 17 * r for r in range(N_SEEDS)]
+    ALPHA = 0.05
+    PRICE_IN, PRICE_OUT = 0.0399, 0.0784  # z-ai/glm-5.3-flash chez Relace (OpenRouter)
 INVALID = -100.0  # effet attribue a un champion invalide (protocole)
 CONTROLE = "controle" in sys.argv
 med = statistics.median
@@ -205,6 +215,12 @@ for s in SEEDS:
         kinds[p["kind"]] = kinds.get(p["kind"], 0) + 1
 print(f"   propositions de l'evolution par type : {kinds}")
 
+print("\n== Propositions invalides a l'entrainement, par bras")
+for a in ARMS:
+    P = [p for s in SEEDS for p in reports[a][s]["proposals"]]
+    print(f"   {a:9} : {sum(not p['is_valid'] for p in P)}/{len(P)}"
+          f" ({100 * sum(not p['is_valid'] for p in P) / len(P):.1f} %)")
+
 print("\n== Tokens et cout")
 per_call = {}
 for a in ARMS:
@@ -230,7 +246,7 @@ def test(label, a, b, extra=""):
 p3, up3, down3 = test("H3 (echelle) : ecart a 1359 appels contre ecart a 340 appels", gap[1359], gap[340])
 h3 = p3 < ALPHA and up3 > down3
 print("   H3 " + ("ETABLIE" if h3 else ("significative dans l'autre sens" if p3 < ALPHA else "non etablie")))
-if not h3 and N_SEEDS == 12:
+if not h3 and N_SEEDS == 12 and not GLM:
     ext = p3 < 0.20 and up3 > down3
     print("   Extension prevue (12 seeds de plus, seuil 0,025) : " + ("AUTORISEE" if ext else "non autorisee"))
 
