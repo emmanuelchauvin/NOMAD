@@ -134,6 +134,114 @@ groupe C (croisement AST), qu'aucun run de ce protocole n'utilise.
 
 À corriger avant tout test du croisement.
 
-## Extension : 24 seeds
+## Extension : 24 seeds (résultat final)
 
-À compléter après les 12 seeds supplémentaires.
+Les 12 seeds supplémentaires (8204 à 8391) ont été exécutées le 15 novembre 2026, de
+2 h 10 à 11 h 25, à l'identique : même exécutable, mêmes réglages, sans échec ni nouvel
+essai. Données brutes commitées avant le dépouillement (commit `f4ce9fc`).
+
+```
+python scripts/analysis/gemini_courbe.py --seeds24
+```
+
+### Verdict final
+
+**H3 est établie, ainsi que H1 et H2, au seuil de 0,025 fixé pour le second regard.**
+
+- **H3, test principal : écart à 1 359 appels contre écart à 340 appels, 24 seeds.**
+  L'écart grandit sur 16 seeds, se réduit sur 6, est inchangé sur 2. Wilcoxon signé
+  apparié, bilatéral, exact : W+ = 212, n = 22, p = 0,0042. Différence médiane :
+  6,5 points.
+- **H1, à appels égaux (1 359 contre 1 359).** L'évolution gagne 22 seeds et en perd 2.
+  W+ = 283, n = 24, p < 0,0001. Différence médiane : 31,8 points.
+- **H2, à dépense égale.** `r` = 1,5134, `k*` = 898 : l'évolution arrêtée à 898 appels
+  contre le tirage complet. L'évolution gagne 18 seeds et en perd 6. W+ = 258, n = 24,
+  p = 0,0012. Différence médiane : 29,9 points.
+
+Lecture prévue par le protocole : l'avance de l'évolution grandit avec le budget, sur ce
+problème et ce modèle.
+
+### Courbes sur 24 seeds
+
+| Appels | 85 | 170 | 340 | 680 | 1 359 |
+|---|---|---|---|---|---|
+| Évolution, validation (médiane) | 14,5 % | 22,4 % | 34,0 % | 41,2 % | 56,0 % |
+| Tirage, validation (médiane) | 4,2 % | 11,0 % | 15,0 % | 17,5 % | 17,7 % |
+| Évolution, entraînement (médiane) | 15,9 % | 26,1 % | 38,0 % | 45,3 % | 59,8 % |
+| Tirage, entraînement (médiane) | 3,2 % | 10,8 % | 15,5 % | 19,1 % | 22,2 % |
+| Écart médian par seed (validation) | 11,4 | 14,4 | 14,3 | 14,9 | 31,8 |
+| Seeds gagnées par l'évolution | 18/24 | 19/24 | 16/24 | 19/24 | 22/24 |
+| Évolution ≥ 10 % (validation) | 16/24 | 20/24 | 21/24 | 22/24 | 24/24 |
+| Évolution ≥ 30 % (validation) | 8/24 | 11/24 | 14/24 | 14/24 | 21/24 |
+| Tirage ≥ 10 % (validation) | 7/24 | 12/24 | 19/24 | 21/24 | 22/24 |
+| Tirage ≥ 30 % (validation) | 3/24 | 3/24 | 4/24 | 5/24 | 5/24 |
+
+Aucun champion invalide sur la validation.
+
+### Validation par seed, seeds de l'extension (évolution / tirage)
+
+| Seed | 85 | 170 | 340 | 680 | 1 359 |
+|---|---|---|---|---|---|
+| 8204 | 53,2 / 32,3 | 71,0 / 32,3 | 72,0 / 32,3 | 75,3 / 32,3 | 75,8 / 32,3 |
+| 8221 | 13,6 / 12,6 | 14,1 / 13,1 | 26,7 / 13,1 | 21,5 / 17,3 | 54,5 / 17,8 |
+| 8238 | 15,7 / 7,6 | 15,7 / 6,1 | 15,7 / 18,7 | 15,7 / 36,9 | 33,3 / 36,9 |
+| 8255 | 66,7 / 17,5 | 66,7 / 17,5 | 71,4 / 17,5 | 80,4 / 17,5 | 79,9 / 17,5 |
+| 8272 | 43,5 / −0,5 | 45,1 / 0,0 | 46,1 / 54,4 | 46,1 / 54,4 | 57,0 / 54,4 |
+| 8289 | 47,7 / 7,3 | 47,7 / 7,3 | 78,8 / 10,4 | 79,8 / 10,4 | 80,8 / 8,8 |
+| 8306 | 9,8 / 32,6 | 25,9 / 32,6 | 31,6 / 32,6 | 37,8 / 32,6 | 51,8 / 32,6 |
+| 8323 | 4,2 / 4,7 | 9,4 / 19,8 | 9,4 / 19,8 | 9,4 / 19,8 | 45,8 / 19,8 |
+| 8340 | 43,3 / 16,1 | 43,3 / 14,4 | 43,3 / 14,4 | 43,3 / 14,4 | 43,3 / 14,4 |
+| 8357 | 13,2 / −0,5 | 14,8 / 22,5 | 13,7 / 22,5 | 13,7 / 22,5 | 54,9 / 22,5 |
+| 8374 | 12,4 / 0,0 | 15,6 / 1,6 | 17,2 / 12,9 | 17,2 / 12,9 | 17,2 / 14,0 |
+| 8391 | −1,6 / 0,5 | 18,8 / 7,5 | 57,0 / 7,5 | 57,0 / 18,8 | 57,0 / 25,8 |
+
+### Autres mesures sur 24 seeds
+
+- **Budget de tirage équivalent.** La médiane de l'évolution à 85 appels est atteinte par
+  le tirage à 304 propositions ; celle de l'évolution à 170 appels (22,4 %) n'est jamais
+  atteinte en 1 359 propositions.
+- **Dernier appel ayant amélioré le champion.** Évolution : médiane 1 173,5. Tirage :
+  médiane 467,5.
+- **Propositions de l'évolution.** 20 739 mutations et 11 877 propositions fraîches, dont
+  528 au départ : 34,8 % des appels sont des relances. Champion issu d'une relance : 2 cas
+  sur 120 (seed, palier), aucun à 1 359 appels.
+- **Coût estimé.** Évolution 51,68 $ (0,001585 $ par appel), tirage 34,15 $ (0,001047 $
+  par appel), total 85,83 $ pour les 48 runs.
+
+### Observations finales
+
+1. **L'effet d'échelle vient de deux mouvements.** Le tirage s'arrête de progresser
+   (médiane 17,5 % à 680 propositions, 17,7 % à 1 359) pendant que l'évolution continue
+   (41,2 % puis 56,0 %).
+2. **L'écart ne grandit pas régulièrement.** L'écart médian par seed est stable de 170 à
+   680 appels (14 à 15 points) et double au dernier palier (31,8 points). Le test fixé à
+   l'avance compare 340 et 1 359 appels ; il ne dit pas à partir de quel budget l'écart
+   se creuse.
+3. **L'évolution avance par sauts tardifs.** Plusieurs seeds restent longtemps sur un
+   champion médiocre puis progressent d'un coup entre 680 et 1 359 appels (8323 : 9,4 %
+   puis 45,8 % ; 8357 : 13,7 % puis 54,9 % ; 8170 : 23,0 % puis 73,0 %). À 1 359 appels,
+   13 seeds sur 24 ont encore amélioré leur champion après l'appel 1 100 : le run n'a pas
+   atteint de palier.
+4. **Les seeds perdues le sont sur un coup de chance du tirage.** 8068 et 8238 : le tirage
+   y trouve une heuristique à 47,2 % et 36,9 % que l'évolution n'égale pas. Sur 8272,
+   l'évolution ne repasse devant qu'au dernier palier.
+5. **Deux seeds ne bougent pas.** 8340 garde le même champion de l'appel 80 à la fin,
+   8374 depuis l'appel 335 : la relance ne les débloque pas.
+6. **Les relances coûtent un tiers du budget et ne donnent presque aucun champion.**
+
+### Limites
+
+Celles du protocole : un seul modèle, un seul problème ; réponses non reproductibles
+faute de champ `seed` ; les trois modifications du moteur sont testées ensemble ; le bras
+d'évolution contient un tiers de propositions fraîches. Le résultat de H3 a demandé le
+second regard prévu, au seuil corrigé de 0,025.
+
+### Lecture d'ensemble
+
+Sur trois protocoles et 72 seeds, avec des critères fixés à l'avance, l'évolution de NOMAD
+fait mieux qu'un tirage de propositions indépendantes du même modèle : à 85 appels
+(p = 0,0075), à 340 appels (p = 0,0002) et à 1 359 appels (p < 0,0001), y compris à
+dépense égale à 340 et 1 359 appels. Et son avance est plus grande à 1 359 appels qu'à
+340 sur les mêmes seeds (p = 0,0042).
+
+Restent à établir : le même résultat sur un autre modèle et sur un autre problème.
