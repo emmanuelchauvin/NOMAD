@@ -233,35 +233,12 @@ pub fn validate_anti_dead_code_3levels_with_score(
         }
     };
 
-    // Sélection d'un jeu représentatif de 5 sondes (4 instances In-Distribution + 1 instance de rupture OOD-2)
-    // identique à la politique éprouvée de scheduling.rs
-    let (probe_instances, orig_probe_evals): (Vec<BinPackingInstance>, Vec<InstanceEvaluation>) =
-        if probes_dataset.instances.len() >= 4 && !oracle.ood2_powerlaw.instances.is_empty() {
-            let mut instances: Vec<BinPackingInstance> =
-                probes_dataset.instances.iter().take(4).cloned().collect();
-            let mut evals: Vec<InstanceEvaluation> =
-                orig_evals.iter().take(4).cloned().collect();
-
-            let ood_inst = &oracle.ood2_powerlaw.instances[0];
-            instances.push(ood_inst.clone());
-
-            let (ood_eval, _, _) = oracle.evaluate_single_instance_with_lookahead(
-                ood_inst,
-                &capsule.logic_code,
-                sandbox,
-                fuel_limit,
-                lookahead,
-            );
-            evals.push(ood_eval);
-
-            (instances, evals)
-        } else {
-            let count = 5.min(probes_dataset.instances.len());
-            (
-                probes_dataset.instances[..count].to_vec(),
-                orig_evals[..count].to_vec(),
-            )
-        };
+    // Jeu de 5 sondes, toutes issues du jeu passé en argument (l'entraînement) : les jeux
+    // OOD sont réservés à l'évaluation finale et n'interviennent jamais dans la sélection
+    // (même politique que scheduling.rs).
+    let count = 5.min(probes_dataset.instances.len());
+    let probe_instances: Vec<BinPackingInstance> = probes_dataset.instances[..count].to_vec();
+    let orig_probe_evals: Vec<InstanceEvaluation> = orig_evals[..count].to_vec();
 
     let probe_dataset = Dataset {
         name: format!("{}_ablation_probes", probes_dataset.name),
@@ -483,6 +460,84 @@ mod tests {
             status,
             ValidationStatus::PassedLevel2Computational | ValidationStatus::PassedLevel3Behavioral
         ));
+    }
+
+    /// Les sondes du niveau 3 viennent toutes du jeu passe en argument : remplacer le jeu
+    /// OOD-2 de l'oracle ne change pas le verdict ni le score.
+    #[test]
+    fn level3_probes_ignore_ood_datasets() {
+        let host_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let mut score = bin_residual as f64;
+            score
+        }
+        "#;
+        let donor_code = r#"
+        pub fn score_bin(
+            item_size: u32,
+            bin_residual: u32,
+            bin_capacity: u32,
+            step_index: usize,
+            total_items: usize,
+            open_bins_count: usize,
+            mean_residual: f64,
+        ) -> f64 {
+            let mut score = bin_residual as f64;
+            if bin_residual < 10 {
+                score = score + 50.0;
+            }
+            score
+        }
+        "#;
+        let make = |name: &str, code: &str| {
+            SkillCapsule::new_v2(
+                name,
+                "Interface",
+                code,
+                vec![],
+                1,
+                HashMap::new(),
+                "ScorePolicyV1",
+                PolicyKind::ScorePolicy,
+                None,
+                vec![],
+                ValidationStatus::Unvalidated,
+                None,
+            )
+        };
+        let (child, _) =
+            deterministic_ast_crossover(&make("Host", host_code), &make("Donor", donor_code), 42, 2)
+                .unwrap();
+        assert!(child.graft_manifest.is_some(), "le test doit passer par le niveau 3");
+
+        let sandbox = DeterministicSandbox::new();
+        let oracle = OracleEvaluator::new(42);
+        let mut altered = oracle.clone();
+        altered.ood2_powerlaw = Dataset::generate_ood2_distribution_shift(7);
+        assert_ne!(oracle.ood2_powerlaw, altered.ood2_powerlaw);
+
+        let run = |o: &OracleEvaluator| {
+            let mut c = child.clone();
+            let r = validate_anti_dead_code_3levels_with_score(
+                &mut c,
+                o,
+                &sandbox,
+                &o.in_distribution,
+                50_000,
+                1e-6,
+                false,
+            );
+            (format!("{:?}", r.map(|(s, b)| (s, b.total_bins, b.total_fuel))), c.validation)
+        };
+        assert_eq!(run(&oracle), run(&altered));
     }
 
     #[test]

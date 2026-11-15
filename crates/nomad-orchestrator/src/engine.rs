@@ -185,10 +185,24 @@ impl<'a> EvolutionEngine<'a> {
     /// Ajoute une proposition evaluee au journal. Purement passif : ne modifie ni la
     /// selection, ni l'archive, ni le budget.
     fn record_proposal(&mut self, capsule: &SkillCapsule, score: &BenchmarkScore, kind: &str) {
-        let is_new_best = match &self.best_proposal_score {
-            None => true,
-            Some(best) => score < best,
-        };
+        self.record_proposal_checked(capsule, score, kind, true);
+    }
+
+    /// Comme `record_proposal`, mais une proposition rejetee par le filtre du moteur
+    /// (`accepted == false`) est journalisee sans pouvoir devenir championne : le champion
+    /// du journal est toujours un programme que le moteur a garde.
+    fn record_proposal_checked(
+        &mut self,
+        capsule: &SkillCapsule,
+        score: &BenchmarkScore,
+        kind: &str,
+        accepted: bool,
+    ) {
+        let is_new_best = accepted
+            && match &self.best_proposal_score {
+                None => true,
+                Some(best) => score < best,
+            };
         if is_new_best {
             self.best_proposal_score = Some(score.clone());
             self.best_trail.push((self.proposals.len(), capsule.clone()));
@@ -778,7 +792,6 @@ impl<'a> EvolutionEngine<'a> {
                     let (mutated, score) = self.evaluate_and_validate(mutated);
                     let (mutated, score) = self.maybe_optimize_constants(mutated, score, seed);
                     self.phylogeny.insert_capsule(&mutated);
-                    self.record_proposal(&mutated, &score, "mutation");
 
                     let is_validation_passed = match &mutated.validation {
                         nomad_core::ValidationStatus::PassedLevel3Behavioral
@@ -792,6 +805,12 @@ impl<'a> EvolutionEngine<'a> {
                         }
                         nomad_core::ValidationStatus::Unvalidated => true,
                     };
+                    self.record_proposal_checked(
+                        &mutated,
+                        &score,
+                        "mutation",
+                        is_validation_passed && score.is_valid,
+                    );
 
                     let is_improved = if let Some(best) = self.archive.best_elite() {
                         score < best.fitness
@@ -930,12 +949,17 @@ impl<'a> EvolutionEngine<'a> {
                             let (child_capsule, score) =
                                 self.maybe_optimize_constants(child_capsule, score, seed);
                             self.phylogeny.insert_capsule(&child_capsule);
-                            self.record_proposal(&child_capsule, &score, "crossover");
 
                             // Validation bloquante Anti-Dead-Code pour le crossover (Niveau 3 C_null obligatoire)
                             let is_crossover_passed = matches!(
                                 &child_capsule.validation,
                                 nomad_core::ValidationStatus::PassedLevel3Behavioral
+                            );
+                            self.record_proposal_checked(
+                                &child_capsule,
+                                &score,
+                                "crossover",
+                                is_crossover_passed && score.is_valid,
                             );
 
                             if !is_crossover_passed {
@@ -1021,5 +1045,36 @@ impl<'a> EvolutionEngine<'a> {
         }
 
         Ok(next_population)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nomad_operator::DeterministicMockOperator;
+    use nomad_sandbox::DeterministicSandbox;
+
+    /// Une proposition rejetee par le filtre du moteur est journalisee mais ne devient
+    /// jamais championne, meme si son score est le meilleur rencontre.
+    #[test]
+    fn rejected_proposal_never_becomes_champion() {
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+        let mut engine =
+            EvolutionEngine::new(ExperimentConfig::default(), &oracle, &sandbox, &operator);
+        let (capsule, _) = operator.generate_seed(0, 1).unwrap();
+        let score = oracle.evaluate_in_distribution(&capsule, &sandbox, 400_000);
+
+        engine.record_proposal_checked(&capsule, &score, "crossover", false);
+        assert_eq!(engine.proposals.len(), 1);
+        assert!(!engine.proposals[0].is_new_best);
+        assert!(engine.best_trail.is_empty());
+        assert!(engine.best_proposal_score.is_none());
+
+        engine.record_proposal_checked(&capsule, &score, "crossover", true);
+        assert!(engine.proposals[1].is_new_best);
+        assert_eq!(engine.best_trail.len(), 1);
+        assert_eq!(engine.best_trail[0].0, 1);
     }
 }
