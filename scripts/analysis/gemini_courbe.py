@@ -1,8 +1,10 @@
 """Depouille le protocole docs/PROTOCOLE_GEMINI_COURBE.md.
 
-Usage : python scripts/analysis/gemini_courbe.py [controle] [--seeds24 | --glm]
+Usage : python scripts/analysis/gemini_courbe.py [controle] [--seeds24 | --glm | --glm340]
   --glm     : depouille docs/PROTOCOLE_GLM_COURBE.md (memes calculs, autre dossier, autres
               seeds, autres prix).
+  --glm340  : depouille docs/PROTOCOLE_GLM_340.md (memes calculs, budget de 344 appels,
+              paliers 85, 170 et 344, pas de test H3).
   controle  : fait tous les calculs mais n'affiche que des controles de coherence, aucun
               score (pour verifier le script avant le depouillement).
   --seeds24 : depouillement de l'extension prevue (24 seeds, seuil 0,025).
@@ -26,6 +28,16 @@ if GLM:
     N_SEEDS = 24
     SEEDS = [9000 + 17 * r for r in range(N_SEEDS)]
     ALPHA = 0.05
+    PRICE_IN, PRICE_OUT = 0.0399, 0.0784  # z-ai/glm-5.3-flash chez Relace (OpenRouter)
+GLM340 = "--glm340" in sys.argv
+if GLM340:
+    # docs/PROTOCOLE_GLM_340.md : 24 seeds, un seul regard, seuil 0,05, 344 appels, sans H3.
+    OUT = "results_glm_340"
+    N_SEEDS = 24
+    SEEDS = [9000 + 17 * r for r in range(N_SEEDS)]
+    ALPHA = 0.05
+    BUDGET = 344
+    PALIERS = [85, 170, 344]
     PRICE_IN, PRICE_OUT = 0.0399, 0.0784  # z-ai/glm-5.3-flash chez Relace (OpenRouter)
 INVALID = -100.0  # effet attribue a un champion invalide (protocole)
 CONTROLE = "controle" in sys.argv
@@ -243,16 +255,17 @@ def test(label, a, b, extra=""):
     print(f"   Wilcoxon signe apparie bilateral exact : W+ = {w}, n = {n}, p = {p:.4f}  (seuil {ALPHA})")
     return p, up, down
 
-p3, up3, down3 = test("H3 (echelle) : ecart a 1359 appels contre ecart a 340 appels", gap[1359], gap[340])
-h3 = p3 < ALPHA and up3 > down3
-print("   H3 " + ("ETABLIE" if h3 else ("significative dans l'autre sens" if p3 < ALPHA else "non etablie")))
-if not h3 and N_SEEDS == 12 and not GLM:
-    ext = p3 < 0.20 and up3 > down3
-    print("   Extension prevue (12 seeds de plus, seuil 0,025) : " + ("AUTORISEE" if ext else "non autorisee"))
+if not GLM340:
+    p3, up3, down3 = test("H3 (echelle) : ecart a 1359 appels contre ecart a 340 appels", gap[1359], gap[340])
+    h3 = p3 < ALPHA and up3 > down3
+    print("   H3 " + ("ETABLIE" if h3 else ("significative dans l'autre sens" if p3 < ALPHA else "non etablie")))
+    if not h3 and N_SEEDS == 12 and not GLM:
+        ext = p3 < 0.20 and up3 > down3
+        print("   Extension prevue (12 seeds de plus, seuil 0,025) : " + ("AUTORISEE" if ext else "non autorisee"))
 
 e1359 = [V("evolution", s, BUDGET) for s in SEEDS]
 t1359 = [V("tirage", s, BUDGET) for s in SEEDS]
-p1, up1, down1 = test("H1 (appels egaux) : evolution contre tirage a 1359 appels", e1359, t1359)
+p1, up1, down1 = test(f"H1 (appels egaux) : evolution contre tirage a {BUDGET} appels", e1359, t1359)
 h1 = p1 < ALPHA and up1 > down1
 print("   H1 " + ("ETABLIE" if h1 else "non etablie"))
 
