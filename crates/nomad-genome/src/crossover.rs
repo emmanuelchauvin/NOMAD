@@ -284,6 +284,30 @@ pub fn resolve_dependencies_with_backward_slice(
     graft_slice(stmt_to_insert, unit_index, donor_stmts, host_stmts, host_params, locus_idx)
 }
 
+/// Facon de greffer une unite du donneur.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraftMode {
+    /// Comportement historique : une definition du donneur (`let v = e`) que l'hote ne lit
+    /// pas devient un melange `let score = score * 0.95 + e * 0.05` (0,70/0,30 ou 0,80/0,20
+    /// pour un `let score` du donneur).
+    Mixing,
+    /// Regles completes seulement : seules les instructions du donneur qui modifient `score`
+    /// (`if .. { score += .. }`, `score *= ..`) sont greffees, avec leur tranche. Aucun melange.
+    RulesOnly,
+}
+
+/// Instruction du donneur qui modifie `score` sans le redefinir : une regle complete.
+fn is_score_rule(unit: &LogicalUnit) -> bool {
+    !matches!(unit.stmt, syn::Stmt::Local(_)) && writes_of(&unit.stmt).written.contains("score")
+}
+
+fn units_for_mode(units: Vec<LogicalUnit>, mode: GraftMode) -> Vec<LogicalUnit> {
+    match mode {
+        GraftMode::Mixing => units,
+        GraftMode::RulesOnly => units.into_iter().filter(is_score_rule).collect(),
+    }
+}
+
 /// ============================================================================
 /// deterministic_ast_crossover : Algorithme de Croisement Génétique AST Déterministe
 /// ============================================================================
@@ -304,13 +328,24 @@ pub fn deterministic_ast_crossover(
     seed: u64,
     generation: usize,
 ) -> Result<(SkillCapsule, GraftManifest), CrossoverError> {
+    deterministic_ast_crossover_with(host, donor, seed, generation, GraftMode::Mixing)
+}
+
+/// `deterministic_ast_crossover` avec un mode de greffe explicite.
+pub fn deterministic_ast_crossover_with(
+    host: &SkillCapsule,
+    donor: &SkillCapsule,
+    seed: u64,
+    generation: usize,
+    mode: GraftMode,
+) -> Result<(SkillCapsule, GraftManifest), CrossoverError> {
     let host_fn = parse_heuristic_fn(&host.logic_code)?;
     let donor_fn = parse_heuristic_fn(&donor.logic_code)?;
 
     let _host_fingerprint = compute_structural_fingerprint(&host_fn);
     let donor_fingerprint = compute_structural_fingerprint(&donor_fn);
 
-    let donor_units = extract_logical_units(&donor_fn);
+    let donor_units = units_for_mode(extract_logical_units(&donor_fn), mode);
     if donor_units.is_empty() {
         return Err(CrossoverError::NoExtractableUnits(donor.id.0.clone()));
     }
@@ -331,6 +366,7 @@ pub fn deterministic_ast_crossover(
     candidate_units.shuffle(&mut rng);
 
     let mut chosen_unit = candidate_units[0];
+    let mut chosen_mixed = false;
     let mut resolved_graft: Option<Vec<syn::Stmt>> = None;
 
     for cand in &candidate_units {
@@ -377,6 +413,7 @@ pub fn deterministic_ast_crossover(
             locus_idx,
         ) {
             resolved_graft = Some(slice);
+            chosen_mixed = cand_stmt != cand.stmt;
             chosen_unit = cand;
             break;
         }
@@ -450,6 +487,8 @@ pub fn deterministic_ast_crossover(
         "crossover_type".to_string(),
         "ast_deterministic".to_string(),
     );
+    metadata.insert("graft_mode".to_string(), format!("{mode:?}"));
+    metadata.insert("mixed".to_string(), chosen_mixed.to_string());
     metadata.insert("host_id".to_string(), host.id.0.clone());
     metadata.insert("donor_id".to_string(), donor.id.0.clone());
     metadata.insert("graft_id".to_string(), graft_id);
@@ -569,17 +608,28 @@ pub fn multi_locus_ast_crossover(
     seed: u64,
     generation: usize,
 ) -> Result<(SkillCapsule, GraftManifest), CrossoverError> {
+    multi_locus_ast_crossover_with(host, donor, seed, generation, GraftMode::Mixing)
+}
+
+/// `multi_locus_ast_crossover` avec un mode de greffe explicite.
+pub fn multi_locus_ast_crossover_with(
+    host: &SkillCapsule,
+    donor: &SkillCapsule,
+    seed: u64,
+    generation: usize,
+    mode: GraftMode,
+) -> Result<(SkillCapsule, GraftManifest), CrossoverError> {
     let host_fn = parse_heuristic_fn(&host.logic_code)?;
     let donor_fn = parse_heuristic_fn(&donor.logic_code)?;
 
     let donor_fingerprint = compute_structural_fingerprint(&donor_fn);
-    let donor_units = extract_logical_units(&donor_fn);
+    let donor_units = units_for_mode(extract_logical_units(&donor_fn), mode);
     if donor_units.is_empty() {
         return Err(CrossoverError::NoExtractableUnits(donor.id.0.clone()));
     }
 
     if donor_units.len() < 2 {
-        return deterministic_ast_crossover(host, donor, seed, generation);
+        return deterministic_ast_crossover_with(host, donor, seed, generation, mode);
     }
 
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
@@ -739,6 +789,7 @@ pub fn multi_locus_ast_crossover(
         }
     }
 
+    let mixed = stmt1 != unit1.stmt || stmt2 != unit2.stmt;
     let slice2 = graft_slice(
         &stmt2,
         unit2.index,
@@ -802,6 +853,8 @@ pub fn multi_locus_ast_crossover(
 
     let mut metadata = HashMap::new();
     metadata.insert("crossover_type".to_string(), "multi_locus_ast".to_string());
+    metadata.insert("graft_mode".to_string(), format!("{mode:?}"));
+    metadata.insert("mixed".to_string(), mixed.to_string());
     metadata.insert(
         "crossover_mode".to_string(),
         if use_regime_dispatch {
@@ -1205,5 +1258,35 @@ mod tests {
         let code = render(&slice);
         assert!(code.contains("let _d2_gap = item_size as f64"), "{code}");
         assert!(code.contains("score += _d2_gap"), "{code}");
+    }
+
+    /// Mode regles completes : seules les instructions qui modifient `score` sont greffees,
+    /// jamais de melange ; le mode historique peut melanger une definition du donneur.
+    #[test]
+    fn rules_only_mode_never_mixes() {
+        let host = capsule("h", "let mut score = bin_residual as f64; score");
+        let donor = capsule(
+            "d",
+            "let ratio = item_size as f64 / 100.0; let mut score = bin_residual as f64; \
+             if bin_residual < 15 { score -= 4.0 * ratio; } score *= 1.5; score",
+        );
+        let mut mixed_seen = false;
+        for seed in 0..40u64 {
+            for res in [
+                deterministic_ast_crossover_with(&host, &donor, seed, 1, GraftMode::RulesOnly),
+                multi_locus_ast_crossover_with(&host, &donor, seed, 1, GraftMode::RulesOnly),
+            ] {
+                let (child, _) = res.expect("greffe");
+                assert_eq!(child.metadata.get("mixed").map(String::as_str), Some("false"));
+                assert_eq!(child.metadata.get("graft_mode").map(String::as_str), Some("RulesOnly"));
+                assert!(!child.logic_code.contains("0.95"), "{}", child.logic_code);
+            }
+            let (child, _) = deterministic_ast_crossover(&host, &donor, seed, 1).unwrap();
+            mixed_seen |= child.metadata.get("mixed").map(String::as_str) == Some("true");
+        }
+        assert!(mixed_seen, "le mode historique n'a jamais melange");
+        // Un donneur sans regle sur `score` ne donne rien en mode regles completes.
+        let flat = capsule("f", "let mut score = item_size as f64; score");
+        assert!(deterministic_ast_crossover_with(&host, &flat, 1, 1, GraftMode::RulesOnly).is_err());
     }
 }
