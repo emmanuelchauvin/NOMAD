@@ -815,9 +815,6 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
         metadata.insert("parent_a".to_string(), parent_a.id.to_string());
         metadata.insert("parent_b".to_string(), parent_b.id.to_string());
 
-        let is_sched = parent_a.logic_code.contains("score_node")
-            || self.domain == ProblemDomain::MultiResourceScheduling;
-
         // Attempt deterministic multi-loci or single-locus AST crossover first
         let ast_res = if seed.is_multiple_of(2) {
             multi_locus_ast_crossover(parent_a, parent_b, seed, generation)
@@ -853,69 +850,12 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
             return Ok((child, audit));
         }
 
-        // Fallback: LLM synthesis
-        let system_prompt = if is_sched {
-            "You are an evolutionary synthesizer performing SWARM CROSSOVER between two distinct algorithmic lineages for Multi-Resource Cloud Job Scheduling.\n\
-Recombine their complementary heuristic mechanisms into a single, superior hybrid Rust function score_node.\n\
-The node with the MINIMUM score is selected. Residual inputs are measured BEFORE placement: prefer terms computed on the post-placement state (node_residual_cpu - job_cpu, node_residual_ram - job_ram).\n\
-Return ONLY the hybrid Rust function in a ```rust ... ``` code block."
-        } else {
-            "You are an evolutionary synthesizer performing SWARM CROSSOVER between two distinct algorithmic lineages for Online 1D Bin Packing (C=100).\n\
-Recombine their complementary heuristic mechanisms into a single, superior hybrid Rust function score_bin.\n\
-Return ONLY the hybrid Rust function in a ```rust ... ``` code block."
-        };
-
-        let user_prompt = format!(
-            "PARENT A (ID: {}):\n```rust\n{}\n```\n\nPARENT B (ID: {}):\n```rust\n{}\n```\n\nPerform horizontal crossover for Generation {}.",
-            parent_a.id, parent_a.logic_code,
-            parent_b.id, parent_b.logic_code,
-            generation
-        );
-
-        let raw_response = self.call_inference(system_prompt, &user_prompt, seed)?;
-        let raw_code = Self::extract_code_block(&raw_response);
-        let (ast_code, item_fn) = if is_sched {
-            Self::normalize_to_ast_score_node(&raw_code, seed, generation)
-        } else {
-            Self::normalize_to_ast_score_bin(&raw_code, seed, generation)
-        };
-        // Reponse illisible remplacee par un gabarit : etiquetee pour l'analyse.
-        let used_fallback = ast_code != raw_code.trim();
-        let mut metadata = metadata;
-        if used_fallback {
-            metadata.insert("fallback_template".to_string(), "true".to_string());
-        }
-        let fp = Some(compute_structural_fingerprint(&item_fn));
-
-        let audit = ReproducibilityAudit {
-            model_name: self.model_name.clone(),
-            model_sha256: self.model_sha256.clone(),
-            engine_version: self.engine_version.clone(),
-            seed,
-            temperature: self.temperature,
-            top_p: self.top_p,
-            full_prompt: format!("{}\n{}", system_prompt, user_prompt),
-            raw_response: raw_response.clone(),
-            timestamp: Utc::now(),
-            is_network_call: true,
-        };
-
-        let capsule = SkillCapsule::new_v2(
-            name,
-            desc,
-            ast_code,
-            vec![parent_a.id.clone(), parent_b.id.clone()],
-            generation,
-            metadata,
-            "ScorePolicyV1",
-            PolicyKind::ScorePolicy,
-            fp,
-            Vec::new(),
-            ValidationStatus::PassedLevel1Structural,
-            None,
-        );
-
-        Ok((capsule, audit))
+        // Plus de repli sur un appel au modele : son enfant, sans manifeste de greffe,
+        // etait rejete a 100 % par le groupe C, et l'appel etait facture pour rien.
+        Err(OperatorError::ParseError(format!(
+            "croisement AST impossible entre {} et {}",
+            parent_a.id, parent_b.id
+        )))
     }
 }
 

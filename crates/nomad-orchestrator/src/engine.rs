@@ -1032,20 +1032,50 @@ impl<'a> EvolutionEngine<'a> {
                 candidate_pool.push(elite);
 
                 // 1. Quota de mutations LLM (pop_size - 1 mutations pour parité stricte avec le Groupe D)
+                // Relances et mutation informee comme dans le groupe D.
+                let inject_fresh = self.config.stagnation_patience > 0
+                    && self.stagnant_generations >= self.config.stagnation_patience;
                 let target_mutations = pop_size.saturating_sub(1);
                 let mut mutations_done = 0;
                 while mutations_done < target_mutations && self.budget.can_invoke_llm(&self.config) {
                     mutations_done += 1;
+                    if inject_fresh && mutations_done % 2 == 0 {
+                        let seed = rand::Rng::gen(rng);
+                        let index = self.fresh_seed_counter;
+                        self.fresh_seed_counter += 1;
+                        let (fresh, _) = self
+                            .operator
+                            .generate_seed(index, seed)
+                            .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
+
+                        self.budget.record_llm_call();
+                        self.throttle_cooldown();
+
+                        let (fresh, score) = self.evaluate_and_validate(fresh);
+                        let (fresh, score) = self.maybe_optimize_constants(fresh, score, seed);
+                        self.phylogeny.insert_capsule(&fresh);
+                        self.record_proposal(&fresh, &score, "fresh");
+                        self.lineages.register_seed(fresh.id.clone());
+                        self.archive.insert(fresh.clone(), score.clone());
+                        candidate_pool.push(EvaluatedIndividual::new(fresh, score));
+                        continue;
+                    }
+
                     let parent = self
                         .archive
                         .select_parent(self.config.parent_selection, rng)
                         .unwrap_or_else(|| current_pop[0].capsule.clone());
                     let seed = rand::Rng::gen(rng);
+                    let context = if self.config.informed_mutation {
+                        self.mutation_context(&parent)
+                    } else {
+                        None
+                    };
                     let lineage = self.lineages.get_lineage(&parent.id);
 
                     let (mutated, _) = self
                         .operator
-                        .mutate_with_lineage(&parent, next_gen_idx, seed, lineage)
+                        .mutate_informed(&parent, next_gen_idx, seed, lineage, context.as_ref())
                         .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
 
                     self.budget.record_llm_call();
@@ -1183,102 +1213,60 @@ impl<'a> EvolutionEngine<'a> {
                     if let Some(parent_b) = chosen_b {
                         let p_b_hash = parent_b.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
                         if parent_a.id != parent_b.id && (parent_a_hash.is_none() || parent_a_hash != p_b_hash) {
-                            // L'operateur peut se replier sur un appel au modele si la greffe
-                            // AST echoue : verifier le budget AVANT, sinon l'appel serait
-                            // fait (et facture) puis jete.
-                            if !self.budget.can_invoke_llm(&self.config) {
-                                continue;
-                            }
                             self.crossover_attempts += 1;
                             *ancestral_usage_counts
                                 .entry(parent_b.id.0.clone())
                                 .or_insert(0) += 1;
 
-                            let (child_capsule, audit) = self
+                            // Croisement AST local, sans appel au modele : si la greffe
+                            // echoue, la tentative est comptee et le run continue.
+                            let (mut child_capsule, audit) = match self
                                 .operator
                                 .crossover(&parent_a, &parent_b, next_gen_idx, seed)
-                                .map_err(|e| OrchestratorError::OperatorError(e.to_string()))?;
-
-                            let is_ast_crossover = !audit.is_network_call || child_capsule.graft_manifest.is_some();
-                            if !is_ast_crossover {
-                                if !self.budget.can_invoke_llm(&self.config) {
+                            {
+                                Ok(res) => res,
+                                Err(e) => {
+                                    tracing::debug!("Croisement impossible : {}", e);
+                                    self.crossover_rejected_count += 1;
                                     continue;
                                 }
+                            };
+                            if audit.is_network_call {
+                                // Operateur tiers qui appelle encore un modele : facture.
                                 self.budget.record_llm_call();
                                 self.throttle_cooldown();
-                            } else {
-                                tracing::debug!(
-                                    "Local AST crossover for child {} executed with zero LLM budget consumption",
-                                    child_capsule.name
-                                );
                             }
 
-                            let (child_capsule, score) = self.evaluate_and_validate(child_capsule);
-                            let (child_capsule, score) =
-                                self.maybe_optimize_constants(child_capsule, score, seed);
+                            // Juge comme dans le groupe D : l'enfant n'est garde que s'il bat
+                            // son hote sur l'entrainement. Une greffe qui ameliore l'hote
+                            // n'est pas du code mort, le controle par ablation est inutile.
+                            child_capsule.graft_manifest = None;
+                            let score = self.train_score(&child_capsule);
+                            let accepted = score.is_valid && score < parent_a_score;
                             self.phylogeny.insert_capsule(&child_capsule);
-
-                            // Validation bloquante Anti-Dead-Code pour le crossover (Niveau 3 C_null obligatoire)
-                            let is_crossover_passed = matches!(
-                                &child_capsule.validation,
-                                nomad_core::ValidationStatus::PassedLevel3Behavioral
-                            );
                             self.record_proposal_checked(
                                 &child_capsule,
                                 &score,
                                 "crossover",
-                                is_crossover_passed && score.is_valid,
+                                accepted,
                             );
 
-                            if !is_crossover_passed {
-                                match &child_capsule.validation {
-                                    nomad_core::ValidationStatus::NotEvaluable(reason) => {
-                                        self.crossover_not_evaluable_count += 1;
-                                        self.crossover_rejected_count += 1;
-                                        tracing::info!(
-                                            "Crossover child {} marked NotEvaluable: {}",
-                                            child_capsule.name,
-                                            reason
-                                        );
-                                    }
-                                    _ => {
-                                        self.crossover_rejected_count += 1;
-                                    }
-                                }
-                            }
-
-                            let is_improved = if let Some(elite) = self.archive.best_elite() {
-                                score < elite.fitness
-                            } else {
-                                true
-                            };
-
-                            let host_id = child_capsule
-                                .parent_ids
-                                .first()
-                                .cloned()
-                                .unwrap_or_else(|| child_capsule.id.clone());
-                            let partner_id = child_capsule.parent_ids.get(1).cloned();
-
-                            self.lineages.record_evolution(
-                                child_capsule.id.clone(),
-                                &host_id,
-                                partner_id,
-                                child_capsule.semantic_interface.clone(),
-                                is_improved && is_crossover_passed,
-                            );
-
-                            if is_improved && is_crossover_passed {
+                            if accepted {
+                                self.lineages.record_evolution(
+                                    child_capsule.id.clone(),
+                                    &parent_a.id,
+                                    Some(parent_b.id.clone()),
+                                    child_capsule.semantic_interface.clone(),
+                                    true,
+                                );
                                 self.adaptive_crossover_rate =
                                     (self.adaptive_crossover_rate + 0.02).min(0.85);
-                            } else {
-                                self.adaptive_crossover_rate =
-                                    (self.adaptive_crossover_rate - 0.01).max(0.25);
-                            }
-
-                            if is_crossover_passed && score.is_valid {
                                 self.archive.insert(child_capsule.clone(), score.clone());
                                 candidate_pool.push(EvaluatedIndividual::new(child_capsule, score));
+                            } else {
+                                self.crossover_rejected_count += 1;
+                                self.adaptive_crossover_rate =
+                                    (self.adaptive_crossover_rate - 0.01).max(0.25);
                             }
                         }
                     }

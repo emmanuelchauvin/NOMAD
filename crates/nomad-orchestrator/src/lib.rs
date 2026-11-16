@@ -480,10 +480,10 @@ mod tests {
         }
     }
 
-    fn probe_run(informed: bool) -> (usize, usize, usize) {
+    fn probe_run(group: ExperimentalGroup, informed: bool) -> (usize, usize, usize) {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let config = ExperimentConfig {
-            group: ExperimentalGroup::GroupD,
+            group,
             rng_seed: 42,
             population_size: 5,
             max_generations: 6,
@@ -663,11 +663,85 @@ mod tests {
     #[test]
     fn test_informed_mutation_passes_measured_context_to_the_operator() {
         // 5 generations de 4 mutations, toutes informees.
-        let (with_context, with_best_other, without_context) = probe_run(true);
+        let (with_context, with_best_other, without_context) = probe_run(ExperimentalGroup::GroupD, true);
         assert_eq!((with_context, without_context), (20, 0));
         assert!(with_best_other > 0, "aucune mutation n'a recu le meilleur programme connu");
 
-        let (with_context, _, without_context) = probe_run(false);
+        let (with_context, _, without_context) = probe_run(ExperimentalGroup::GroupD, false);
         assert_eq!((with_context, without_context), (0, 20));
+    }
+
+    /// Groupe C aligne sur le groupe D : la mutation informee y est aussi transmise.
+    #[test]
+    fn group_c_mutations_are_informed_like_group_d() {
+        let (with_context, with_best_other, without_context) =
+            probe_run(ExperimentalGroup::GroupC, true);
+        assert_eq!((with_context, without_context), (20, 0));
+        assert!(with_best_other > 0);
+
+        let (with_context, _, without_context) = probe_run(ExperimentalGroup::GroupC, false);
+        assert_eq!((with_context, without_context), (0, 20));
+    }
+
+    fn aligned_group_c_run(stagnation_patience: usize) -> crate::engine::ExperimentRunReport {
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupC,
+            rng_seed: 42,
+            population_size: 6,
+            max_generations: 8,
+            initial_population_size: 8,
+            stagnation_patience,
+            informed_mutation: true,
+            ..Default::default()
+        };
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        engine.execute_run().expect("Run execution should succeed")
+    }
+
+    /// Groupe C aligne sur le groupe D : relances au meme budget, croisements sans appel
+    /// au modele, et un enfant de croisement n'entre dans l'archive que s'il bat son hote.
+    #[test]
+    fn group_c_crossover_child_kept_only_if_it_beats_its_host() {
+        let calm = aligned_group_c_run(0);
+        let relaunched = aligned_group_c_run(1);
+        // Budget identique, relance ou non : 8 au depart, puis 7 generations de 5 appels.
+        assert_eq!(calm.budget_consumed.llm_calls_consumed, 8 + 7 * 5);
+        assert_eq!(relaunched.budget_consumed.llm_calls_consumed, 8 + 7 * 5);
+        assert!(relaunched.proposals.iter().filter(|p| p.kind == "fresh").count() > 8);
+
+        for report in [&calm, &relaunched] {
+            // Seules les propositions du modele consomment des appels.
+            let llm = report
+                .proposals
+                .iter()
+                .filter(|p| p.kind == "fresh" || p.kind == "mutation")
+                .count();
+            assert_eq!(llm, report.budget_consumed.llm_calls_consumed);
+            assert!(report.proposals.iter().any(|p| p.kind == "crossover"));
+
+            for e in report.archive.all_elites() {
+                let Some(child) = report
+                    .proposals
+                    .iter()
+                    .find(|p| p.kind == "crossover" && p.capsule_id == e.capsule.id.0)
+                else {
+                    continue;
+                };
+                let host = report
+                    .proposals
+                    .iter()
+                    .find(|p| Some(&p.capsule_id) == child.parent_ids.first())
+                    .expect("hote absent du journal");
+                assert!(child.is_valid);
+                assert!(
+                    !host.is_valid || child.total_bins <= host.total_bins,
+                    "enfant {} garde sans battre son hote",
+                    child.capsule_name
+                );
+            }
+        }
     }
 }
