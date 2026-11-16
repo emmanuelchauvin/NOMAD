@@ -53,8 +53,26 @@ est plus grande à 1 359 appels qu'à 340.
    7 runs GLM sur 24 et 11 runs Gemini sur 24. Elles sont utiles ; ne pas les réduire.
 4. **H3 sur un second modèle** (GLM, MiniMax M3 ou DeepSeek par OpenRouter). Essai
    préalable court d'abord.
-5. **Autre problème** : l'ordonnancement, après vérification que son benchmark est sain.
-6. **Îles** : export/import d'archives entre populations sur une machine, puis protocole.
+5. **Autre problème** : l'ordonnancement. Relu le 16 novembre : la capacité des nœuds est
+   bien contrôlée, mais le benchmark est **peu discriminant** en l'état. Sur la seed 9600,
+   First-Fit est à 37 nœuds de la borne L1 sur 75 instances d'entraînement (706 contre
+   669), et les quatre heuristiques classiques tiennent en 5 nœuds : peu de marge,
+   beaucoup d'égalités. À revoir avant tout protocole (tâches plus grosses ou plus
+   hétérogènes, comme le profil Weibull du bin packing). Le descripteur `new_bin_ratio`
+   suppose 50 tâches par instance (faux sur OOD-1 et OOD-2, sans effet sur l'archive).
+6. **Îles** : export/import fait le 16 novembre (branche `ast-croisement`,
+   `MapElitesArchive::export_migrants` et `EvolutionEngine::import_migrants` : le code
+   voyage seul, il est re-noté sur les instances de l'île d'accueil, sans appel au
+   modèle ; test `migrants_travel_between_islands_and_are_rescored`). Reste : une
+   commande CLI et un protocole.
+7. **Gabarits de repli silencieux** (`nomad-operator/src/http_llm.rs`,
+   `normalize_to_ast_score_bin` et `_score_node`) : une réponse illisible du modèle devient
+   un First-Fit ou un Best-Fit noté valide. 2,4 % des propositions GLM, 0,1 % Gemini ;
+   aucun champion à un palier (voir RESULTATS_GLM_340.md). À décider pour les prochains
+   protocoles : marquer ces propositions invalides, ou au moins les étiqueter.
+8. **Aiguillage de régime** (croisement qui garde les deux parents sous une condition) :
+   mesuré hors ligne, gains d'au plus 9 bacs (0,2 %) et fuel doublé ; non retenu
+   (`../nomad-ast/docs/MESURE_AIGUILLAGE.md`).
 
 ## Installer l'environnement
 

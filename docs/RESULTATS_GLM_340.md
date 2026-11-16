@@ -92,7 +92,13 @@ Pour comparaison, sur Gemini (24 seeds du protocole de courbe, palier 340) : év
   fraîches, dont 528 au départ : environ 15 % des appels sont des relances. Champion issu
   d'une relance : 0 sur 72 (seed, palier).
 - **Propositions invalides à l'entraînement.** Évolution 428 sur 8 256 (5,2 %), tirage 983
-  sur 8 256 (11,9 %).
+  sur 8 256 (11,9 %). *Correction du 16 novembre, après dépouillement :* l'opérateur remplace
+  sans le signaler une réponse du modèle qui ne se lit pas comme du Rust par un gabarit
+  (First-Fit ou Best-Fit), noté comme une proposition valide. C'est arrivé à 202
+  propositions de l'évolution (2,4 %) et 166 du tirage (2,0 %) ; ces chiffres d'invalides
+  les comptent donc comme valides. Aucun champion retenu à un palier n'est un gabarit, dans
+  aucun bras : les tests H1 et H2 ne sont pas touchés. Sur le protocole de courbe Gemini :
+  29 et 36 gabarits sur 32 616 propositions par bras (0,1 %), aucun champion à un palier.
 - **Tokens et coût**, au tarif de Relace :
 
 | | Évolution | Tirage |
