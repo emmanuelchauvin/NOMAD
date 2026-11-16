@@ -558,6 +558,38 @@ mod tests {
         assert_eq!(accepted, on.local_ops.prune_accepted);
     }
 
+    /// Echange entre iles : les meilleurs elites d'un run voyagent en JSON, sont re-notes
+    /// sur les instances de l'ile d'accueil et entrent dans son archive, sans appel au modele.
+    #[test]
+    fn migrants_travel_between_islands_and_are_rescored() {
+        let island_a = local_ops_run(0, false);
+        let migrants = island_a.archive.export_migrants(3, "A");
+        assert_eq!(migrants.len(), 3.min(island_a.archive.grid.len()));
+        let json = serde_json::to_string(&migrants).unwrap();
+        let back: Vec<crate::map_elites::Migrant> = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, migrants);
+
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupD,
+            rng_seed: 8,
+            ..Default::default()
+        };
+        let oracle = OracleEvaluator::new(8);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+        let mut island_b = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        let accepted = island_b.import_migrants(&back, 0);
+        assert!(accepted >= 1, "aucun migrant accepte dans une archive vide");
+        assert_eq!(island_b.local_stats.migrants_received, back.len());
+        assert_eq!(island_b.local_stats.migrants_accepted, accepted);
+        assert_eq!(island_b.budget.llm_calls_consumed, 0);
+        for e in island_b.archive.all_elites() {
+            assert!(back.iter().any(|m| m.logic_code == e.capsule.logic_code));
+            // Note refaite sur l'ile B : les instances different de celles de A.
+            assert_eq!(e.capsule.metadata.get("origin").map(String::as_str), Some("A"));
+        }
+    }
+
     #[test]
     fn test_informed_mutation_passes_measured_context_to_the_operator() {
         // 5 generations de 4 mutations, toutes informees.

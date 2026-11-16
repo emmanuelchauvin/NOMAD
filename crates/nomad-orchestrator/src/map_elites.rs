@@ -404,6 +404,37 @@ impl MapElitesArchive {
     pub fn all_elites(&self) -> Vec<&ArchiveEntry> {
         self.grid.values().collect()
     }
+
+    /// Les `n` meilleurs elites valides, du meilleur au moins bon (ordre deterministe), sous
+    /// forme de migrants a envoyer a une autre ile. Seul le code voyage : la note est refaite
+    /// a l'arrivee sur les instances de l'ile d'accueil.
+    pub fn export_migrants(&self, n: usize, origin: &str) -> Vec<Migrant> {
+        let mut ranked: Vec<(&String, &ArchiveEntry)> =
+            self.grid.iter().filter(|(_, e)| e.fitness.is_valid).collect();
+        ranked.sort_by(|a, b| a.1.fitness.cmp(&b.1.fitness).then_with(|| a.0.cmp(b.0)));
+        ranked
+            .into_iter()
+            .take(n)
+            .map(|(_, e)| Migrant {
+                logic_code: e.capsule.logic_code.clone(),
+                origin: origin.to_string(),
+                source_id: e.capsule.id.0.clone(),
+                source_bins: e.fitness.total_bins,
+            })
+            .collect()
+    }
+}
+
+/// Programme echange entre iles (archives de runs distincts).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Migrant {
+    pub logic_code: String,
+    /// Ile d'origine (libre : seed, machine...).
+    pub origin: String,
+    /// Identifiant du programme dans l'ile d'origine.
+    pub source_id: String,
+    /// Bacs sur l'entrainement de l'ile d'origine (descriptif, non reutilise).
+    pub source_bins: usize,
 }
 
 #[cfg(test)]

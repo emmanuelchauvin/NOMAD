@@ -30,8 +30,13 @@ pub struct LocalOpsStats {
     pub rules_removed: usize,
     /// Evaluations sur l'entrainement faites par ces operateurs.
     pub evaluations: usize,
+    /// Migrants recus d'autres iles, et parmi eux ceux entres dans l'archive.
+    #[serde(default)]
+    pub migrants_received: usize,
+    #[serde(default)]
+    pub migrants_accepted: usize,
 }
-use crate::map_elites::MapElitesArchive;
+use crate::map_elites::{MapElitesArchive, Migrant};
 use crate::pso::LineageManager;
 
 fn default_crossover_rate() -> f64 {
@@ -808,6 +813,40 @@ impl<'a> EvolutionEngine<'a> {
                 self.archive.insert(entry.capsule, entry.fitness);
             }
         }
+    }
+
+    /// Accueille des migrants d'autres iles : chacun est re-note sur l'entrainement local,
+    /// sans appel au modele, et entre dans l'archive selon la competition de sa niche.
+    /// Journalise sous le type `migrant`. Rend le nombre de migrants entres.
+    pub fn import_migrants(&mut self, migrants: &[Migrant], generation: usize) -> usize {
+        let mut accepted_count = 0;
+        for m in migrants {
+            self.local_stats.migrants_received += 1;
+            let mut metadata = std::collections::HashMap::new();
+            metadata.insert("origin".to_string(), m.origin.clone());
+            metadata.insert("source_id".to_string(), m.source_id.clone());
+            let mut capsule = SkillCapsule::new(
+                &format!("Migrant-{}-{}", m.origin, &m.source_id[..m.source_id.len().min(8)]),
+                &format!("Migrant de l'ile {}", m.origin),
+                &m.logic_code,
+                vec![],
+                generation,
+                metadata,
+            );
+            capsule.ast_fingerprint = parse_heuristic_fn(&capsule.logic_code)
+                .ok()
+                .map(|f| nomad_genome::compute_structural_fingerprint(&f));
+            let score = self.train_score(&capsule);
+            self.phylogeny.insert_capsule(&capsule);
+            self.lineages.register_seed(capsule.id.clone());
+            let accepted = self.archive.insert(capsule.clone(), score.clone());
+            self.record_proposal_checked(&capsule, &score, "migrant", accepted);
+            if accepted {
+                self.local_stats.migrants_accepted += 1;
+                accepted_count += 1;
+            }
+        }
+        accepted_count
     }
 
     fn produce_next_generation(
