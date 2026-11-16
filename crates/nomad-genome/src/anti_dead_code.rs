@@ -5,7 +5,7 @@ use thiserror::Error;
 use nomad_core::{GraftManifest, SkillCapsule, ValidationStatus};
 
 use crate::ast::parse_score_bin;
-use crate::unit::{collect_dependencies, collect_expr_dependencies, extract_logical_units};
+use crate::unit::{collect_dependencies, collect_expr_dependencies};
 
 #[derive(Debug, Error)]
 pub enum AntiDeadCodeError {
@@ -294,26 +294,25 @@ pub fn verify_level1_structural_survival(
     let item_fn: ItemFn = parse_score_bin(&capsule.logic_code)
         .map_err(|e| AntiDeadCodeError::ParseFailed(e.to_string()))?;
 
-    let units = extract_logical_units(&item_fn);
-
-    // 1. Vérification de la présence structurelle du fragment
-    let fragment_found = if manifest.grafted_fragment_hash.contains(':') {
-        let parts: Vec<&str> = manifest.grafted_fragment_hash.split(':').collect();
-        parts.len() >= 2
-            && parts.iter().all(|h| {
-                units
-                    .iter()
-                    .any(|u| u.hash == *h || u.code_repr.contains(&h[..8]))
-                    || capsule.logic_code.contains(&h[..8])
-            })
-    } else {
-        units.iter().any(|u| {
-            u.hash == manifest.grafted_fragment_hash
-                || u.code_repr.contains(&manifest.grafted_fragment_hash[..8])
-                || (!manifest.grafted_fragment_hash.is_empty()
-                    && capsule.logic_code.contains(&u.code_repr))
+    // 1. Vérification de la présence structurelle du fragment : chaque empreinte du manifeste
+    // (une par instruction greffée, séparées par ':') doit être celle d'une instruction de
+    // l'enfant. Même calcul que dans le croisement : SHA-256 du `quote!` de l'instruction.
+    let stmt_hashes: Vec<String> = item_fn
+        .block
+        .stmts
+        .iter()
+        .map(|st| {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(quote::quote!(#st).to_string().as_bytes());
+            hex::encode(hasher.finalize())
         })
-    };
+        .collect();
+    let fragment_found = !manifest.grafted_fragment_hash.is_empty()
+        && manifest
+            .grafted_fragment_hash
+            .split(':')
+            .all(|h| stmt_hashes.iter().any(|x| x == h));
 
     if !fragment_found {
         return Err(AntiDeadCodeError::FragmentNotFound(
@@ -465,7 +464,13 @@ mod tests {
                 donor_capsule: nomad_core::CapsuleId("donor".to_string()),
                 host_capsule: nomad_core::CapsuleId("host".to_string()),
                 donor_ast_hash: "hash".to_string(),
-                grafted_fragment_hash: "horizon_factor".to_string(),
+                grafted_fragment_hash: {
+                    use sha2::{Digest, Sha256};
+                    let st = &parsed.block.stmts[1];
+                    let mut hasher = Sha256::new();
+                    hasher.update(quote::quote!(#st).to_string().as_bytes());
+                    hex::encode(hasher.finalize())
+                },
                 host_locus: "body_stmt_index_1".to_string(),
                 dependency_hash: "dep".to_string(),
                 repair_version: None,
@@ -477,6 +482,37 @@ mod tests {
         assert!(
             matches!(res, Err(AntiDeadCodeError::UnproductiveShadowing(v)) if v == "horizon_factor")
         );
+    }
+
+    /// Un manifeste dont l'empreinte ne correspond à aucune instruction de l'enfant est refusé
+    /// (le contrôle était vide : il acceptait n'importe quelle empreinte non vide).
+    #[test]
+    fn level1_rejects_a_manifest_whose_fragment_is_absent() {
+        let code = r#"
+        pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {
+            let score = bin_residual as f64;
+            score
+        }
+        "#;
+        let capsule = SkillCapsule::new_v2(
+            "Child", "Interface", code, vec![], 1, HashMap::new(), "ScorePolicyV1",
+            PolicyKind::ScorePolicy, None, vec![], ValidationStatus::Unvalidated,
+            Some(GraftManifest {
+                graft_id: "g".to_string(),
+                donor_capsule: nomad_core::CapsuleId("donor".to_string()),
+                host_capsule: nomad_core::CapsuleId("host".to_string()),
+                donor_ast_hash: "hash".to_string(),
+                grafted_fragment_hash: "0".repeat(64),
+                host_locus: "body_stmt_index_0".to_string(),
+                dependency_hash: "dep".to_string(),
+                repair_version: None,
+                repair_diff_hash: None,
+            }),
+        );
+        assert!(matches!(
+            verify_level1_structural_survival(&capsule),
+            Err(AntiDeadCodeError::FragmentNotFound(_))
+        ));
     }
 
     #[test]

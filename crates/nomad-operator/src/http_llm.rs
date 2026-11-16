@@ -830,7 +830,8 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
         if let Ok((mut child, manifest)) = ast_res {
             child.name = name;
             child.semantic_interface = desc;
-            child.metadata = metadata;
+            // Fusion : garder les etiquettes du croisement (crossover_type, ...).
+            child.metadata.extend(metadata);
             child.graft_manifest = Some(manifest);
 
             let audit = ReproducibilityAudit {

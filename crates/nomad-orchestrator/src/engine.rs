@@ -1168,6 +1168,12 @@ impl<'a> EvolutionEngine<'a> {
                     if let Some(parent_b) = chosen_b {
                         let p_b_hash = parent_b.ast_fingerprint.as_ref().map(|f| &f.ast_hash);
                         if parent_a.id != parent_b.id && (parent_a_hash.is_none() || parent_a_hash != p_b_hash) {
+                            // L'operateur peut se replier sur un appel au modele si la greffe
+                            // AST echoue : verifier le budget AVANT, sinon l'appel serait
+                            // fait (et facture) puis jete.
+                            if !self.budget.can_invoke_llm(&self.config) {
+                                continue;
+                            }
                             self.crossover_attempts += 1;
                             *ancestral_usage_counts
                                 .entry(parent_b.id.0.clone())
