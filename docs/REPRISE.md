@@ -45,9 +45,11 @@ est plus grande à 1 359 appels qu'à 340.
    placé après la déclaration de `score` (48 enfants sur 192 étaient invalides à cause de
    lui). Banc hors ligne (`mesures/`, 12 runs Gemini, 192 enfants) : 6 enfants battent le
    champion de leur run, tous confirmés en validation (jusqu'à −80 bacs), dont 4 entre
-   îles. Restent à corriger : appel au modèle caché dans le croisement avant le contrôle
-   du budget, contrôle de niveau 1 vide, archive non déterministe (HashMap), niveau 3 qui
-   accepte un enfant moins bon que son hôte, anciens usages de `collect_dependencies`.
+   îles. Corrigés le 16 novembre (commit `e3411e7` et précédents) : budget vérifié avant le
+   croisement du groupe C, niveau 1 strict, archive ordonnée (BTreeMap), `let` typés,
+   étiquettes du croisement conservées. Restent : niveau 3 qui accepte un enfant moins bon
+   que son hôte, anciens usages de `collect_dependencies` (noms de méthodes comptés comme
+   variables), renommage des variables du donneur.
    Puis protocole groupe C contre groupe D.
 2. **Élagage par ablation** (`examples/prune_champions.rs`) : sur les 24 champions Gemini,
    45 règles sur 273 retirées sans perte, 130 bacs gagnés en validation (seed 8136 :
