@@ -509,6 +509,76 @@ mod tests {
         )
     }
 
+    /// Operateur de test qui etiquette une proposition fraiche sur deux comme gabarit de repli.
+    struct FallbackTagger(DeterministicMockOperator);
+
+    impl nomad_operator::SkillOperator for FallbackTagger {
+        fn generate_seed(
+            &self,
+            index: usize,
+            seed: u64,
+        ) -> Result<(nomad_core::SkillCapsule, nomad_operator::ReproducibilityAudit), nomad_operator::OperatorError>
+        {
+            let (mut c, a) = self.0.generate_seed(index, seed)?;
+            if index % 2 == 1 {
+                c.metadata.insert("fallback_template".to_string(), "true".to_string());
+            }
+            Ok((c, a))
+        }
+
+        fn mutate_with_lineage(
+            &self,
+            parent: &nomad_core::SkillCapsule,
+            generation: usize,
+            seed: u64,
+            lineage: Option<&nomad_core::LineageEvolutionState>,
+        ) -> Result<(nomad_core::SkillCapsule, nomad_operator::ReproducibilityAudit), nomad_operator::OperatorError>
+        {
+            self.0.mutate_with_lineage(parent, generation, seed, lineage)
+        }
+
+        fn crossover(
+            &self,
+            parent_a: &nomad_core::SkillCapsule,
+            parent_b: &nomad_core::SkillCapsule,
+            generation: usize,
+            seed: u64,
+        ) -> Result<(nomad_core::SkillCapsule, nomad_operator::ReproducibilityAudit), nomad_operator::OperatorError>
+        {
+            self.0.crossover(parent_a, parent_b, generation, seed)
+        }
+    }
+
+    /// Une reponse illisible remplacee par un gabarit compte comme invalide et n'entre pas
+    /// dans l'archive.
+    #[test]
+    fn fallback_templates_are_invalid() {
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupD,
+            rng_seed: 3,
+            population_size: 4,
+            max_generations: 2,
+            initial_population_size: 6,
+            ..Default::default()
+        };
+        let oracle = OracleEvaluator::new(3);
+        let sandbox = DeterministicSandbox::new();
+        let operator = FallbackTagger(DeterministicMockOperator::default());
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        let report = engine.execute_run().expect("Run execution should succeed");
+        let fresh: Vec<_> = report.proposals.iter().filter(|p| p.kind == "fresh").take(6).collect();
+        for (i, p) in fresh.iter().enumerate() {
+            if i % 2 == 1 {
+                assert!(!p.is_valid, "gabarit {} note valide", i);
+                assert!(!p.is_new_best);
+            }
+        }
+        assert!(fresh.iter().step_by(2).any(|p| p.is_valid));
+        for e in report.archive.all_elites() {
+            assert!(e.capsule.metadata.get("fallback_template").is_none());
+        }
+    }
+
     fn local_ops_run(crossovers: usize, prune: bool) -> crate::engine::ExperimentRunReport {
         let config = ExperimentConfig {
             group: ExperimentalGroup::GroupD,

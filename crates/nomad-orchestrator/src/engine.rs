@@ -550,7 +550,22 @@ impl<'a> EvolutionEngine<'a> {
 
     /// Evaluates a candidate capsule and runs the full 3-level Anti-Dead-Code verification pipeline.
     /// Mutualizes the initial evaluation to eliminate redundant passes.
-    fn evaluate_and_validate(
+    fn evaluate_and_validate(&mut self, capsule: SkillCapsule) -> (SkillCapsule, BenchmarkScore) {
+        let fallback = capsule
+            .metadata
+            .get("fallback_template")
+            .is_some_and(|v| v == "true");
+        let (capsule, mut score) = self.evaluate_and_validate_raw(capsule);
+        if fallback {
+            // Reponse du modele illisible, remplacee par un gabarit (First-Fit, Best-Fit...) :
+            // ce n'est pas une proposition du modele, elle compte comme invalide et n'entre
+            // pas dans l'archive.
+            score.is_valid = false;
+        }
+        (capsule, score)
+    }
+
+    fn evaluate_and_validate_raw(
         &mut self,
         mut capsule: SkillCapsule,
     ) -> (SkillCapsule, BenchmarkScore) {
