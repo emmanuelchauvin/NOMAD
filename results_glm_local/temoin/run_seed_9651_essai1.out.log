@@ -1,0 +1,1002 @@
+2026-11-16T08:15:30.506969Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9651, Pop=8, MaxGens=47
+2026-11-16T17:59:46.772593Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 364b57d2625e1f57 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9651 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4058 bins (excess: +45), Efficiency: 98.89%, Fuel: 512602450
+ Best In-Dist (w/o Lookahead) : 9223372036854775807 bins (excess: +9223372036854775807), Efficiency: 0.00%
+ Dynamic Trajectory: tLDR = 3.7341
+ Behavior Profile : DeadSpaceRatio: 20.5%, NewBinRatio: 40.6%, ResVar: 0.45
+ MAP-Elites Niches: 9 active (9.0% coverage), QD-Score: 7.776
+ Validation Score : 4054 bins (excess: +54), Efficiency: 98.67%
+ OOD-1 Score      : 10137 bins (excess: +97), Efficiency: 99.04%
+ OOD-2 Score      : 3567 bins (excess: +27), Efficiency: 99.24%
+ Lineage Nodes    : 343, Transitions: 261
+ Best Heuristic   : LLM-Seed-008-mut-g2-mut-g2-mut-g3-mut-g4-mut-g7-mut-g8-mut-g9-mut-g10-mut-g10-mut-g13-mut-g13-mut-g14-mut-g14-mut-g15-mut-g16-mut-g18-mut-g19-mut-g20-mut-g20-mut-g22-mut-g23
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    let cap_f = bin_capacity as f64;
+    let resid_f = bin_residual as f64;
+    let slack = bin_residual as i64 - item_size as i64;
+
+    if post_residual == 0 {
+        score -= 65.0;
+    }
+    if slack >= 0 && slack <= 4 {
+        score -= 20.0;
+    }
+
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 60.0 + 22.0 * (1.0 - progress);
+        } else if post_residual > next_item_size {
+            let slack_after_next = post_residual - next_item_size;
+            score -= 25.0 - (slack_after_next as f64).min(40.0) * 0.3;
+            if slack_after_next > 40 {
+                score += (slack_after_next as f64 - 40.0) * 0.2;
+            }
+        } else {
+            let shortfall = (next_item_size - post_residual) as f64;
+            score += shortfall * 0.85;
+            let half_next = next_item_size / 2;
+            if post_residual > 0 && post_residual < half_next {
+                score += 14.0;
+            }
+        }
+    } else {
+        score -= 10.0;
+    }
+
+    if post_residual > 0 {
+        let waste_ratio = post_residual as f64 / cap_f;
+        let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+        let severity = 1.4 - 0.8 * tightness;
+        if post_residual < next_item_size && next_item_size > 0 {
+            let unusability = 1.0 - (post_residual as f64 / next_item_size as f64);
+            score += 16.0 * unusability * (1.0 - 0.5 * progress) * severity;
+            if post_residual < 10 {
+                score += 9.0 * severity * (1.0 - 0.4 * progress);
+            }
+        } else if waste_ratio < 0.05 {
+            score += 7.0 * (1.0 - progress) * severity;
+        } else if waste_ratio < 0.10 && post_residual < 40 {
+            score += 3.0 * (1.0 - progress) * severity;
+        }
+    }
+
+    if resid_f > mean_residual + 20.0 && item_size < 30 {
+        if next_item_size == 0 || post_residual < next_item_size {
+            score += 10.0;
+        }
+    } else if resid_f < mean_residual - 20.0 {
+        score -= 8.0;
+    }
+
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 35.0;
+        if post_residual >= 10 {
+            score -= 10.0;
+        }
+    }
+
+    if open_bins_count > 8 {
+        score += (resid_f / cap_f) * 6.0;
+    }
+    score -= (open_bins_count as f64).ln().max(0.0) * 3.0;
+
+    if post_residual >= 25 {
+        score -= 4.0;
+        if next_item_size > 0 && post_residual >= next_item_size && post_residual - next_item_size < 15 {
+            score -= 6.0;
+        }
+    }
+
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let after_next = post_residual - next_item_size;
+        if after_next >= 20 {
+            let sweet = if after_next <= 60 { 3.0 } else { 0.0 };
+            score -= 5.0 + 5.0 * (1.0 - progress) + sweet;
+        }
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size {
+        score += 6.0 * (post_residual as f64 / cap_f) * 10.0;
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size {
+        let strandedness = 1.0 - (post_residual as f64 / next_item_size as f64);
+        let scarcity = 1.0 / (fitting_bins_count as f64).max(1.0);
+        score += 9.0 * strandedness * scarcity;
+    }
+
+    if post_residual >= 20 && post_residual <= 60 {
+        score -= 3.0 + 4.0 * (1.0 - progress);
+    }
+    if post_residual >= 1 && post_residual <= 5 {
+        score += 5.0;
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual >= next_item_size {
+        let gap = post_residual - next_item_size;
+        if gap > 0 && gap <= 8 {
+            score -= 4.0 + 3.0 * (1.0 - progress);
+        }
+    }
+
+    if item_size > 0 && bin_residual % item_size == 0 && bin_residual != bin_capacity {
+        score -= 5.0;
+        if post_residual == 0 {
+            score -= 4.0;
+        }
+    }
+
+    if next_item_size > 0 && post_residual == next_item_size && progress < 0.4 {
+        score -= 6.0;
+    }
+
+    if next_item_size > 0 && item_size + next_item_size <= bin_residual {
+        let chain_left = bin_residual - item_size - next_item_size;
+        if chain_left >= 15 && chain_left <= 55 {
+            score -= 7.0 + 5.0 * (1.0 - progress);
+        }
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual >= next_item_size {
+        let gap = post_residual - next_item_size;
+        if gap > 8 && gap <= 20 {
+            score += 1.5;
+        } else if gap > 20 && gap <= 35 {
+            score += 3.5;
+        }
+    }
+
+    if fitting_bins_count <= 2 && bin_residual != bin_capacity && post_residual <= 12 {
+        score -= 6.0 + 4.0 * (1.0 - progress);
+    }
+
+    if open_bins_count > 12 && bin_residual != bin_capacity {
+        score += 8.0 * (1.0 - resid_f / cap_f);
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size {
+        let unus = 1.0 - (post_residual as f64 / next_item_size as f64);
+        score += 4.5 * unus * (1.0 - 0.3 * progress);
+    }
+
+    if post_residual > 60 && post_residual < 100 {
+        score += 2.5 + 2.0 * (1.0 - progress);
+    }
+
+    if post_residual == 0 && bin_residual != bin_capacity {
+        let scarcity = 1.0 / (fitting_bins_count as f64).max(1.0).sqrt();
+        score -= 8.0 * scarcity * (0.5 + 0.5 * (1.0 - progress));
+    }
+
+    if post_residual >= 46 && post_residual <= 59 && bin_residual != bin_capacity {
+        let d = (post_residual as f64 - 46.0) / 13.0;
+        score += 1.5 + 2.0 * d * (1.0 - 0.4 * progress);
+    }
+
+    if open_bins_count > 6 && bin_residual != bin_capacity {
+        let crowd = ((open_bins_count as f64 - 6.0) / 14.0).min(1.0);
+        score += (resid_f / cap_f) * 2.5 * crowd * (0.6 + 0.4 * progress);
+    }
+
+    if next_item_size > 0 && post_residual > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let nx = next_item_size as f64;
+        let ratio = pr / nx.max(1.0);
+        if ratio > 0.9 && ratio <= 1.0 {
+            score -= 6.0 * (ratio - 0.9) * 10.0 * (0.6 + 0.4 * (1.0 - progress));
+        }
+    }
+
+    if post_residual > 0 && fitting_bins_count >= 2 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+        let alignment = 1.0 - ((pr - 30.0).abs() / 30.0).min(1.0);
+        score -= 3.5 * alignment * tightness * (0.4 + 0.6 * (1.0 - progress));
+    }
+
+    if post_residual == 0 && slack >= 0 && slack <= 4 && bin_residual != bin_capacity {
+        score -= 3.0 + 2.0 * (1.0 - progress);
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size && bin_residual != bin_capacity {
+        let alternatives = (fitting_bins_count as f64).max(1.0);
+        score += (3.0 / alternatives.sqrt()) * (1.0 - 0.3 * progress);
+    }
+
+    if post_residual == 0 && bin_residual != bin_capacity {
+        let crowd = ((open_bins_count as f64 - 4.0).max(0.0) / 12.0).min(1.0);
+        score -= 6.0 * crowd + 4.0 * progress;
+    }
+
+    if post_residual >= 1 && post_residual <= 12 && next_item_size > 0 && next_item_size <= post_residual && bin_residual != bin_capacity {
+        let closeness = 1.0 - (post_residual - next_item_size) as f64 / 12.0;
+        score -= 3.5 * closeness * (0.4 + 0.6 * progress);
+    }
+
+    if slack >= 0 && fitting_bins_count > 3 && bin_residual != bin_capacity {
+        let sl = slack as f64;
+        if sl > 8.0 {
+            score += 0.06 * (sl - 8.0).min(50.0) * (0.5 + 0.5 * progress);
+        }
+    }
+
+    if post_residual == 0 && open_bins_count > 8 && bin_residual != bin_capacity {
+        score -= 2.0 * ((open_bins_count - 8) as f64).min(10.0) * 0.4 * (0.5 + 0.5 * progress);
+    }
+
+    if post_residual >= 1 && post_residual <= 8 && next_item_size > 0 && post_residual >= next_item_size && bin_residual != bin_capacity {
+        score -= 2.5 * (1.0 - post_residual as f64 / 8.0) * (0.5 + 0.5 * progress);
+    }
+
+    // gen 22 retained mutations (condensed but behaviorally identical families)
+    if post_residual > 14 && post_residual < 46 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let peak = 1.0 - ((pr - 30.0).abs() / 16.0).min(1.0);
+        let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+        score += 0.09 * pr * peak * (0.7 + 0.6 * tightness);
+    }
+
+    if next_item_size > 0 && post_residual >= next_item_size && bin_residual != bin_capacity {
+        let tail = post_residual - next_item_size;
+        if tail >= 12 && tail <= 30 {
+            let scarcity = 1.0 / (fitting_bins_count as f64).max(1.0).sqrt();
+            score -= (4.0 + 3.0 * (1.0 - progress)) * (1.0 - (tail as f64 - 12.0).abs() / 18.0) * scarcity;
+        }
+    }
+
+    if slack >= 0 && slack <= 6 && fitting_bins_count <= 3 && bin_residual != bin_capacity {
+        let sl = slack as f64;
+        score -= 6.0 * (1.0 - sl / 6.0) * (1.0 / (fitting_bins_count as f64).max(1.0)) * (0.6 + 0.4 * progress);
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+        score += 0.0004 * pr * pr * pr * (0.5 + 0.7 * tightness);
+    }
+
+    if post_residual > 0 && next_item_size > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let nx = next_item_size as f64;
+        let mismatch = ((pr - nx).abs() / nx.max(1.0)).min(1.5);
+        if pr > nx {
+            let tail = pr - nx;
+            if tail > 15.0 && tail < 60.0 {
+                score += 0.10 * (tail - 15.0) * (1.0 - 0.5 * progress);
+            }
+        } else {
+            score += 2.0 * mismatch * (1.0 - 0.3 * progress);
+        }
+    }
+
+    if post_residual >= 30 && post_residual <= 55 && bin_residual != bin_capacity {
+        let d = ((post_residual as f64 - 42.5).abs() / 12.5).min(1.0);
+        score -= 5.0 * (1.0 - d) * (0.6 + 0.4 * (1.0 - progress));
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let scarcity_damp = 1.0 / (fitting_bins_count as f64).max(1.0).sqrt();
+        let pr = post_residual as f64;
+        score += (0.05 * pr + 0.0018 * pr * pr) * scarcity_damp;
+    }
+
+    if post_residual >= 13 && post_residual <= 29 && next_item_size > 0 && post_residual < next_item_size && bin_residual != bin_capacity {
+        let unus = 1.0 - (post_residual as f64 / next_item_size as f64);
+        score += 7.0 * unus * (0.7 + 0.5 * progress);
+    }
+
+    if next_item_size > 0 && post_residual >= next_item_size && bin_residual != bin_capacity {
+        let tail = post_residual - next_item_size;
+        if tail > 55 && tail < 100 {
+            score += 3.0 * (1.0 - (tail as f64 - 55.0) / 45.0) * (0.5 + 0.5 * (1.0 - progress));
+        } else if tail >= 60 {
+            score += 2.0;
+        }
+    }
+
+    if next_item_size > 0 && item_size + next_item_size <= bin_residual {
+        let chain_left = bin_residual - item_size - next_item_size;
+        if chain_left <= 3 {
+            score -= 10.0 + 6.0 * (1.0 - progress) + 3.0 / (fitting_bins_count as f64).max(1.0);
+        }
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let size_factor = (item_size as f64 / 100.0).powf(1.5);
+        score += pr * 0.045 * (1.0 - size_factor) * (1.0 - 0.3 * progress);
+    }
+
+    if post_residual >= 20 && post_residual <= 45 && bin_residual != bin_capacity {
+        let tightness = (1.0 - (mean_residual / cap_f).min(1.0)).max(0.0);
+        score -= 3.5 * tightness * (0.5 + 0.5 * (1.0 - progress));
+    }
+
+    if next_item_size > 35 && post_residual > 0 && post_residual < next_item_size && bin_residual != bin_capacity {
+        let stranded = (next_item_size - post_residual) as f64 / next_item_size as f64;
+        score += 5.0 * stranded * (1.0 - 0.4 * progress);
+    }
+
+    if post_residual >= 6 && post_residual <= 12 && bin_residual != bin_capacity {
+        score += 2.5 + 3.0 * progress;
+    }
+
+    if post_residual > 0 && post_residual <= 20 && bin_residual != bin_capacity {
+        score -= 3.0 * (1.0 - post_residual as f64 / 20.0) * (0.5 + 0.5 * progress);
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let crowd = ((open_bins_count as f64 - 6.0).max(0.0) / 10.0).min(1.0);
+        if pr <= 18.0 {
+            score -= 2.0 * (1.0 - pr / 18.0) * crowd;
+        } else if next_item_size > 0 && post_residual < next_item_size {
+            score += 3.0 * crowd * (1.0 - progress);
+        }
+    }
+
+    if next_item_size > 0 && post_residual >= next_item_size && bin_residual != bin_capacity {
+        let tail = post_residual - next_item_size;
+        if tail >= 25 && tail <= 50 {
+            score -= 4.5 * (1.0 - (tail as f64 - 25.0).abs() / 25.0) * (0.6 + 0.4 * (1.0 - progress));
+        }
+    }
+
+    if post_residual == 0 {
+        let tightness = (1.0 - (mean_residual / cap_f).min(1.0)).max(0.0);
+        score -= 4.0 * tightness;
+    } else if slack >= 0 && slack <= 2 {
+        let tightness = (1.0 - (mean_residual / cap_f).min(1.0)).max(0.0);
+        score -= 2.5 * tightness * (1.0 - 0.5 * progress);
+    }
+
+    if next_item_size > 0 && post_residual >= next_item_size && bin_residual != bin_capacity {
+        let after_next = post_residual - next_item_size;
+        if after_next >= 10 && after_next <= 45 {
+            score -= 4.0 * (1.0 - after_next as f64 / 45.0) * (1.0 - 0.5 * progress);
+        }
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size {
+        let miss = (next_item_size - post_residual) as f64;
+        if miss <= 6.0 {
+            score += 10.0 * (1.0 - miss / 6.0) * (0.5 + 0.5 * (1.0 - progress));
+        }
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+        score += 0.12 * (post_residual as f64) * (0.6 + 0.8 * tightness);
+    }
+
+    if post_residual > 0 && post_residual <= 20 && bin_residual != bin_capacity {
+        score -= 5.0 * (1.0 - post_residual as f64 / 20.0) * (1.0 - 0.4 * progress);
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size && open_bins_count > 10 {
+        score += 1.5 * ((open_bins_count - 10) as f64).min(8.0) * 0.5;
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+        let pr = post_residual as f64;
+        score += (0.09 * pr + 0.0022 * pr * pr) * (0.6 + 0.8 * tightness);
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        score += 0.035 * pr * (post_residual as f64 / cap_f) * (1.0 - 0.25 * progress);
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size && bin_residual != bin_capacity {
+        let gap = (next_item_size - post_residual) as f64;
+        if gap > 6.0 && gap <= 18.0 {
+            score += 2.0 * (1.0 - gap / 18.0) * (0.6 + 0.4 * (1.0 - progress));
+        } else if gap > 30.0 {
+            score += 1.5;
+        }
+    }
+
+    if next_item_size > 0 && item_size + next_item_size <= bin_residual {
+        let chain_left = bin_residual - item_size - next_item_size;
+        if chain_left >= 8 && chain_left <= 20 {
+            score -= 5.0 * (1.0 - (chain_left as f64 - 8.0) / 12.0) * (0.5 + 0.5 * (1.0 - progress));
+        }
+    }
+
+    if open_bins_count > 8 && fitting_bins_count <= 2 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        score += 0.08 * pr * (1.0 - 0.3 * progress);
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let reuse = 1.0 / (1.0 + (-(pr - 30.0) / 14.0).exp());
+        score -= 4.0 * reuse * (0.4 + 0.6 * (1.0 - progress));
+    }
+
+    if post_residual == 0 && bin_residual != bin_capacity {
+        let crowd = ((open_bins_count as f64 - 5.0).max(0.0) / 15.0).min(1.0);
+        score -= 7.0 * crowd * (0.5 + 0.5 * (1.0 - progress));
+    }
+
+    if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size && bin_residual != bin_capacity {
+        let ratio = post_residual as f64 / next_item_size as f64;
+        if ratio < 0.5 {
+            score += 3.0 * (1.0 - ratio * 2.0) * (0.6 + 0.4 * (1.0 - progress));
+        }
+    }
+
+    if bin_residual != bin_capacity {
+        let dev = ((resid_f - mean_residual) / cap_f).abs();
+        score += 3.0 * dev * (0.3 + 0.7 * progress);
+    }
+
+    if post_residual >= 1 && post_residual <= 6 && fitting_bins_count <= 2 && bin_residual != bin_capacity {
+        score -= 4.0 * (1.0 - post_residual as f64 / 6.0) * (1.0 - 0.3 * progress);
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let slope = 0.85 + 0.9 * progress;
+        score += 0.045 * pr * slope;
+    }
+
+    if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size && post_residual >= (next_item_size / 2) && bin_residual != bin_capacity {
+        let reach = post_residual as f64 / next_item_size as f64;
+        let scarcity = 1.0 / (fitting_bins_count as f64).max(1.0).sqrt();
+        score -= 5.0 * (reach - 0.5) * 2.0 * scarcity * (0.5 + 0.5 * (1.0 - progress));
+    }
+
+    if fitting_bins_count >= 3 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        if pr >= 12.0 && pr <= 35.0 {
+            score -= 3.0 * (1.0 - ((pr - 23.5).abs() / 11.5).min(1.0)) * (0.5 + 0.5 * (1.0 - progress));
+        }
+    }
+
+    // gen 16/18 retained fresh-bin + salvage mutations
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let nx = if next_item_size > 0 { next_item_size as f64 } else { 30.0 };
+        let salvage = (pr / nx.max(1.0)).min(1.5);
+        let crowd = ((open_bins_count as f64) / 14.0).min(1.0);
+        if salvage < 1.0 {
+            score += 4.5 * (1.0 - salvage) * crowd * (0.7 + 0.5 * progress);
+        }
+    }
+
+    if post_residual > 0 && next_item_size > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let nx = next_item_size as f64;
+        if pr < nx {
+            let salvage_gap = (nx - pr) / nx.max(1.0);
+            let scarcity = 1.0 / (fitting_bins_count as f64).max(1.0).sqrt();
+            score += 3.0 * salvage_gap * scarcity * (0.5 + 0.5 * progress);
+        }
+    }
+
+    if post_residual > 0 && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let dev = ((pr - mean_residual.max(0.0)) / cap_f).abs();
+        score -= 2.5 * (1.0 - dev.min(1.0)) * (0.4 + 0.6 * (1.0 - progress));
+    }
+
+    if post_residual >= 18 && post_residual <= 24 && next_item_size > 0 && post_residual < next_item_size && bin_residual != bin_capacity {
+        let unus = 1.0 - (post_residual as f64 / next_item_size as f64);
+        score += 4.0 * unus * (0.6 + 0.4 * progress);
+    }
+
+    if post_residual >= 25 && post_residual <= 40 && next_item_size > 0 && post_residual < next_item_size && bin_residual != bin_capacity {
+        let pr = post_residual as f64;
+        let stranded = (next_item_size - post_residual) as f64 / next_item_size.max(1) as f64;
+        score += 3.5 * stranded * (1.0 - (pr - 25.0) / 15.0) * (0.6 + 0.4 * progress);
+    }
+
+    if post_residual == 0 && fitting_bins_count <= 2 && bin_residual != bin_capacity {
+        score -= 3.0 * (1.0 - progress);
+    }
+
+    // New-bin candidate handling
+    if bin_residual == bin_capacity {
+        score = 55.0 - 15.0 * progress;
+        if next_item_size > 0 && item_size + next_item_size >= bin_capacity {
+            score -= 45.0;
+        }
+        if item_size as f64 > 0.6 * cap_f {
+            score -= 30.0;
+        }
+        if progress > 0.8 {
+            score += 10.0;
+        }
+        if fitting_bins_count > 2 {
+            score += 20.0;
+        }
+        if fitting_bins_count == 1 && next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover >= next_item_size {
+                score -= 12.0;
+            }
+        }
+        if next_item_size > 0 && item_size + next_item_size < bin_capacity {
+            let leftover = bin_capacity - item_size - next_item_size;
+            if leftover < 10 {
+                score -= 8.0;
+            } else if leftover < 25 {
+                score -= 3.0;
+            }
+            if leftover >= 25 && leftover <= 60 {
+                score -= 6.0;
+            } else if leftover >= 1 && leftover <= 5 {
+                score += 6.0;
+            }
+        }
+        if open_bins_count < 4 && progress < 0.3 {
+            score -= 12.0;
+        }
+        if next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover >= next_item_size {
+                score -= 10.0;
+            }
+        }
+        if item_size < 15 && progress > 0.5 && fitting_bins_count >= 1 {
+            score += 15.0;
+        }
+        if fitting_bins_count >= 1 && item_size <= bin_residual {
+            let best_case_waste = bin_residual - item_size;
+            if best_case_waste <= 5 {
+                score += 25.0;
+            } else if best_case_waste <= 15 {
+                score += 8.0;
+            }
+        }
+        if progress > 0.6 {
+            score += 7.5 * (progress - 0.6) * 25.0;
+        }
+        if open_bins_count > 10 && progress > 0.35 && progress < 0.7 {
+            let roomy = (mean_residual / cap_f).min(1.0);
+            score += 6.0 * roomy;
+        }
+        if item_size > 60 && next_item_size > 0 && item_size + next_item_size <= bin_capacity {
+            score -= 8.0;
+        }
+        if next_item_size > 0 && item_size + next_item_size < bin_capacity {
+            let leftover = bin_capacity - item_size - next_item_size;
+            if leftover >= next_item_size {
+                score -= 6.0;
+            }
+        }
+        if next_item_size > 0 && fitting_bins_count >= 2 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover > 0 && leftover < 12 {
+                score += 9.0;
+            }
+        }
+        if fitting_bins_count >= 1 && item_size <= bin_residual {
+            let open_waste = bin_residual - item_size;
+            if open_waste > 15 && open_waste <= 35 {
+                let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+                if next_item_size > 0 && fresh_left >= next_item_size {
+                    score -= 4.0;
+                } else {
+                    score += 5.0;
+                }
+            }
+        }
+        if fitting_bins_count >= 1 && item_size <= bin_residual {
+            let open_waste = bin_residual.saturating_sub(item_size);
+            if open_waste > 35 {
+                score -= 3.0 + 0.05 * ((open_waste - 35) as f64).min(30.0);
+            }
+        }
+        if next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size);
+            if leftover < next_item_size {
+                let miss = (next_item_size - leftover) as f64;
+                if miss <= 8.0 {
+                    score += 12.0 * (1.0 - miss / 8.0);
+                }
+            }
+        }
+        if next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover > 25 {
+                score += 0.05 * ((leftover - 25) as f64).min(40.0);
+            }
+        }
+        if fitting_bins_count == 1 && next_item_size > 0 {
+            let open_waste = bin_residual.saturating_sub(item_size);
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            if open_waste >= 13 && open_waste <= 29 && fresh_left >= next_item_size {
+                score -= 9.0;
+            }
+        }
+        if progress > 0.55 && next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover < 20 {
+                score += 6.0 * (progress - 0.55) * 20.0;
+            }
+        }
+        if progress > 0.25 && progress < 0.85 && next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover <= 4 {
+                if fitting_bins_count >= 1 && bin_residual.saturating_sub(item_size) > 12 {
+                    score -= 14.0;
+                }
+            } else if leftover <= 12 && fitting_bins_count >= 1 {
+                let open_waste = bin_residual.saturating_sub(item_size);
+                if open_waste > leftover + 8 {
+                    score -= 5.0;
+                }
+            }
+        }
+        if next_item_size > 45 && fitting_bins_count >= 1 {
+            let open_after = bin_residual.saturating_sub(item_size);
+            let fresh_after = bin_capacity.saturating_sub(item_size);
+            if open_after < next_item_size && fresh_after >= next_item_size {
+                score -= 11.0;
+            }
+        }
+        if fitting_bins_count >= 1 && next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            let open_waste = bin_residual.saturating_sub(item_size);
+            if fresh_left >= next_item_size && open_waste >= 20 {
+                score -= 4.0 + 0.1 * ((open_waste - 20) as f64).min(25.0);
+            } else if fresh_left > 0 && fresh_left < 8 && open_waste <= 10 {
+                score += 5.0;
+            }
+        }
+        if progress > 0.3 && next_item_size > 0 {
+            let tightness = (1.0 - (mean_residual / cap_f).min(1.0)).max(0.0);
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if tightness > 0.6 && leftover > 50 {
+                score += 8.0 * (tightness - 0.6) * 10.0;
+            } else if tightness > 0.6 && leftover >= 25 && leftover <= 50 {
+                score -= 5.0 * (tightness - 0.6) * 10.0;
+            }
+        }
+        if next_item_size > 0 && fitting_bins_count >= 1 {
+            let open_after = bin_residual.saturating_sub(item_size);
+            let fresh_after = bin_capacity.saturating_sub(item_size);
+            if open_after < next_item_size && fresh_after >= next_item_size {
+                let mid_next = next_item_size >= 25 && next_item_size <= 70;
+                if mid_next {
+                    score -= 6.0 + 4.0 * (1.0 - progress);
+                } else if next_item_size < 25 {
+                    score += 4.0;
+                }
+            }
+        }
+        if progress > 0.45 && next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size) as f64;
+            let excess = leftover - mean_residual.max(0.0);
+            if excess > 15.0 {
+                score += 0.08 * (excess - 15.0).min(40.0);
+            }
+        }
+        if next_item_size > 0 && item_size + next_item_size == bin_capacity {
+            score -= 9.0 + 8.0 * progress;
+        }
+        if next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover >= 30 && leftover <= 55 {
+                let d = ((leftover as f64 - 42.5).abs() / 12.5).min(1.0);
+                score -= 4.0 * (1.0 - d);
+            } else if leftover > 55 && leftover <= 90 {
+                score += 2.0 * ((leftover as f64 - 55.0) / 35.0);
+            }
+        }
+        if fitting_bins_count > 3 && next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            let open_waste = bin_residual.saturating_sub(item_size);
+            if leftover > 12 && open_waste <= 10 {
+                score += 5.0 * (1.0 - progress);
+            }
+        }
+        if next_item_size > 0 && fitting_bins_count >= 1 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            let open_waste = bin_residual.saturating_sub(item_size);
+            if fresh_left >= 12 && fresh_left <= 30 && open_waste > 25 {
+                score -= 5.0 * (1.0 - progress);
+            } else if fresh_left > 30 && open_waste <= 20 {
+                score += 4.0 * (0.5 + 0.5 * progress);
+            }
+        }
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size) as f64;
+            let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+            score += 0.0004 * fresh_left * fresh_left * fresh_left * (0.5 + 0.7 * tightness);
+        }
+        if next_item_size > 0 && fitting_bins_count >= 1 {
+            let open_waste = bin_residual.saturating_sub(item_size) as f64;
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size) as f64;
+            let excess = open_waste - fresh_left;
+            if excess > 10.0 {
+                score -= 2.5 * ((excess - 10.0) / 25.0).min(1.0) * (0.5 + 0.5 * (1.0 - progress));
+            } else if excess < -10.0 {
+                score += 2.0 * (((-excess) - 10.0) / 25.0).min(1.0) * (0.5 + 0.5 * progress);
+            }
+        }
+        if progress > 0.75 && next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover > 0 {
+                score += 3.0 + 0.08 * (leftover as f64) * (progress - 0.75) * 20.0;
+            } else {
+                score -= 6.0 * (progress - 0.75) * 10.0;
+            }
+        }
+        if fitting_bins_count >= 1 && next_item_size > 0 {
+            let tightness = (1.0 - (mean_residual / cap_f).min(1.0)).max(0.0);
+            let open_waste = bin_residual.saturating_sub(item_size) as f64;
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size) as f64;
+            if tightness > 0.55 && open_waste > 18.0 && fresh_left >= 20.0 {
+                score -= 5.0 * (tightness - 0.55) * 10.0;
+            }
+        }
+        if next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover >= 8 && leftover <= 25 {
+                score -= 3.5 * (1.0 - (leftover as f64 - 8.0).abs() / 17.0);
+            } else if leftover > 65 {
+                score += 0.06 * ((leftover - 65) as f64).min(35.0) * (0.5 + 0.5 * progress);
+            }
+        }
+        if fitting_bins_count >= 1 && next_item_size > 0 {
+            let open_after = bin_residual.saturating_sub(item_size);
+            if open_after > 0 && open_after < next_item_size {
+                let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+                if fresh_left < next_item_size {
+                    score += 4.0 + 2.0 * (1.0 - progress);
+                }
+            }
+        }
+        if fitting_bins_count == 1 && item_size < 40 && progress > 0.3 {
+            let open_after = bin_residual.saturating_sub(item_size);
+            if open_after >= 15 {
+                score += 10.0 * (1.0 - progress);
+            }
+        }
+        if open_bins_count > 10 && next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover > 30 {
+                score += 4.0 + 0.06 * ((leftover - 30) as f64).min(40.0);
+            } else if leftover <= 30 && item_size > 50 {
+                score -= 5.0;
+            }
+        }
+        if progress > 0.7 && next_item_size > 0 {
+            let leftover = bin_capacity.saturating_sub(item_size + next_item_size);
+            if leftover > 0 && leftover <= 6 {
+                score -= 7.0 * (progress - 0.7) * 10.0;
+            } else if leftover > 40 {
+                score += 4.0 * (progress - 0.7) * 10.0;
+            }
+        }
+        if fitting_bins_count >= 1 && item_size > 55 {
+            let open_waste = bin_residual.saturating_sub(item_size);
+            if open_waste > 20 {
+                score -= 3.0 + 0.06 * ((open_waste - 20) as f64).min(30.0) * (1.0 - 0.3 * progress);
+            }
+        }
+        if fitting_bins_count >= 1 && next_item_size > 0 {
+            let open_after = bin_residual.saturating_sub(item_size);
+            if open_after >= 8 && open_after <= 25 {
+                score += 5.0 * (1.0 - (open_after as f64 - 8.0).abs() / 17.0) * (0.5 + 0.5 * progress);
+            }
+        }
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            if fresh_left >= 30 && fresh_left <= 55 {
+                score -= 2.5 * (1.0 - ((fresh_left as f64 - 42.5).abs() / 12.5).min(1.0)) * (1.0 - 0.4 * progress);
+            }
+        }
+        if open_bins_count > 6 && fitting_bins_count <= 2 && next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            if fresh_left > 0 && fresh_left < next_item_size {
+                score += 3.0 * (1.0 - progress);
+            }
+        }
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            if fresh_left >= 1 && fresh_left <= 12 {
+                score -= 4.0 * (1.0 - fresh_left as f64 / 12.0) * (0.6 + 0.4 * (1.0 - progress));
+            }
+        }
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            if fresh_left >= 1 && fresh_left <= 6 {
+                score -= 8.0 * (1.0 - fresh_left as f64 / 6.0) * (0.7 + 0.3 * (1.0 - progress));
+            }
+        }
+        if fitting_bins_count == 1 && next_item_size > 0 {
+            let open_waste = bin_residual.saturating_sub(item_size) as f64;
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size) as f64;
+            if open_waste > fresh_left + 18.0 {
+                score -= 4.0 * ((open_waste - fresh_left - 18.0) / 20.0).min(1.0) * (0.6 + 0.4 * (1.0 - progress));
+            }
+        }
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            if fresh_left >= 7 && fresh_left <= 10 {
+                score -= 5.0 * (1.0 - fresh_left as f64 / 10.0) * (0.6 + 0.4 * (1.0 - progress));
+            }
+        }
+
+        // gen 19 retained: fresh-bin horizon parity sharpening
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            if fresh_left == next_item_size {
+                score -= 14.0 + 6.0 * (1.0 - progress);
+            }
+        }
+
+        // gen 19 retained: open-bin salvage ceiling
+        if fitting_bins_count >= 1 && next_item_size > 0 {
+            let open_after = bin_residual.saturating_sub(item_size);
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            if open_after < next_item_size && fresh_left >= next_item_size + 10 {
+                score -= 3.0 + 3.0 * (1.0 - progress);
+            }
+        }
+
+        // gen 19 retained: dead-space convexity tail extension
+        if post_residual > 60 && bin_residual != bin_capacity {
+            let pr = post_residual as f64;
+            let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+            score += 0.0004 * pr * pr * pr * (0.5 + 0.7 * tightness);
+        }
+
+        // gen 19 retained: scarcity-locked chain continuity
+        if fitting_bins_count <= 2 && next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size);
+            if fresh_left >= next_item_size {
+                let scarcity = 1.0 / (fitting_bins_count as f64).max(1.0);
+                score -= 5.0 * scarcity * (0.5 + 0.5 * (1.0 - progress));
+            }
+        }
+
+        // gen 20: near-parity halo
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size) as i64;
+            let nx = next_item_size as i64;
+            let d = (fresh_left - nx).abs();
+            if d > 0 && d <= 2 {
+                score -= (14.0 - 4.0 * d as f64) * (0.5 + 0.5 * (1.0 - progress));
+            }
+        }
+
+        // gen 20: dead-space convexity gain
+        if post_residual > 0 && bin_residual != bin_capacity {
+            let pr = post_residual as f64;
+            let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+            score += 0.0001 * pr * pr * pr * (0.5 + 0.7 * tightness);
+        }
+
+        // gen 20: tight-fit preservation
+        if next_item_size > 0 && post_residual >= next_item_size && post_residual - next_item_size <= 3 && bin_residual != bin_capacity {
+            score -= 5.0 + 4.0 * (1.0 - progress);
+        }
+
+        // gen 21: halo widening to ±4
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size) as i64;
+            let nx = next_item_size as i64;
+            let d = (fresh_left - nx).abs();
+            if d > 2 && d <= 4 {
+                score -= (6.0 - 1.5 * (d - 2) as f64) * (0.5 + 0.5 * (1.0 - progress));
+            }
+        }
+
+        // gen 21: dead-space convexity escalation
+        if post_residual > 0 && bin_residual != bin_capacity {
+            let pr = post_residual as f64;
+            let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+            score += 0.00022 * pr * pr * pr * (0.5 + 0.7 * tightness);
+        }
+
+        // gen 21: tight-fit preservation widening
+        if next_item_size > 0 && post_residual >= next_item_size && post_residual - next_item_size <= 5 && bin_residual != bin_capacity {
+            let scarcity = 1.0 / (fitting_bins_count as f64).max(1.0).sqrt();
+            score -= (3.0 + 3.0 * (1.0 - progress)) * scarcity;
+        }
+
+        // gen 21: residual-dispersion dead-space guard
+        if post_residual > 0 && bin_residual != bin_capacity && mean_residual > 0.45 * cap_f {
+            let pr = post_residual as f64;
+            score += 0.06 * pr * (0.4 + 0.6 * progress);
+        }
+
+        // gen 22: dead-space convexity escalation
+        if post_residual > 0 && bin_residual != bin_capacity {
+            let pr = post_residual as f64;
+            let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+            score += 0.00032 * pr * pr * pr * (0.5 + 0.7 * tightness);
+        }
+
+        // gen 22: open-bin compaction pull
+        if post_residual > 0 && bin_residual != bin_capacity && fitting_bins_count >= 2 {
+            let pr = post_residual as f64;
+            let band = ((pr - mean_residual.max(0.0)) / cap_f).abs();
+            score -= 2.0 * (1.0 - band.min(1.0)) * (0.4 + 0.6 * progress);
+        }
+
+        // gen 22: fresh-bin halo extension to ±6
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size) as i64;
+            let nx = next_item_size as i64;
+            let d = (fresh_left - nx).abs();
+            if d > 4 && d <= 6 {
+                score -= (3.0 - 1.0 * (d - 4) as f64) * (0.5 + 0.5 * (1.0 - progress));
+            }
+        }
+
+        // gen 22: late-stream waste-floor guard
+        if post_residual > 0 && bin_residual != bin_capacity && progress > 0.66 && post_residual < next_item_size.max(20) {
+            let unus = 1.0 - (post_residual as f64 / (next_item_size.max(20) as f64));
+            score += 4.0 * unus * ((progress - 0.66) / 0.34).min(1.0);
+        }
+
+        // MUTATION (gen 23): dead-space convexity escalation continues — raise
+        // the extra cubic coefficient from 0.00032 to 0.00045, deepening the
+        // diagnosed dead-space penalty on stranded mid/large residuals while
+        // keeping the base cubic family intact (momentum: ContinueDirection).
+        if post_residual > 0 && bin_residual != bin_capacity {
+            let pr = post_residual as f64;
+            let tightness = ((mean_residual / cap_f).max(0.0)).min(1.0);
+            score += 0.00045 * pr * pr * pr * (0.5 + 0.7 * tightness);
+        }
+
+        // MUTATION (gen 23): compaction pull strengthening — the mean-residual
+        // band homogenization that targets residual variance directly is
+        // reinforced (2.0 -> 3.0) and extended to scarcity weighting, since
+        // Sigma_res (0.2915) remains the diagnosed weakness.
+        if post_residual > 0 && bin_residual != bin_capacity && fitting_bins_count >= 2 {
+            let pr = post_residual as f64;
+            let band = ((pr - mean_residual.max(0.0)) / cap_f).abs();
+            let scarcity = 1.0 / (fitting_bins_count as f64).max(1.0).sqrt();
+            score -= (2.5 + 1.5 * scarcity) * (1.0 - band.min(1.0)) * (0.4 + 0.6 * progress);
+        }
+
+        // MUTATION (gen 23): fresh-bin halo extension to ±8 — the widening
+        // trend (±2 -> ±4 -> ±6) keeps capturing near-parity chain
+        // continuations; extend with a shallow decay to ±8.
+        if next_item_size > 0 {
+            let fresh_left = bin_capacity.saturating_sub(item_size + next_item_size) as i64;
+            let nx = next_item_size as i64;
+            let d = (fresh_left - nx).abs();
+            if d > 6 && d <= 8 {
+                score -= (2.0 - 0.75 * (d - 6) as f64) * (0.5 + 0.5 * (1.0 - progress));
+            }
+        }
+
+        // MUTATION (gen 23): late-stream consolidation sharpening — the
+        // waste-floor guard is strengthened (4.0 -> 6.0) and its onset pulled
+        // earlier (0.66 -> 0.60), forcing residual consolidation into fewer
+        // usable slacks during the final stretch where the 45-bin gap
+        // concentrates.
+        if post_residual > 0 && bin_residual != bin_capacity && progress > 0.60 && post_residual < next_item_size.max(20) {
+            let unus = 1.0 - (post_residual as f64 / (next_item_size.max(20) as f64));
+            score += 6.0 * unus * ((progress - 0.60) / 0.40).min(1.0);
+        }
+
+        // MUTATION (gen 23): residual-variance floor bonus — reward open-bin
+        // placements whose post_residual is small but reusable (>= next
+        // item's lower tail), directly compressing residual dispersion.
+        if post_residual > 0 && next_item_size > 0 && post_residual >= next_item_size && post_residual - next_item_size <= 10 && bin_residual != bin_capacity {
+            let scarcity = 1.0 / (fitting_bins_count as f64).max(1.0).sqrt();
+            score -= 3.5 * (1.0 - (post_residual - next_item_size) as f64 / 10.0) * scarcity * (0.5 + 0.5 * progress);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_local\temoin\run_seed_9651_temoin.json.tmp

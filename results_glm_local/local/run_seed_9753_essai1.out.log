@@ -1,0 +1,68 @@
+2026-11-16T08:15:32.263235Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9753, Pop=8, MaxGens=47
+2026-11-16T09:29:41.532056Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Network Error: Error encountered in the status line: peer closed connection without sending TLS close_notify: https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof). Retrying in 4s...
+2026-11-16T09:30:08.897145Z  WARN nomad_operator::http_llm: Ollama request attempt 2/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Network Error: Error encountered in the status line: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 15s...
+2026-11-16T12:31:29.785118Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 325a343de302f2df on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9753 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4056 bins (excess: +54), Efficiency: 98.67%, Fuel: 70984094
+ Best In-Dist (w/o Lookahead) : 4231 bins (excess: +229), Efficiency: 94.59%
+ Dynamic Trajectory: tLDR = 3.2965
+ Behavior Profile : DeadSpaceRatio: 24.0%, NewBinRatio: 40.6%, ResVar: 0.46
+ MAP-Elites Niches: 16 active (16.0% coverage), QD-Score: 13.210
+ Validation Score : 4060 bins (excess: +59), Efficiency: 98.55%
+ OOD-1 Score      : 10111 bins (excess: +75), Efficiency: 99.26%
+ OOD-2 Score      : 3593 bins (excess: +35), Efficiency: 99.03%
+ Lineage Nodes    : 484, Transitions: 507
+ Best Heuristic   : Pruned-G9-25846d0c-mut-g12
+ Logic Code       : pub fn score_bin (item_size : u32 , bin_residual : u32 , bin_capacity : u32 , step_index : usize , total_items : usize , open_bins_count : usize , mean_residual : f64 , next_item_size : u32 , post_residual : u32 , fitting_bins_count : usize) -> f64 {
+    let mut score = post_residual as f64 ;
+    if post_residual == 0 { score -= 1000.0 ; }
+    if next_item_size > 0 && post_residual > 0 {
+        if next_item_size == post_residual {
+            score -= 640.0 ;
+        } else if next_item_size <= post_residual {
+            let fill = next_item_size as f64 / post_residual as f64 ;
+            let slack = (post_residual - next_item_size) as f64 ;
+            let mult = if fitting_bins_count > 2 { 240.0 } else { 170.0 } ;
+            score -= mult * fill ;
+            if slack < 12.0 { score -= 40.0 * (1.0 - slack / 12.0) ; }
+        } else {
+            let dead = (next_item_size - post_residual) as f64 ;
+            score += dead * 0.85 ;
+        }
+    }
+    score += 0.32 * (post_residual as f64 - mean_residual) ;
+    if post_residual > 0 && post_residual < 10 { score += 75.0 ; }
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 } ;
+    if post_residual > 0 && post_residual < 25 && next_item_size > post_residual {
+        score += (25 - post_residual) as f64 * 2.2 ;
+    }
+    if post_residual as f64 >= bin_capacity as f64 * 0.5 { score -= 22.0 ; }
+    if next_item_size > post_residual && post_residual > 0 && post_residual < 40 {
+        score += (40 - post_residual) as f64 * 1.6 ;
+    }
+    if post_residual > 0 && next_item_size > 0 && post_residual % next_item_size == 0 && post_residual > next_item_size {
+        score -= 55.0 ;
+    }
+    if progress > 0.6 && post_residual > 0 && item_size > 0 {
+        let tight = item_size as f64 / post_residual as f64 ;
+        if tight > 0.8 { score -= 22.0 * tight ; }
+    }
+    // Penalize opening a new bin unless the current bin would be nearly empty of usable space
+    if bin_residual == bin_capacity {
+        let usable_waste = (post_residual as f64) / bin_capacity as f64 ;
+        score += 45.0 * (1.0 - usable_waste) ;
+        if fitting_bins_count == 0 { score -= 30.0 ; }
+        if post_residual > 0 && post_residual < item_size.max(next_item_size) { score += 18.0 ; }
+    }
+    // Reward bins whose post residual stays reusable for mid-size future items
+    if post_residual >= 15 && post_residual <= 60 && next_item_size > 0 {
+        score -= 8.0 * (1.0 - ((post_residual - next_item_size as f64).abs()) / 60.0) ;
+    }
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_local\local\run_seed_9753_local.json.tmp

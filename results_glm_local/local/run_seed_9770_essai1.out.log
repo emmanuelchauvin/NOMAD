@@ -1,0 +1,58 @@
+2026-11-16T08:15:32.050229Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9770, Pop=8, MaxGens=47
+2026-11-16T08:22:06.866084Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T09:26:01.761938Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T09:28:34.136129Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Network Error: Error encountered in the status line: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 4s...
+2026-11-16T09:29:55.995723Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: Connect error: connection timed out). Retrying in 4s...
+2026-11-16T12:19:10.978883Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 73e8624fcc82a7e7 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9770 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4096 bins (excess: +104), Efficiency: 97.46%, Fuel: 65162594
+ Best In-Dist (w/o Lookahead) : 4284 bins (excess: +292), Efficiency: 93.19%
+ Dynamic Trajectory: tLDR = 1.6753
+ Behavior Profile : DeadSpaceRatio: 1.9%, NewBinRatio: 41.0%, ResVar: 0.61
+ MAP-Elites Niches: 20 active (20.0% coverage), QD-Score: 17.141
+ Validation Score : 4143 bins (excess: +122), Efficiency: 97.06%
+ OOD-1 Score      : 10150 bins (excess: +67), Efficiency: 99.34%
+ OOD-2 Score      : 3652 bins (excess: +93), Efficiency: 97.46%
+ Lineage Nodes    : 486, Transitions: 539
+ Best Heuristic   : Hybrid-G3-graft-0d7e-mut-g22
+ Logic Code       : pub fn score_bin (item_size : u32 , bin_residual : u32 , bin_capacity : u32 , step_index : usize , total_items : usize , open_bins_count : usize , mean_residual : f64 , next_item_size : u32 , post_residual : u32 , fitting_bins_count : usize) -> f64 {
+    let cap = bin_capacity as f64 ;
+    let progress = step_index as f64 / total_items . max (1) as f64 ;
+    let pr = post_residual as f64 ;
+    let norm_pr = pr / cap ;
+    let mut score = pr * 0.80 + (norm_pr * norm_pr * (0.5 + 2.0 * progress) + norm_pr * (1.0 - progress)) * 0.20 ;
+    if post_residual > 0 {
+        if post_residual < 12 { score += (12 - post_residual) as f64 * 8.5 ; }
+        if next_item_size > 0 {
+            if post_residual < next_item_size {
+                let miss = (next_item_size - post_residual) as f64 ;
+                score += miss * 1.5 + 2.0 * (1.0 - progress) ;
+            } else {
+                let gap = (post_residual - next_item_size) as f64 ;
+                let slack = gap / cap ;
+                score -= 4.0 + 8.0 * (1.0 - slack) ;
+                if gap > next_item_size as f64 { score -= 1.5 ; }
+                if post_residual < (next_item_size + item_size) as f64 { score -= 3.0 ; }
+            }
+        }
+        if fitting_bins_count <= 1 && post_residual < item_size / 2 { score += 6.0 ; }
+        if fitting_bins_count <= 2 && norm_pr > 0.9 { score -= 3.0 * (norm_pr - 0.9) ; }
+        if mean_residual > 0.0 && (pr - mean_residual) . abs () < cap * 0.05 { score -= 2.5 ; }
+        if pr < mean_residual { score -= 2.0 ; }
+        if fitting_bins_count == 1 && norm_pr > 0.5 { score -= 1.0 ; }
+        if post_residual == item_size { score -= 6.0 ; }
+        if post_residual < item_size && post_residual >= next_item_size as u32 { score += 1.5 ; }
+    } else {
+        score -= 25.0 ;
+    }
+    let mrn = mean_residual / cap ;
+    if norm_pr < mrn * 0.5 { score += (mrn * 0.5 - norm_pr) * cap * 0.3 ; }
+    if bin_residual == bin_capacity && norm_pr > 0.6 { score += 4.0 ; }
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_local\local\run_seed_9770_local.json.tmp

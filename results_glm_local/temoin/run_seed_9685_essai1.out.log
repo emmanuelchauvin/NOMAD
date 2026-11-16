@@ -1,0 +1,404 @@
+2026-11-16T08:15:30.842167Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9685, Pop=8, MaxGens=47
+2026-11-16T09:28:38.293867Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une connexion établie a été abandonnée par un logiciel de votre ordinateur hôte. (os error 10053)). Retrying in 4s...
+2026-11-16T09:30:02.678892Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T13:09:51.079113Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T14:35:13.808173Z  INFO nomad_orchestrator::engine: Evaluating winning capsule b3fa3385de645426 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9685 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4110 bins (excess: +65), Efficiency: 98.42%, Fuel: 246841419
+ Best In-Dist (w/o Lookahead) : 4231 bins (excess: +186), Efficiency: 95.61%
+ Dynamic Trajectory: tLDR = 3.0733
+ Behavior Profile : DeadSpaceRatio: 26.8%, NewBinRatio: 41.1%, ResVar: 0.48
+ MAP-Elites Niches: 17 active (17.0% coverage), QD-Score: 14.572
+ Validation Score : 4094 bins (excess: +64), Efficiency: 98.44%
+ OOD-1 Score      : 10131 bins (excess: +106), Efficiency: 98.95%
+ OOD-2 Score      : 3629 bins (excess: +53), Efficiency: 98.54%
+ Lineage Nodes    : 344, Transitions: 259
+ Best Heuristic   : LLM-Seed-001-mut-g8-mut-g11-mut-g12-mut-g13-mut-g20-mut-g21-mut-g26
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let cap = bin_capacity as f64;
+    let post = post_residual as f64;
+    let nxt = next_item_size as f64;
+    let resid = bin_residual.max(1) as f64;
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    let is_new_bin = bin_residual == bin_capacity;
+    let mean = mean_residual.max(0.0);
+
+    // Two-step waste base.
+    let mut score = if nxt > 0.0 && post >= nxt { post - nxt } else { post };
+
+    // Aggressive exact two-step match.
+    if nxt > 0.0 && post_residual == next_item_size {
+        score -= 12.0 + 6.0 * (1.0 - progress);
+    } else if nxt > 0.0 && post_residual > next_item_size {
+        let slack = post_residual - next_item_size;
+        if slack < 10 {
+            score -= 5.0;
+        } else if slack < 20 {
+            score -= 2.0;
+        }
+    }
+
+    // Perfect closure / small leftovers.
+    if post_residual == 0 {
+        score -= 24.0;
+    } else if post_residual < 10 {
+        score += 9.0 + 2.0 * (1.0 - progress);
+    } else if post_residual < 20 {
+        score += 3.0;
+    }
+
+    // Dead-space risk: quadratic waste penalty scaled by wasted fraction.
+    if nxt > 0.0 && post > 0.0 && post < nxt {
+        let waste_frac = (nxt - post) / nxt;
+        score += 0.5 * (nxt - post).min(cap)
+            + 4.0
+            + 3.0 * waste_frac * waste_frac * (1.0 - 0.5 * progress)
+            + 2.0 * waste_frac * (1.0 - progress);
+    }
+
+    // Mean-relative coupling.
+    if post > mean {
+        score += 0.15 * (post - mean);
+    } else {
+        score -= 0.05 * (mean - post).min(cap);
+    }
+
+    // Void fraction, graded harder for large voids.
+    let void_frac = post / resid;
+    score += if void_frac > 0.5 {
+        0.3 * void_frac + 1.5 * (void_frac - 0.5)
+    } else {
+        0.3 * void_frac
+    };
+
+    // Last-chance fitting bin.
+    if !is_new_bin && fitting_bins_count == 1 {
+        score -= 8.0;
+    } else if !is_new_bin && fitting_bins_count == 2 {
+        score -= 1.5;
+    }
+
+    // Opening cost for a brand-new bin.
+    if is_new_bin {
+        let pressure = mean / cap;
+        let saturation = open_bins_count as f64 * pressure;
+        if pressure < 0.22 {
+            score -= 6.0 + 3.0 * progress;
+        } else if pressure < 0.45 {
+            score += 1.0 + 3.0 * progress;
+        } else {
+            score += 8.0 + 5.0 * progress;
+        }
+        if saturation < 2.0 && open_bins_count > 3 {
+            score += 1.5;
+        }
+    }
+
+    // Consolidation pressure.
+    score += open_bins_count as f64 * 0.05;
+
+    // Chain closure: residual exactly matches next item size.
+    if nxt > 0.0 && bin_residual == next_item_size && !is_new_bin {
+        score -= 4.0 + 4.0 * (1.0 - progress);
+    }
+
+    // Stranded dead space.
+    if nxt > 0.0 && post > 0.0 && post < 0.5 * nxt {
+        score += 2.5 * (1.0 - progress);
+    }
+
+    // Tight absolute fit.
+    if post_residual > 0 && post_residual <= item_size / 4 {
+        score -= 1.5;
+    }
+
+    // Harmonic pairing.
+    let item_frac_class = (item_size * 10 + bin_capacity / 2) / bin_capacity;
+    if post_residual >= 10 && post_residual < 30 && item_frac_class % 2 == 0 {
+        score -= 2.0;
+    }
+
+    // Endgame tightening.
+    if progress > 0.85 && is_new_bin {
+        score += 6.0 * (progress - 0.85) / 0.15;
+    }
+
+    // Snug fit, graded.
+    if !is_new_bin && bin_residual >= item_size {
+        let snug = (bin_residual - item_size) as f64;
+        if snug < 5.0 {
+            score -= 2.5;
+        }
+        if snug < 15.0 {
+            score -= 1.0 * (1.0 - snug / 15.0);
+        }
+    }
+
+    // Lookahead chain: reusable leftover within current item size.
+    if nxt > 0.0 && post_residual >= next_item_size {
+        let second_left = post_residual - next_item_size;
+        if second_left >= 1 && second_left <= item_size {
+            score -= 1.5;
+        }
+    }
+
+    // Dead-space ratio penalty, graded.
+    if post > mean && cap > 0.0 {
+        let excess_ratio = (post - mean) / cap;
+        if excess_ratio > 0.15 {
+            score += 2.0 * excess_ratio + 4.0 * (excess_ratio - 0.15);
+        }
+    }
+
+    // Reusable-void check.
+    if nxt > 0.0 && post >= nxt {
+        let usable = post - nxt;
+        if usable >= 10.0 {
+            score -= 0.5 * (usable / cap);
+        }
+    }
+
+    // Fragmentation guard.
+    if !is_new_bin && fitting_bins_count > 2 && mean > 0.0 {
+        let dev = ((post - mean).abs()) / cap;
+        score += 0.8 * dev;
+    }
+
+    // Prefer fullest fitting bin via residual tiebreak.
+    if !is_new_bin {
+        score += 0.08 * (bin_residual as f64 / cap);
+    }
+
+    // Near-closure with unusable leftover.
+    if post_residual > 0 && post_residual < 8 && nxt > post {
+        score -= 6.0;
+    }
+
+    // New-bin gate: open a fresh bin only when fits elsewhere are poor.
+    if is_new_bin && nxt > 0.0 {
+        let fits_poorly = fitting_bins_count > 0 && (bin_capacity as f64 - mean) > item_size as f64 * 1.5;
+        if fits_poorly {
+            score -= 3.0;
+        }
+    }
+
+    // Depth-2 lookahead: small residual matching a future item class.
+    if nxt > 0.0 && post_residual >= next_item_size {
+        let two_left = post_residual - next_item_size;
+        if two_left > 0 && two_left <= 10 {
+            score -= 2.0 * (1.0 - progress);
+        }
+    }
+
+    // Exact-fit chain: post residual equals next item size with a small item.
+    if !is_new_bin && nxt > 0.0 && post_residual == next_item_size && next_item_size <= item_size {
+        score -= 3.0 * (1.0 - progress);
+    }
+
+    // Mutation F: lookahead-aware dead-space hedge (sharpened weight).
+    if nxt > 0.0 && !is_new_bin && post_residual < next_item_size && progress > 0.1 {
+        let unusable = (next_item_size - post_residual) as f64;
+        score += 0.75 * unusable * (1.0 - progress);
+    }
+
+    // Mutation G: residual homogeneity.
+    if !is_new_bin && mean > 0.0 {
+        let hom = ((post - mean).abs() / cap) as f64;
+        score -= 0.8 * (1.0 - hom.min(1.0));
+    }
+
+    // Mutation H: dead-space ratio refinement vs fleet-average leftover fraction.
+    if !is_new_bin && cap > 0.0 && mean > 0.0 {
+        let post_frac = post / cap;
+        let mean_frac = (mean / cap).min(1.0);
+        if post_frac > mean_frac {
+            score += 3.5 * (post_frac - mean_frac) * (1.0 - 0.4 * progress);
+        } else {
+            score -= 1.2 * (mean_frac - post_frac);
+        }
+    }
+
+    // Mutation I: anti-fragmentation sweep on large usable leftovers.
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size {
+        let usable_left = post_residual - next_item_size;
+        if usable_left > 25 {
+            score += 0.06 * (usable_left as f64 - 25.0);
+        }
+    }
+
+    // Mutation J: refillability-weighted leftover valuation.
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size {
+        let after = post_residual - next_item_size;
+        let mut refill = 0.0f64;
+        if after > 0 {
+            if after % 10 == 0 { refill = 2.2; }
+            else if after % 5 == 0 { refill = 1.4; }
+            else if after % 4 == 0 { refill = 1.0; }
+            else if after % 3 == 0 { refill = 0.7; }
+        }
+        score -= refill * (1.0 - 0.4 * progress);
+    }
+
+    // Mutation K: convex shortfall penalty for near-miss lookahead.
+    if !is_new_bin && nxt > 0.0 && post_residual < next_item_size {
+        let shortfall = (next_item_size - post_residual) as f64;
+        if shortfall <= 15.0 {
+            score += (2.5 - shortfall * 0.15) * (1.0 + 0.5 * progress);
+        }
+    }
+
+    // Mutation L: asymmetric quadratic dead-space bump (peak 0.38 of capacity).
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size {
+        let after = (post_residual - next_item_size) as f64;
+        let x = (after / cap).min(1.0);
+        let peak = 0.38;
+        let skew = if x < peak { 0.7 } else { 1.45 };
+        let bump = (x - peak) * (x - peak);
+        let ramp = if progress > 0.25 { 1.0 + 0.6 * (progress - 0.25) } else { 0.85 + 0.6 * progress };
+        score += 15.0 * skew * bump * ramp;
+    }
+
+    // Mutation M: lookahead-aware new-bin arbitration.
+    if is_new_bin && nxt > 0.0 {
+        let new_post = cap - item_size as f64;
+        let open_can_chain = fitting_bins_count > 0
+            && mean >= item_size as f64
+            && (mean - item_size as f64) >= nxt;
+        let new_can_chain = new_post >= nxt;
+        if open_can_chain && !new_can_chain {
+            score += 5.0 + 3.0 * (1.0 - progress);
+        } else if !open_can_chain && new_can_chain {
+            score -= 2.0 * (1.0 - progress);
+        }
+    }
+
+    // Mutation N: utilization-maximizing tiebreak.
+    if !is_new_bin {
+        let used_frac = 1.0 - (bin_residual as f64 / cap);
+        score += 0.35 * used_frac.sqrt() * (1.0 - 0.3 * progress);
+    }
+
+    // Mutation O: two-step closure ladder.
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size {
+        let after = (post_residual - next_item_size) as f64;
+        if after > 0.0 {
+            let closeness = 1.0 - (after / cap).min(1.0);
+            score -= 3.0 * closeness * closeness * (0.6 + 0.8 * progress);
+        }
+    }
+
+    // Mutation P: fleet-aware dead-space cap.
+    if !is_new_bin && mean > 0.0 && fitting_bins_count > 1 && nxt > 0.0 && post_residual >= next_item_size {
+        let after = (post_residual - next_item_size) as f64;
+        let excess = after - mean;
+        if excess > 0.0 {
+            score += 0.9 * excess * (1.0 - 0.3 * progress) / cap.max(1.0);
+        }
+    }
+
+    // Mutation Q: two-deep chain reward + mid-band dead-space penalty.
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size {
+        let after = post_residual - next_item_size;
+        if after as f64 == nxt || after as f64 == item_size as f64 {
+            score -= 3.5 + 2.5 * (1.0 - progress);
+        } else if (after as f64) >= nxt.min(item_size as f64) && after < 2 * next_item_size {
+            score -= 1.0 * (1.0 - 0.5 * progress);
+        }
+        if after >= 30 && after <= 60 && progress > 0.3 {
+            score += 1.8 * (progress - 0.3) / 0.7;
+        }
+    }
+
+    // Mutation R: progress-adaptive snugness.
+    if !is_new_bin && bin_residual >= item_size {
+        let snug = (bin_residual - item_size) as f64;
+        let band = 20.0 - 10.0 * progress;
+        if snug < band {
+            score -= 1.6 * (1.0 - snug / band) * (0.5 + progress);
+        }
+    }
+
+    // Mutation S: new-bin saturation hedge.
+    if is_new_bin && open_bins_count > 8 {
+        let frag = (open_bins_count as f64 / (total_items.max(1) as f64).sqrt()).min(3.0);
+        score += 0.9 * frag * (0.4 + 0.6 * progress);
+    }
+
+    // Mutation T (refined gen 26): sharpen the dead-space bump peak toward
+    // 0.30 of capacity with stronger late-stream scaling — targets the
+    // diagnosed suboptimal-residual weakness more aggressively.
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size {
+        let after = (post_residual - next_item_size) as f64;
+        let x = (after / cap).min(1.0);
+        let peak2 = 0.30;
+        let skew2 = if x < peak2 { 0.6 } else { 1.7 };
+        let bump2 = (x - peak2) * (x - peak2);
+        score += 6.0 * skew2 * bump2 * (1.0 + 1.4 * progress);
+    }
+
+    // Mutation U: exact-closure ladder — reward small closable leftovers.
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size {
+        let after = post_residual - next_item_size;
+        if after > 0 && after <= 15 {
+            score -= 2.0 * (1.0 - after as f64 / 15.0) * (0.6 + 0.8 * (1.0 - progress));
+        }
+    }
+
+    // Mutation V: new-bin exact-chain gate.
+    if is_new_bin && nxt > 0.0 {
+        let new_post = cap - item_size as f64;
+        if (new_post - nxt).abs() < 1.0 {
+            score -= 4.0 * (1.0 - progress);
+        } else if new_post < nxt && progress > 0.5 {
+            score += 2.5 * (progress - 0.5) / 0.5;
+        }
+    }
+
+    // Mutation W (gen 26): dead-space ratio diagnostic — penalize bins whose
+    // post-lookahead leftover fraction exceeds the fleet mean by a convex
+    // margin, with a mild early-stream grace period to allow exploration.
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size && mean > 0.0 && progress > 0.05 {
+        let after = (post_residual - next_item_size) as f64;
+        let excess_frac = ((after - mean) / cap).max(0.0);
+        if excess_frac > 0.05 {
+            score += 4.5 * (excess_frac - 0.05) * (excess_frac - 0.05) / (excess_frac + 0.05) * (0.7 + 0.6 * progress);
+        }
+    }
+
+    // Mutation X (gen 26): complementarity bonus — reward bins whose leftover
+    // after seating the item complements the fleet-average residual so the
+    // pair of leftovers is jointly more fillable by mid-size items.
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size && mean > 0.0 {
+        let after = (post_residual - next_item_size) as f64;
+        let pair_sum = after + mean;
+        let pair_frac = pair_sum / cap;
+        if pair_frac >= 0.9 && pair_frac <= 1.15 {
+            score -= 1.8 * (1.0 - (pair_frac - 0.9).abs() / 0.25).max(0.0) * (1.0 - 0.3 * progress);
+        }
+    }
+
+    // Mutation Y (gen 26): lookahead-fit calibration — when the next item
+    // would exactly fill the post-residual, escalate the reward late in the
+    // stream where closure value is highest.
+    if !is_new_bin && nxt > 0.0 && post_residual == next_item_size {
+        score -= 2.0 * progress * (nxt / cap);
+    }
+
+    // Mutation Z (gen 26): waste-shape guard — penalize leftover shapes that
+    // are neither small-closable nor large-reusable (the awkward middle band
+    // 16..=29), which the diagnosed weakness suggests we accumulate.
+    if !is_new_bin && nxt > 0.0 && post_residual >= next_item_size {
+        let after = post_residual - next_item_size;
+        if after >= 16 && after <= 29 {
+            score += 1.2 * (1.0 - (after - 16) as f64 / 13.0) * (0.5 + 0.7 * progress);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_local\temoin\run_seed_9685_temoin.json.tmp
