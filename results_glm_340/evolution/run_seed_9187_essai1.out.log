@@ -1,0 +1,190 @@
+2026-11-15T23:07:33.896621Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9187, Pop=8, MaxGens=47
+2026-11-16T01:03:13.156073Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 6874c60ae006da3a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9187 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4079 bins (excess: +69), Efficiency: 98.31%, Fuel: 64678772
+ Best In-Dist (w/o Lookahead) : 4179 bins (excess: +169), Efficiency: 95.96%
+ Dynamic Trajectory: tLDR = 1.3026
+ Behavior Profile : DeadSpaceRatio: 53.4%, NewBinRatio: 40.8%, ResVar: 0.25
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 6.379
+ Validation Score : 4116 bins (excess: +83), Efficiency: 97.99%
+ OOD-1 Score      : 10182 bins (excess: +135), Efficiency: 98.67%
+ OOD-2 Score      : 3600 bins (excess: +57), Efficiency: 98.42%
+ Lineage Nodes    : 343, Transitions: 270
+ Best Heuristic   : LLM-Seed-023-mut-g44-mut-g45
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    let cap = bin_capacity as f64;
+    let pr = post_residual as f64;
+
+    // Perfect / near-perfect fit ladder.
+    if post_residual == 0 {
+        score -= 1000.0;
+    } else if post_residual <= 2 {
+        score -= 340.0;
+    } else if post_residual <= 5 {
+        score -= 150.0;
+    } else if post_residual <= 8 {
+        score -= 110.0;
+    } else if post_residual < 16 {
+        score += 24.0;
+    } else if post_residual < 30 {
+        score += 4.0;
+    } else {
+        score -= 16.0;
+    }
+
+    // Lookahead: how well does the leftover host the next item?
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 540.0;
+        } else if post_residual >= next_item_size {
+            let gap = (post_residual - next_item_size) as f64;
+            if gap <= 5 {
+                score -= 190.0 * (1.0 - gap / 6.0);
+            } else {
+                score -= 120.0 * (1.0 - gap / 50.0).max(0.0);
+            }
+            if post_residual as u64 == 2 * next_item_size as u64 {
+                score -= 46.0 * (0.5 + 0.5 * progress);
+            }
+            if post_residual >= 2 * next_item_size && progress > 0.25 {
+                score -= 16.0 * (1.0 - progress) * (1.0 - pr / cap);
+            }
+            if gap > 0 {
+                let tightness = 1.0 - gap / (cap - next_item_size as f64).max(1.0);
+                score -= 26.0 * tightness * (0.4 + 0.6 * progress)
+                    / (fitting_bins_count.max(1) as f64).sqrt();
+            }
+        } else {
+            let miss = (next_item_size - post_residual) as f64;
+            let waste_frac = miss / cap;
+            let deadness = if pr < 10.0 { 1.5 } else { 1.1 };
+            score += miss * (0.42 + 0.34 * (1.0 - progress)) * deadness
+                + 255.0 * waste_frac * (1.0 - progress);
+            let scarcity = 1.0 + 1.6 / (fitting_bins_count.max(1) as f64);
+            score += 33.0 * (miss / cap) * (0.6 + 0.8 * progress) * scarcity;
+            if miss <= 3 {
+                score += 13.0 * (1.0 - progress);
+            }
+            if miss > 10 && miss <= 18 && progress > 0.4 {
+                score += 13.0 * progress;
+            }
+        }
+    }
+
+    // Last-chance bin.
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 320.0;
+    }
+
+    // Fragmentation slivers.
+    if post_residual > 0 && post_residual < 10 {
+        score += 138.0;
+    }
+
+    if bin_residual > 0 && post_residual > 0 {
+        // Harvestable-space bonus.
+        if pr >= 15.0 && pr <= 55.0 && next_item_size > 0 && post_residual >= next_item_size {
+            let usable = 1.0 - ((pr - next_item_size as f64) / 40.0).clamp(0.0, 1.0);
+            score -= 19.0 * usable * (0.3 + 0.7 * progress)
+                * (1.0 + 0.1 * (open_bins_count as f64).ln().max(0.0));
+        }
+        // Quadratic dead-space squeeze above mean residual (tightened threshold).
+        if pr > mean_residual + 6.0 {
+            let excess = pr - mean_residual - 6.0;
+            score += 0.75 * excess * excess / cap * (0.3 + 0.7 * progress * progress);
+        }
+        // Residual-efficiency term.
+        let fill_frac = 1.0 - pr / (bin_residual as f64).max(1.0);
+        score -= 11.0 * fill_frac * (0.4 + 0.6 * progress)
+            * (1.0 + 0.8 / (fitting_bins_count.max(1) as f64));
+        // Dead-space ratio penalties / rewards.
+        let dead_frac = pr / cap;
+        if dead_frac > 0.3 && progress > 0.3 {
+            score += 34.0 * (dead_frac - 0.3) * (progress - 0.3) * 2.5;
+        }
+        if dead_frac > 0.12 && dead_frac <= 0.3 && progress > 0.5
+            && next_item_size > 0 && post_residual < next_item_size {
+            score += 16.0 * (dead_frac - 0.12) * (progress - 0.5) * 3.0;
+        }
+        if dead_frac <= 0.1 && post_residual > 0 {
+            score -= 14.0 * (0.1 - dead_frac) * (0.5 + 0.5 * progress);
+        }
+        // Mean-residual anchoring.
+        let dev = (pr - mean_residual).abs();
+        if dev < 6.0 {
+            score -= 7.5 * (1.0 - dev / 6.0) * (0.5 + 0.5 * progress);
+        }
+        // NEW: cross-bin coupling — penalize leaving a residual that no other
+        // open bin's residual can complement with the next item.
+        if next_item_size > 0 && post_residual >= next_item_size && fitting_bins_count <= 2 {
+            score -= 9.0 * (1.0 - progress) * (1.0 - pr / cap);
+        }
+        // Waste-ratio guard for mostly-empty bins.
+        let waste_ratio = pr / (bin_residual as f64).max(1.0);
+        if waste_ratio < 0.35 && bin_residual as f64 > 0.5 * cap {
+            score += 44.0 * (0.35 - waste_ratio) * (1.2 - progress);
+        }
+    } else if bin_residual == bin_capacity {
+        // NEW-BIN CANDIDATE: calibrated resistance.
+        let fragmentation = (mean_residual / cap).clamp(0.0, 1.0);
+        let large_item = item_size as f64 / cap;
+        if fitting_bins_count == 0 {
+            score -= 34.0;
+        } else if fitting_bins_count == 1 {
+            score += 62.0 + 136.0 * fragmentation;
+        } else {
+            let penalty = 72.0
+                + 195.0 * fragmentation
+                - 170.0 * large_item
+                + 40.0 * (open_bins_count as f64).ln().max(0.0)
+                - 52.0 * progress
+                + 39.0 * progress * fragmentation;
+            score += penalty.max(0.0);
+        }
+        if fitting_bins_count >= 1 && post_residual > 0 && post_residual <= 8 {
+            score += 30.0 * (1.0 - post_residual as f64 / 9.0) * (0.4 + 0.6 * progress);
+        }
+        if fitting_bins_count >= 1 && pr >= 15.0 && pr <= 45.0 {
+            score += 24.0 * (1.0 - ((pr - 15.0) / 30.0).abs()) * (0.4 + 0.6 * progress);
+        }
+        if fitting_bins_count >= 1 && progress > 0.7 && item_size as f64 <= 0.6 * cap {
+            score += 32.0 * (progress - 0.7) * 3.0;
+        }
+        if fitting_bins_count >= 2 && item_size as f64 > 0.8 * cap {
+            score -= 20.0;
+        }
+        if next_item_size > 0 && next_item_size >= item_size && post_residual >= next_item_size {
+            score -= 262.0 * (1.0 - progress);
+        }
+        if fitting_bins_count >= 1 && progress > 0.6 && item_size <= 50 {
+            score += 28.0 * (progress - 0.6) * 2.5 * (1.0 - item_size as f64 / 51.0);
+        }
+        if fitting_bins_count >= 1 && next_item_size > 0 && post_residual < next_item_size {
+            let unmet = (next_item_size - post_residual) as f64;
+            score += 15.0 * (unmet / cap) * (0.5 + progress);
+        }
+        // NEW: extra resistance when the fresh bin would strand a large
+        // unusable residual given the mean-residual context.
+        if fitting_bins_count >= 1 && next_item_size > 0 && post_residual >= next_item_size {
+            let stranded = (post_residual - next_item_size) as f64;
+            if stranded > 12.0 {
+                score += 10.0 * (stranded / cap) * (0.5 + 0.5 * fragmentation);
+            }
+        }
+    } else {
+        score += (mean_residual - bin_residual as f64).max(0.0) * (0.5 + 0.3 * progress);
+    }
+
+    // Consolidation pressure grows with stream progress.
+    score -= (open_bins_count as f64) * (item_size as f64) * 0.034 * (0.5 + progress);
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\evolution\run_seed_9187_evolution.json.tmp

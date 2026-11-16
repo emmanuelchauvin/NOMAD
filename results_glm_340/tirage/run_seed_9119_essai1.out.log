@@ -1,0 +1,91 @@
+2026-11-15T18:25:56.067951Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9119, Pop=344, MaxGens=1
+2026-11-15T19:48:22.674276Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 6b0eb69fd1d1f9ae on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9119 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4189 bins (excess: +170), Efficiency: 95.94%, Fuel: 29049600
+ Best In-Dist (w/o Lookahead) : 4195 bins (excess: +176), Efficiency: 95.81%
+ Dynamic Trajectory: tLDR = 0.2027
+ Behavior Profile : DeadSpaceRatio: 60.3%, NewBinRatio: 41.9%, ResVar: 0.53
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 6.359
+ Validation Score : 4199 bins (excess: +172), Efficiency: 95.90%
+ OOD-1 Score      : 10435 bins (excess: +373), Efficiency: 96.43%
+ OOD-2 Score      : 3601 bins (excess: +71), Efficiency: 98.03%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-127
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Strict dead-space avoidance: penalize small unusable gaps heavily.
+    // A residual that cannot fit even the smallest plausible item (<= 12)
+    // is nearly guaranteed waste.
+    if post_residual > 0 && post_residual < 12 {
+        score += 40.0;
+    } else if post_residual < 25 {
+        // Small-but-usable gaps: moderate penalty scaled by how little
+        // of the gap is actually exploitable.
+        score += (25.0 - post_residual as f64) * 1.2;
+    }
+
+    // Reward near-perfect fits (tight packing is the core objective).
+    if post_residual == 0 {
+        score -= 60.0;
+    } else if post_residual <= 10 {
+        score -= 15.0;
+    }
+
+    // Lookahead coupling: if the next item fits exactly into the
+    // post-residual, strongly favor this placement (chained packing).
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let slack = (post_residual - next_item_size) as f64;
+        if slack < 8.0 {
+            score -= 25.0;
+        } else {
+            score -= 8.0;
+        }
+    }
+    // Penalize if the next item can NOT use the leftover space (dead space risk).
+    if next_item_size > post_residual && post_residual > 0 {
+        score += 10.0;
+    }
+
+    // Open-bin pressure: when many bins are open, discourage opening
+    // new ones and encourage closing out existing residual capacity.
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    let bin_pressure = open_bins_count as f64 * (1.0 + 0.5 * progress);
+    score += bin_pressure * 0.15;
+
+    // Last-chance bin: if this is the only bin that fits the item,
+    // strongly prefer using it over opening a new bin.
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 30.0;
+    }
+
+    // New-bin candidate handling: a fresh empty bin should only win when
+    // the current item fits poorly everywhere. Penalize the empty-bin
+    // candidate proportionally to how many bins could already fit the item.
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            score += 55.0 + 10.0 * fitting_bins_count as f64;
+        } else {
+            // No open bin fits: opening a new bin is necessary; make it
+            // attractive but keep a mild preference for tight future fits.
+            score -= 20.0;
+        }
+    }
+
+    // Mean residual context: if this bin's residual is far below the mean,
+    // it is already "tight" — favor finishing it off.
+    let residual_gap = mean_residual - bin_residual as f64;
+    if residual_gap > 0.0 {
+        score -= residual_gap * 0.3;
+    } else {
+        score += (-residual_gap) * 0.1;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9119_tirage.json.tmp

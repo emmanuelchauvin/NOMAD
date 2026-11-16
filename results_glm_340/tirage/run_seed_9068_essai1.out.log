@@ -1,0 +1,88 @@
+2026-11-15T18:11:04.288628Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9068, Pop=344, MaxGens=1
+2026-11-15T18:49:50.841689Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T19:36:51.835011Z  INFO nomad_orchestrator::engine: Evaluating winning capsule b3f4038b2749db53 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9068 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4204 bins (excess: +170), Efficiency: 95.96%, Fuel: 29961306
+ Best In-Dist (w/o Lookahead) : 4205 bins (excess: +171), Efficiency: 95.93%
+ Dynamic Trajectory: tLDR = 0.2183
+ Behavior Profile : DeadSpaceRatio: 65.1%, NewBinRatio: 42.0%, ResVar: 0.52
+ MAP-Elites Niches: 14 active (14.0% coverage), QD-Score: 10.090
+ Validation Score : 4195 bins (excess: +169), Efficiency: 95.97%
+ OOD-1 Score      : 10385 bins (excess: +360), Efficiency: 96.53%
+ OOD-2 Score      : 3627 bins (excess: +73), Efficiency: 97.99%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-171
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // --- Harmonic class of the post-fit residual (capacity fractions) ---
+    // Residuals are bucketed into harmonic classes relative to capacity:
+    // tiny (0..=5), small (6..=15), medium (16..=34), large (35..=100)
+    let tiny = if post_residual <= 5 { 1.0 } else { 0.0 };
+    let small = if post_residual > 5 && post_residual <= 15 { 1.0 } else { 0.0 };
+    let large = if post_residual >= 35 { 1.0 } else { 0.0 };
+
+    // Tiny residuals are near-perfect fills: strongly reward.
+    score -= 30.0 * tiny;
+
+    // Small residuals are dead space (items >=10 can never use them): penalize.
+    score += 25.0 * small;
+
+    // Large residuals leave usable space: mild reward so we don't over-punish.
+    score -= 6.0 * large;
+
+    // --- Modulo arithmetic on post_residual: residuals divisible by common
+    // item-size classes (10, 20, 25, 50) are re-usable by future items. ---
+    if post_residual > 0 {
+        if post_residual % 10 == 0 { score -= 8.0; }
+        if post_residual % 20 == 0 { score -= 4.0; }
+        if post_residual % 25 == 0 { score -= 3.0; }
+        if post_residual % 50 == 0 { score -= 3.0; }
+    }
+
+    // --- Lookahead: does the next item fit exactly into post_residual? ---
+    if next_item_size > 0 {
+        if next_item_size == post_residual {
+            score -= 40.0; // perfect chaining
+        } else if next_item_size <= post_residual {
+            score -= 12.0; // next item can still use this bin
+        } else {
+            score += 5.0;  // next item won't fit here
+        }
+    }
+
+    // --- Integer division threshold: how many "average" items still fit? ---
+    let avg_item = 30u32;
+    let fits_avg = post_residual / avg_item;
+    score -= fits_avg as f64 * 4.0;
+
+    // --- Last-chance bin: if this is the only bin that fits, prefer using it
+    // over opening a new bin (unless the fit is terrible). ---
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 20.0;
+    }
+
+    // --- New-bin candidate handling: brand-new empty bin. ---
+    if bin_residual == bin_capacity {
+        // Opening a new bin is only attractive when existing bins are crowded
+        // and the item is large relative to capacity.
+        let progress = step_index as f64 / (total_items.max(1) as f64);
+        let crowding = mean_residual / bin_capacity as f64;
+        score += 15.0; // base cost of opening a new bin
+        score -= 20.0 * crowding * (item_size as f64 / bin_capacity as f64);
+        score -= 10.0 * progress * (post_residual as f64 / bin_capacity as f64);
+    }
+
+    // --- Many open bins with slack: discourage spreading items thin. ---
+    if open_bins_count > 3 && (post_residual as f64) > mean_residual {
+        score += 3.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9068_tirage.json.tmp

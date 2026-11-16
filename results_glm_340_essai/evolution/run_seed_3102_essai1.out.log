@@ -1,0 +1,101 @@
+2026-11-15T16:19:38.155918Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=3102, Pop=8, MaxGens=2
+2026-11-15T16:22:23.397086Z  INFO nomad_orchestrator::engine: Evaluating winning capsule ac5b9a6eae3181e6 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3102 | Generations: 2
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4125 bins (excess: +86), Efficiency: 97.92%, Fuel: 36515012
+ Best In-Dist (w/o Lookahead) : 4233 bins (excess: +194), Efficiency: 95.42%
+ Dynamic Trajectory: tLDR = 0.7370
+ Behavior Profile : DeadSpaceRatio: 66.5%, NewBinRatio: 41.2%, ResVar: 0.21
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.845
+ Validation Score : 4132 bins (excess: +100), Efficiency: 97.58%
+ OOD-1 Score      : 10221 bins (excess: +180), Efficiency: 98.24%
+ OOD-2 Score      : 3620 bins (excess: +67), Efficiency: 98.15%
+ Lineage Nodes    : 29, Transitions: 7
+ Best Heuristic   : LLM-Seed-011
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Harmonic class of post_residual: which "slot class" does the leftover fall into?
+    // Classes based on integer division by 10 (deciles of capacity).
+    let post_class = post_residual / 10;
+    let item_class = item_size / 10;
+
+    // Reward exact or near-exact fills: post_residual in {0} is perfect, tiny leftovers are dead space.
+    if post_residual == 0 {
+        score -= 1000.0;
+    } else if post_residual < 5 {
+        score -= 300.0;
+    } else if post_residual < 10 {
+        score += 50.0; // unusable sliver: dead space penalty
+    }
+
+    // Modulo-10 harmonic bonus: leftovers that are multiples of 10 pair well with
+    // common item sizes (sizes tend to cluster on decade boundaries).
+    if post_residual % 10 == 0 && post_residual > 0 {
+        score -= 40.0;
+    }
+
+    // Class-compatibility: does the next item fit into the post_residual class?
+    if next_item_size > 0 {
+        if next_item_size == post_residual {
+            score -= 500.0; // perfect chain
+        } else if next_item_size <= post_residual {
+            // scaled by how snugly next item nests in the leftover
+            let snug = 1.0 - (post_residual - next_item_size) as f64 / 50.0;
+            score -= 120.0 * snug;
+        } else {
+            // next item cannot use this leftover: penalize large stranded residuals
+            score += 0.3 * (post_residual as f64).min(80.0);
+        }
+        // Harmonic pairing: leftover class + next item class summing to capacity/10 (perfect complement)
+        if post_class + next_item_size / 10 == bin_capacity / 10 {
+            score -= 200.0;
+        }
+    } else {
+        // Last item: minimize waste aggressively.
+        score += 5.0 * post_residual as f64;
+    }
+
+    // Last-chance bin: strongly prefer using it over opening a new bin.
+    if fitting_bins_count == 1 && bin_residual >= item_size {
+        score -= 250.0;
+    }
+
+    // New-bin candidate handling: empty bin should only win when current fit is bad.
+    if bin_residual == bin_capacity {
+        // mild default preference for existing bins: add a small opening cost
+        score += 60.0;
+        // but if the item is huge relative to mean residual, opening fresh is fine
+        if item_size as f64 > mean_residual {
+            score -= 150.0;
+        }
+        // late in the stream, prefer consolidation into open bins
+        let progress = step_index as f64 / total_items.max(1) as f64;
+        score += 80.0 * progress;
+    }
+
+    // Prefer tighter bins: residual before placement closer to item size is better.
+    score += 0.2 * (bin_residual - item_size) as f64;
+
+    // Coupling with mean residual: bins far below mean residual are "almost full",
+    // using them consolidates space.
+    if (bin_residual as f64) < mean_residual {
+        score -= 15.0;
+    }
+
+    // Large items should go into large-residual bins (harmonic size matching).
+    let residual_quarter = bin_residual / (bin_capacity / 4).max(1);
+    let item_quarter = item_size / (bin_capacity / 4).max(1);
+    if residual_quarter >= item_quarter {
+        score -= 30.0 * item_quarter as f64;
+    } else {
+        score += 60.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340_essai\evolution\run_seed_3102_evolution.json.tmp

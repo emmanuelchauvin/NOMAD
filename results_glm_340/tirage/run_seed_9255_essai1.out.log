@@ -1,0 +1,75 @@
+2026-11-15T16:59:00.571626Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9255, Pop=344, MaxGens=1
+2026-11-15T17:37:59.391351Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: Connect error: connection timed out). Retrying in 4s...
+2026-11-15T17:38:26.181784Z  WARN nomad_operator::http_llm: Ollama request attempt 2/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 15s...
+2026-11-15T18:13:29.670840Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 5b04af198f19b80b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9255 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4214 bins (excess: +151), Efficiency: 96.42%, Fuel: 308891722
+ Best In-Dist (w/o Lookahead) : 4212 bins (excess: +149), Efficiency: 96.47%
+ Dynamic Trajectory: tLDR = 5.8305
+ Behavior Profile : DeadSpaceRatio: 48.5%, NewBinRatio: 42.1%, ResVar: 1.00
+ MAP-Elites Niches: 16 active (16.0% coverage), QD-Score: 11.701
+ Validation Score : 4190 bins (excess: +157), Efficiency: 96.25%
+ OOD-1 Score      : 10369 bins (excess: +322), Efficiency: 96.90%
+ OOD-2 Score      : 3598 bins (excess: +69), Efficiency: 98.08%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-075
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    let cap = bin_capacity as f64;
+    let pr = post_residual as f64;
+    let mut score = pr;
+
+    // Smooth non-linear penalty on residual, amplified as stream progresses.
+    let norm_pr = pr / cap;
+    score += 2.0 * norm_pr * norm_pr * (0.5 + progress) * cap;
+
+    // Reward tight fits (small residual) with a saturating non-linear term.
+    let tight = (-norm_pr * 6.0).exp();
+    score -= 8.0 * tight * (0.4 + 0.6 * progress);
+
+    // Lookahead coupling: bonus if next item fits the post-residual well.
+    if next_item_size > 0 {
+        let ns = next_item_size as f64;
+        let gap = (pr - ns).abs() as f64;
+        let fit_quality = (-gap / 20.0).exp();
+        score -= 6.0 * fit_quality * (0.5 + progress);
+        // Penalize residual that is too small to ever be useful for next item.
+        if pr < ns {
+            score += 3.0 * (1.0 - pr / ns.max(1.0) as f64);
+        }
+    }
+
+    // Last-chance bin: strongly favor using it to avoid opening a new bin.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 12.0 * (0.5 + progress);
+    }
+
+    // Penalize scarce fitting options mildly (competition among bins).
+    if fitting_bins_count > 0 {
+        score += (fitting_bins_count as f64).ln() * 1.5;
+    }
+
+    // Coupling with mean residual: prefer bins below mean residual (tighter bins).
+    let dev = (mean_residual - pr) / cap;
+    score -= 4.0 * dev * (0.3 + 0.7 * progress);
+
+    // New-bin candidate: encourage opening a new bin early, discourage late,
+    // and only when residual of this bin would be wasteful.
+    if bin_residual == bin_capacity {
+        let waste = norm_pr; // = 1.0 for empty bin, so use item size instead
+        let _ = waste;
+        let fill = item_size as f64 / cap;
+        score = cap * (1.0 - fill) + 10.0 * progress * cap - 5.0 * (1.0 - progress) * cap;
+        if fitting_bins_count <= 1 {
+            score -= 15.0; // no good alternative: new bin is fine
+        }
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9255_tirage.json.tmp

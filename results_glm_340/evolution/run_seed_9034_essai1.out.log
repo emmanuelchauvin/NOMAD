@@ -1,0 +1,161 @@
+2026-11-16T00:30:19.338350Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9034, Pop=8, MaxGens=47
+2026-11-16T01:26:35.200433Z  INFO nomad_orchestrator::engine: Evaluating winning capsule f49adea3bc5a6d90 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9034 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4179 bins (excess: +153), Efficiency: 96.34%, Fuel: 36890600
+ Best In-Dist (w/o Lookahead) : 4191 bins (excess: +165), Efficiency: 96.06%
+ Dynamic Trajectory: tLDR = 0.3267
+ Behavior Profile : DeadSpaceRatio: 62.8%, NewBinRatio: 41.8%, ResVar: 0.43
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.176
+ Validation Score : 4175 bins (excess: +162), Efficiency: 96.12%
+ OOD-1 Score      : 10376 bins (excess: +316), Efficiency: 96.95%
+ OOD-2 Score      : 3635 bins (excess: +82), Efficiency: 97.74%
+ Lineage Nodes    : 344, Transitions: 208
+ Best Heuristic   : LLM-Seed-021-mut-g5
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let cap = bin_capacity as f64;
+    let res = bin_residual as f64;
+    let post = post_residual as f64;
+    let progress = step_index as f64 / total_items.max(1) as f64;
+
+    // Dead-space shaping: super-linear penalty for tiny leftovers
+    if post_residual == 0 {
+        score -= 150.0; // perfect fill
+    } else {
+        let deadness = if post < 22.0 { 3.2 - post / 22.0 } else { 1.0 };
+        score += post * (deadness - 1.0) * 2.4;
+        // clean fraction of capacity (multiple of 20) is flexible for future items
+        if post_residual % 20 == 0 {
+            score -= 11.0;
+        }
+        // semi-clean multiples of 10
+        if post_residual % 10 == 0 && post_residual % 20 != 0 && post_residual >= 10 {
+            score -= 5.0;
+        }
+        // awkward 1..5 residuals are nearly dead space
+        if post_residual <= 5 {
+            score += 16.0;
+        }
+        // mid-gap rescue: 6..15 poor
+        if post_residual >= 6 && post_residual <= 15 {
+            score += 5.0;
+        }
+        // near-dead 16..19 band
+        if post_residual >= 16 && post_residual <= 19 {
+            score += 3.0;
+        }
+    }
+
+    // Tightness reward, capacity-normalized
+    let tightness = 1.0 - post / cap;
+    score -= tightness * 20.0;
+
+    // Last-chance bin: urgency scaled by fill level
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        let fill_ratio = 1.0 - res / cap;
+        score -= 38.0 + fill_ratio * 27.0;
+    }
+
+    // New-bin candidate: penalize unless it enables a great future fit
+    if bin_residual == bin_capacity {
+        let size_ratio = item_size as f64 / cap;
+        let next_fits = next_item_size > 0 && next_item_size <= post_residual;
+        let mut base = if size_ratio > 0.7 { 40.0 } else { 62.0 };
+        base += open_bins_count as f64 * 4.0 - progress * 12.0;
+        if next_fits {
+            base -= 12.0;
+        }
+        if post_residual > 55.0 || (next_item_size > 0 && next_item_size > post_residual) {
+            base -= 12.0;
+        }
+        if open_bins_count <= 2 {
+            base -= 6.0;
+        }
+        if progress > 0.75 {
+            base += 10.0;
+        }
+        score += base;
+    }
+
+    // Open-bin pressure: consolidate as bins proliferate
+    score += open_bins_count as f64 * (0.35 + open_bins_count as f64 * 0.02);
+
+    // Lookahead: chain-fitting with harmonic structure
+    if next_item_size > 0 {
+        let nd = next_item_size as f64;
+        if nd == post {
+            score -= 42.0;
+        } else if nd <= post {
+            let pair_residue = ((post_residual - next_item_size) % 20) as f64;
+            score -= 10.0 - pair_residue * 0.3;
+            if post_residual >= next_item_size * 2 {
+                score -= 4.0;
+            }
+            if (post_residual - next_item_size) % 20 == 0 {
+                score -= 6.0;
+            }
+        } else {
+            score += 6.0;
+            if post < 20.0 {
+                score += 15.0;
+            }
+        }
+        if post_residual > 0 && post_residual < 60 && nd > post {
+            let miss = nd - post;
+            score += (10.0 - miss).max(0.0) * 0.8;
+            if miss <= 10.0 {
+                score += 12.0;
+            }
+        }
+        // Two-item perfect chain reward
+        if post_residual >= next_item_size {
+            let after_next = post_residual - next_item_size;
+            if after_next == 0 {
+                score -= 18.0;
+            } else if after_next <= 5 {
+                score += 7.0;
+            }
+        }
+        // Triple-chain potential
+        if post_residual >= next_item_size * 2 {
+            let after_two = post_residual - next_item_size * 2;
+            if after_two == 0 {
+                score -= 10.0;
+            } else if after_two <= 5 {
+                score += 4.0;
+            }
+        }
+    }
+
+    // Mean-residual coupling: mild balancing
+    score += (res - mean_residual).abs() * 0.1;
+
+    // Relative-fit term: prefer bins where item consumes a large fraction of residual
+    let fit_ratio = item_size as f64 / res.max(1.0);
+    score -= fit_ratio * 11.0;
+
+    // Progress-aware tie-break
+    score -= progress * 3.0;
+
+    // Late-stream squeeze: exact residuals extra-rewarded near the end
+    if progress > 0.7 && post_residual == 0 {
+        score -= 8.0;
+    }
+    if progress > 0.85 && post_residual > 0 && post_residual <= 10 {
+        score += 8.0;
+    }
+
+    // MUTATION: mid-stream harmonic tightening — penalize residuals that can
+    // hold neither the next item nor a half-capacity block, nudging compaction
+    if post_residual > 30 && next_item_size > 0 && next_item_size > post_residual {
+        score += (post_residual % 10) as f64 * 0.6;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\evolution\run_seed_9034_evolution.json.tmp

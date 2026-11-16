@@ -1,0 +1,72 @@
+2026-11-15T16:59:00.568238Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9153, Pop=344, MaxGens=1
+2026-11-15T17:18:32.556292Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T17:38:33.651795Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 4s...
+2026-11-15T18:19:26.226923Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 62a83dc58a781b26 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9153 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4133 bins (excess: +112), Efficiency: 97.29%, Fuel: 32461374
+ Best In-Dist (w/o Lookahead) : 4208 bins (excess: +187), Efficiency: 95.56%
+ Dynamic Trajectory: tLDR = 0.9069
+ Behavior Profile : DeadSpaceRatio: 34.0%, NewBinRatio: 41.3%, ResVar: 0.54
+ MAP-Elites Niches: 13 active (13.0% coverage), QD-Score: 9.394
+ Validation Score : 4149 bins (excess: +111), Efficiency: 97.33%
+ OOD-1 Score      : 10192 bins (excess: +147), Efficiency: 98.56%
+ OOD-2 Score      : 3654 bins (excess: +73), Efficiency: 98.00%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-047
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Strict dead-space avoidance: small unusable gaps are heavily penalized.
+    // A residual below the minimum item size (1) is impossible, but gaps of
+    // 1..=9 are "dead" if the distribution's minimum is 10; be distribution
+    // agnostic: penalize gaps smaller than next_item_size when nonzero.
+    if post_residual > 0 {
+        if next_item_size > 0 && post_residual < next_item_size {
+            score += 25.0 + (next_item_size - post_residual) as f64 * 1.5;
+        }
+        // Tight fits are excellent: reward near-perfect packing.
+        if post_residual <= 3 {
+            score -= 12.0;
+        }
+    } else {
+        // Perfect closure of a bin.
+        score -= 30.0;
+    }
+
+    // Open-bins pressure: discourage spreading across many open bins early;
+    // encourage consolidating into open bins rather than opening new ones.
+    score += (open_bins_count as f64).sqrt() * 1.0;
+
+    // Last-chance bin: strongly prefer using it over opening a new bin.
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 20.0;
+    }
+
+    // Lookahead: if the next item fits exactly into the post residual,
+    // this placement sets up a perfect follow-up.
+    if next_item_size > 0 && post_residual == next_item_size {
+        score -= 15.0;
+    }
+
+    // Mean-residual coupling: prefer bins whose residual is below average
+    // (i.e., they are already "full-ish") to keep large residuals available.
+    if bin_residual as f64 > mean_residual {
+        score += 3.0;
+    } else {
+        score -= 3.0;
+    }
+
+    // Slight preference for opening a new bin late in the stream is removed:
+    // consolidation is always preferred; add mild new-bin penalty.
+    if bin_residual == bin_capacity {
+        score += 8.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9153_tirage.json.tmp

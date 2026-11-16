@@ -1,0 +1,78 @@
+2026-11-15T16:59:00.488622Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9102, Pop=344, MaxGens=1
+2026-11-15T17:03:23.956732Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Failed to read JSON: cannot decrypt peer's message). Retrying in 4s...
+2026-11-15T17:56:54.220078Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T18:08:22.844001Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Unexpected EOF). Retrying in 4s...
+2026-11-15T18:25:08.188731Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 9b6da5023606c778 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9102 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4158 bins (excess: +121), Efficiency: 97.10%, Fuel: 40092894
+ Best In-Dist (w/o Lookahead) : 4230 bins (excess: +193), Efficiency: 95.44%
+ Dynamic Trajectory: tLDR = 1.3401
+ Behavior Profile : DeadSpaceRatio: 23.3%, NewBinRatio: 41.6%, ResVar: 0.47
+ MAP-Elites Niches: 19 active (19.0% coverage), QD-Score: 12.848
+ Validation Score : 4121 bins (excess: +114), Efficiency: 97.24%
+ OOD-1 Score      : 10142 bins (excess: +122), Efficiency: 98.80%
+ OOD-2 Score      : 3601 bins (excess: +59), Efficiency: 98.37%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-308
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect-fit bonus: strongly favor bins whose residual is exactly consumed.
+    if post_residual == 0 {
+        score -= 500.0;
+    }
+
+    // Aggressive 2-step lookahead: if the next item fits exactly into post_residual,
+    // reward heavily; if it fits at all, reward moderately; otherwise penalize.
+    if next_item_size > 0 {
+        if next_item_size == post_residual {
+            score -= 400.0;
+        } else if next_item_size <= post_residual {
+            // Reward closeness of next item to post_residual (chain packing).
+            let gap = (post_residual as f64 - next_item_size as f64) / bin_capacity as f64;
+            score -= 200.0 * (1.0 - gap);
+        } else {
+            // Next item won't fit here: penalize leaving large awkward gaps.
+            score += 0.5 * post_residual as f64;
+        }
+    }
+
+    // Compare post_residual relative to mean residual across open bins.
+    // Leaving less than the mean residual is good (tight packing); more is bad.
+    let dev = post_residual as f64 - mean_residual;
+    score += 0.3 * dev;
+
+    // Last-chance bin: if this is the only bin that fits, prefer using it
+    // to avoid opening a new bin.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 150.0;
+    }
+
+    // Penalize new-bin opening unless existing bins would leave large waste.
+    if bin_residual == bin_capacity {
+        // New bin baseline: its post_residual is large; add a fixed opening cost
+        // so we only open when no open bin gives a tight fit.
+        score += 60.0;
+        // But if next item is large and current bins are tight, opening is fine:
+        if next_item_size > 0 && next_item_size as f64 > mean_residual {
+            score -= 80.0;
+        }
+        // Late in stream, prefer consolidating into open bins.
+        let progress = step_index as f64 / total_items.max(1) as f64;
+        score += 40.0 * progress;
+    }
+
+    // Mild penalty for many open bins to encourage consolidation.
+    score += 0.5 * open_bins_count as f64;
+
+    // Prefer placing larger items first into tighter bins (waste shaping).
+    score -= 0.1 * item_size as f64;
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9102_tirage.json.tmp

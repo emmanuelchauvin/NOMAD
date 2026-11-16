@@ -1,0 +1,96 @@
+2026-11-15T16:19:38.221048Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=3102, Pop=29, MaxGens=1
+2026-11-15T16:21:54.452111Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 624e5234bdc2a031 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3102 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4206 bins (excess: +167), Efficiency: 96.03%, Fuel: 27850812
+ Best In-Dist (w/o Lookahead) : 4207 bins (excess: +168), Efficiency: 96.01%
+ Dynamic Trajectory: tLDR = 0.2295
+ Behavior Profile : DeadSpaceRatio: 68.1%, NewBinRatio: 42.1%, ResVar: 0.52
+ MAP-Elites Niches: 3 active (3.0% coverage), QD-Score: 2.567
+ Validation Score : 4209 bins (excess: +177), Efficiency: 95.79%
+ OOD-1 Score      : 10402 bins (excess: +361), Efficiency: 96.53%
+ OOD-2 Score      : 3624 bins (excess: +71), Efficiency: 98.04%
+ Lineage Nodes    : 29, Transitions: 0
+ Best Heuristic   : LLM-Seed-007
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // --- Strict dead-space avoidance ---
+    // Small post-residuals that cannot host typical items (1..=10) are dead space.
+    // Penalize gaps in the "unusable" band harshly; reward exact/near-exact fits.
+    if post_residual == 0 {
+        // Perfect fit: strongly reward.
+        score -= 250.0;
+    } else if post_residual <= 5 {
+        // Tiny gap: essentially dead unless tiny items arrive; mild reward for tightness.
+        score -= 40.0;
+    } else if post_residual < 10 {
+        // Dead-space band: below the minimum item size (10). Penalize heavily.
+        score += 120.0;
+    } else if post_residual < 20 {
+        // Hard-to-fill band: only very small items fit; moderate penalty.
+        score += 45.0;
+    } else if post_residual < 35 {
+        // Mid band: fillable but wasteful; slight penalty.
+        score += 12.0;
+    } else {
+        // Large residual: flexible space, mild reward to keep bins useful.
+        score -= 8.0;
+    }
+
+    // Coupling: dead space is worse late in the stream (less time to recover).
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    if post_residual < 10 {
+        score += 60.0 * progress;
+    }
+
+    // Lookahead: if the next item fits exactly in the post-residual, reward strongly.
+    if next_item_size > 0 && next_item_size == post_residual {
+        score -= 150.0;
+    } else if next_item_size > 0 && next_item_size <= post_residual {
+        // Next item still fits: keep flexibility, mild reward proportional to slack left after it.
+        let after_next = post_residual - next_item_size;
+        score -= 15.0 + (after_next as f64).min(30.0);
+    } else if next_item_size > post_residual {
+        // Next item won't fit here anyway: dead space here is less costly.
+        score -= 10.0;
+    }
+
+    // Last-chance pressure: if this is the only fitting bin, avoid forcing a new bin
+    // unless the fit is terrible.
+    if fitting_bins_count == 1 && post_residual < 10 {
+        score -= 50.0;
+    }
+
+    // Open-bin pressure: penalize placements that keep many bins open with poor residuals.
+    score += (open_bins_count as f64) * 2.0;
+
+    // Deviation from mean residual: prefer bins whose residual is near the mean
+    // (balances load across open bins), penalize outliers.
+    let dev = (post_residual as f64 - mean_residual).abs();
+    score += dev * 0.3;
+
+    // New-bin candidate handling: an empty bin has maximal flexibility.
+    // Prefer it when all open bins would leave dead space (< 10), otherwise
+    // discourage opening new bins to consolidate load.
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            // There exist open bins that fit; only open a new one if every fit
+            // would create dead space. Approximate: penalize new bin mildly,
+            // letting dead-space penalties on open bins dominate.
+            score += 30.0 + (open_bins_count as f64) * 3.0;
+        } else {
+            // No open bin fits: new bin is required; reward it.
+            score -= 100.0;
+        }
+        // Late in stream, slightly discourage opening bins (waste risk).
+        score += 20.0 * progress;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340_essai\tirage\run_seed_3102_tirage.json.tmp

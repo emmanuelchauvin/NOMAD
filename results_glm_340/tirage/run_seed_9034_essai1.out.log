@@ -1,0 +1,77 @@
+2026-11-15T19:41:33.629849Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9034, Pop=344, MaxGens=1
+2026-11-15T20:31:42.293260Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T21:09:21.802173Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T21:14:02.237924Z  INFO nomad_orchestrator::engine: Evaluating winning capsule e56ed7e2a9b78985 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9034 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4153 bins (excess: +127), Efficiency: 96.95%, Fuel: 35213824
+ Best In-Dist (w/o Lookahead) : 4221 bins (excess: +195), Efficiency: 95.38%
+ Dynamic Trajectory: tLDR = 1.0772
+ Behavior Profile : DeadSpaceRatio: 47.1%, NewBinRatio: 41.5%, ResVar: 0.45
+ MAP-Elites Niches: 14 active (14.0% coverage), QD-Score: 10.092
+ Validation Score : 4140 bins (excess: +127), Efficiency: 96.94%
+ OOD-1 Score      : 10271 bins (excess: +211), Efficiency: 97.95%
+ OOD-2 Score      : 3626 bins (excess: +73), Efficiency: 97.99%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-178
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit reward
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // Aggressive 2-step lookahead: reward bins whose post_residual
+    // exactly matches the next item's size.
+    if next_item_size > 0 {
+        let gap = (post_residual as i64 - next_item_size as i64).abs() as f64;
+        // Exact match for next item -> strong reward
+        if gap == 0.0 {
+            score -= 300.0;
+        } else if (post_residual as i64) >= (next_item_size as i64) {
+            // Next item still fits: mild reward proportional to tightness
+            score -= (50.0 * (1.0 - gap / bin_capacity as f64)).max(0.0);
+        } else {
+            // Next item would NOT fit: penalize wasted potential
+            score += 40.0 + gap * 0.5;
+        }
+    }
+
+    // Relative to mean residual: prefer bins tighter (smaller residual) than average
+    score += 0.5 * (post_residual as f64 - mean_residual);
+
+    // Last-chance bonus: if this is the only bin that fits, strongly prefer it
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 200.0;
+    }
+
+    // Penalize opening a new bin when decent open bins exist
+    if bin_residual == bin_capacity {
+        // New bin candidate: baseline penalty unless item is large relative to capacity
+        // or open bins are already very full (mean residual low)
+        let mean_fullness = 1.0 - mean_residual / bin_capacity as f64;
+        let item_ratio = item_size as f64 / bin_capacity as f64;
+        score += 120.0 - 80.0 * item_ratio - 60.0 * mean_fullness;
+        // If next item is large, a fresh bin may be valuable
+        if next_item_size > 0 {
+            let next_ratio = next_item_size as f64 / bin_capacity as f64;
+            score -= 50.0 * next_ratio;
+        }
+    }
+
+    // Early in the stream, allow slightly more freedom to open bins (diversification)
+    if total_items > 0 {
+        let progress = step_index as f64 / total_items as f64;
+        if bin_residual == bin_capacity {
+            score -= 30.0 * (1.0 - progress);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9034_tirage.json.tmp
