@@ -580,6 +580,8 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block wit
         } else {
             Self::normalize_to_ast_score_bin(&raw_code, seed, index)
         };
+        // Reponse illisible remplacee par un gabarit : etiquetee pour l'analyse.
+        let used_fallback = ast_code != raw_code.trim();
         let fp = Some(compute_structural_fingerprint(&item_fn));
 
         let name = format!("LLM-Seed-{:03}", index);
@@ -600,6 +602,9 @@ Return ONLY the executable Rust function inside a ```rust ... ``` code block wit
 
         let mut metadata = HashMap::new();
         metadata.insert("operator".to_string(), "HttpLlamaOperator".to_string());
+        if used_fallback {
+            metadata.insert("fallback_template".to_string(), "true".to_string());
+        }
         metadata.insert("seed".to_string(), seed.to_string());
 
         let capsule = SkillCapsule::new_v2(
@@ -737,6 +742,8 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
         } else {
             Self::normalize_to_ast_score_bin(&raw_code, seed, generation)
         };
+        // Reponse illisible remplacee par un gabarit : etiquetee pour l'analyse.
+        let used_fallback = ast_code != raw_code.trim();
         let fp = Some(compute_structural_fingerprint(&item_fn));
 
         let name = format!("{}-mut-g{}", parent.name, generation);
@@ -757,6 +764,9 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
 
         let mut metadata = HashMap::new();
         metadata.insert("operator".to_string(), "HttpLlamaOperator".to_string());
+        if used_fallback {
+            metadata.insert("fallback_template".to_string(), "true".to_string());
+        }
         metadata.insert("parent_hash".to_string(), parent.content_hash.clone());
         if let Some(lin) = lineage {
             if let Some(v) = &lin.v_previous {
@@ -868,6 +878,12 @@ Return ONLY the hybrid Rust function in a ```rust ... ``` code block."
         } else {
             Self::normalize_to_ast_score_bin(&raw_code, seed, generation)
         };
+        // Reponse illisible remplacee par un gabarit : etiquetee pour l'analyse.
+        let used_fallback = ast_code != raw_code.trim();
+        let mut metadata = metadata;
+        if used_fallback {
+            metadata.insert("fallback_template".to_string(), "true".to_string());
+        }
         let fp = Some(compute_structural_fingerprint(&item_fn));
 
         let audit = ReproducibilityAudit {
