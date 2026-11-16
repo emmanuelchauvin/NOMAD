@@ -1,6 +1,6 @@
 # Reprise du projet sur une autre machine
 
-État au 15 novembre 2026, 15 h 30, branche `weibull-benchmark`. Cette fiche sert à reprendre
+État au 16 novembre 2026, branche `weibull-benchmark`. Cette fiche sert à reprendre
 le travail sur un autre PC ou avec un autre assistant : elle résume où en est la preuve et ce
 qui reste à faire.
 
@@ -28,26 +28,33 @@ avec le budget. C'est le préalable à la grille évolutive distribuée (evoluth
 | [RESULTATS_GEMINI_ECHELLE.md](RESULTATS_GEMINI_ECHELLE.md) | gemini-3.1-flash-lite | 340 appels | H1, H2 établies |
 | [RESULTATS_GEMINI_COURBE.md](RESULTATS_GEMINI_COURBE.md) | gemini-3.1-flash-lite | 1 359 appels, 24 seeds | **H1, H2, H3 établies** |
 | [PROTOCOLE_GLM_COURBE.md](PROTOCOLE_GLM_COURBE.md) | glm-5.3-flash (OpenRouter) | 1 359 appels | abandonné après l'essai préalable |
+| [RESULTATS_GLM_340.md](RESULTATS_GLM_340.md) | glm-5.3-flash (OpenRouter) | 344 appels, 24 seeds | **H1 établie**, H2 non (coût par appel ×4,4) |
 
 H1 : à appels égaux, l'évolution bat le tirage. H2 : à dépense égale aussi. H3 : l'avance
 est plus grande à 1 359 appels qu'à 340.
 
 ## Prochaines étapes, dans l'ordre
 
-1. **Réplication sur GLM à 340 appels.** Nouveau protocole `docs/PROTOCOLE_GLM_340.md`
-   calqué sur [PROTOCOLE_GLM_COURBE.md](PROTOCOLE_GLM_COURBE.md) : mêmes réglages, 24 seeds
-   neuves (par exemple 9000 à 9391), évolution `-n 47` avec `NOMAD_INIT_POP=22`
-   (22 + 46 × 7 = 344 : à ajuster pour tomber sur 340, ou garder les paliers sur les
-   340 premières propositions du journal), tirage `--pop-size 340 -n 1`. Tests H1 et H2,
-   seuil 0,05. Coût estimé : environ 2,50 $. Durée : une nuit sur l'ancien PC.
-2. **H3 sur un autre modèle**, qui ne fasse pas grossir les programmes à la mutation
-   (candidat : `deepseek/deepseek-v4.1-flash` sur OpenRouter, environ 6 $ pour 12 seeds).
-   Essai préalable court d'abord.
-3. **Croisement AST** : le corriger et l'ajouter au moteur du groupe D derrière une option,
-   puis le tester contre l'évolution seule. Deux défauts du groupe C à corriger d'abord,
-   notés dans [RESULTATS_GEMINI_COURBE.md](RESULTATS_GEMINI_COURBE.md).
-4. **Autre problème** : l'ordonnancement, après vérification que son benchmark est sain.
-5. **Îles** : export/import d'archives entre populations sur une machine, puis protocole.
+1. **Croisement AST** (worktree `../nomad-ast`, branche `ast-croisement`). Corrigé les 15 et
+   16 novembre : sondes du niveau 3 sans OOD, enfant rejeté jamais champion, analyse de
+   dépendances par portée, greffe non résolue refusée, locus 1 du croisement multi-locus
+   placé après la déclaration de `score` (48 enfants sur 192 étaient invalides à cause de
+   lui). Banc hors ligne (`mesures/`, 12 runs Gemini, 192 enfants) : 6 enfants battent le
+   champion de leur run, tous confirmés en validation (jusqu'à −80 bacs), dont 4 entre
+   îles. Restent à corriger : appel au modèle caché dans le croisement avant le contrôle
+   du budget, contrôle de niveau 1 vide, archive non déterministe (HashMap), niveau 3 qui
+   accepte un enfant moins bon que son hôte, anciens usages de `collect_dependencies`.
+   Puis protocole groupe C contre groupe D.
+2. **Élagage par ablation** (`examples/prune_champions.rs`) : sur les 24 champions Gemini,
+   45 règles sur 273 retirées sans perte, 130 bacs gagnés en validation (seed 8136 :
+   −84). À brancher dans le moteur, aussi pour réduire le coût par appel, cause de l'échec
+   de H2 sur GLM.
+3. **Relances** : elles ne produisent presque aucun champion (Gemini et GLM). Mesurer si
+   leurs descendants en produisent, puis tester un moteur avec moins de relances.
+4. **H3 sur un second modèle** (GLM, MiniMax M3 ou DeepSeek par OpenRouter). Essai
+   préalable court d'abord.
+5. **Autre problème** : l'ordonnancement, après vérification que son benchmark est sain.
+6. **Îles** : export/import d'archives entre populations sur une machine, puis protocole.
 
 ## Installer l'environnement
 
@@ -85,4 +92,6 @@ est plus grande à 1 359 appels qu'à 340.
   Douze processus en parallèle chargent fortement un processeur à 6 cœurs.
 - Crédits : Gemini (clé Google, 17,23 € restants au 15 novembre, sans recharge
   automatique), OpenRouter (12 $ achetés, environ
-  0,75 $ dépensés au 15 novembre, sans recharge automatique).
+  4,25 $ dépensés au 16 novembre après le tir GLM à 344 appels, sans recharge automatique).
+  Les clés Gemini et MiniMax sont aussi enregistrées dans OpenRouter : `gemini-3.1-flash-lite`
+  et MiniMax M3 y sont utilisables (vérifier la facturation avec une clé propre).
