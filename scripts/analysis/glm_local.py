@@ -175,6 +175,21 @@ for k in PALIERS:
     print(f"   {k:4d} appels : ecart median {med(d):6.1f} points, seeds gagnees par le bras local "
           f"{sum(x > 0 for x in d):2d}, perdues {sum(x < 0 for x in d):2d}, egalites {sum(x == 0 for x in d):2d}")
 
+print("\n== Exces sur la borne L1 (validation, % de L1, descriptif ajoute le 16/11 apres depouillement)")
+for k in PALIERS:
+    cells = []
+    for a in ARMS:
+        v = []
+        for s in SEEDS:
+            p = champion_at(reports[a][s], k)
+            if p is not None and p["validation_is_valid"]:
+                l1 = R[s]["Valid"][1]
+                v.append(100 * (p["validation_bins"] - l1) / l1)
+        cells.append(f"{a} {med(v):5.2f} %")
+    print(f"   {k:4d} appels : " + ", ".join(cells))
+bf_exc = [100 * (R[s]["Valid"][0] - R[s]["Valid"][1]) / R[s]["Valid"][1] for s in SEEDS]
+print(f"   Best-Fit : {med(bf_exc):5.2f} %")
+
 print("\n== Origine du champion final (type de la proposition)")
 for a in ARMS:
     kinds = {}

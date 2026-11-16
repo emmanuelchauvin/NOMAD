@@ -50,6 +50,11 @@ seeds domine l'effet des opérateurs.
 
 ## Mesures descriptives, sans valeur de test
 
+- **Excès sur la borne L1** (validation, médiane, en % de L1 ; mesure ajoutée après le
+  dépouillement, sur la suggestion d'Argon, pour comparaison avec la littérature) :
+  Best-Fit 4,65 %. À 344 appels : témoin 1,77 %, local 1,72 % (à 85 appels : 2,96 % et
+  2,75 % ; à 170 : 1,91 % et 2,02 %).
+
 - **Coût par appel divisé par deux.** Témoin : 0,000344 $ par appel (comme l'évolution du
   protocole GLM à 344 appels, 0,000345 $). Local : 0,000170 $. Rapport local / témoin :
   **0,494**. Tokens en entrée : 15,1 contre 7,8 millions ; en sortie : 10,4 contre 5,0
