@@ -1147,6 +1147,34 @@ mod tests {
     }
 
     #[test]
+    /// Forme d'une greffe : variable du donneur renommee `_d_x`, reaffectee dans un `if` puis
+    /// hors de lui avant d'etre lue.
+    fn renamed_donor_variables_and_reassignments_are_evaluated() {
+        let code = "pub fn score_bin(item_size: u32, bin_residual: u32) -> f64 { \
+                    let mut score = bin_residual as f64; \
+                    let mut _d_bonus = 0.0; \
+                    if item_size > 5 { _d_bonus += 10.0; } \
+                    _d_bonus *= 2.0; \
+                    if bin_residual < 60 { score += _d_bonus; } \
+                    score }";
+        let item_fn: ItemFn = syn::parse_str(code).unwrap();
+        let interpreter = AstInterpreter::new(&item_fn, 50_000);
+        let ctx = ScorePolicyContext {
+            item_size: 10,
+            next_item_size: 10,
+            bin_residual: 50,
+            bin_capacity: 100,
+            step_index: 0,
+            total_items: 10,
+            open_bins_count: 1,
+            mean_residual: 50.0,
+            post_residual: 40,
+            fitting_bins_count: 1,
+        };
+        assert_eq!(interpreter.eval(&ctx).unwrap().score, 70.0);
+    }
+
+    #[test]
     fn test_ast_interpreter_recursion_depth_limit() {
         // Build an expression nested 55 levels deep: ((((...(1.0 + 1.0)...))))
         let mut expr_str = "1.0".to_string();

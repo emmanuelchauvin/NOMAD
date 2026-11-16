@@ -26,6 +26,8 @@ pub enum LogicalUnitKind {
 /// ou la greffe vers un autre organisme (Section 4.4).
 #[derive(Debug, Clone)]
 pub struct LogicalUnit {
+    /// Position de l'instruction dans le corps du donneur.
+    pub index: usize,
     /// Identifiant synthétique unique de l'unité logique.
     pub unit_id: String,
     /// Nature typologique du fragment (branche, variable, calcul).
@@ -202,7 +204,7 @@ pub fn collect_expr_dependencies(expr: &Expr) -> Vec<String> {
 pub fn extract_logical_units(item_fn: &ItemFn) -> Vec<LogicalUnit> {
     let mut units = Vec::new();
 
-    for stmt in &item_fn.block.stmts {
+    for (index, stmt) in item_fn.block.stmts.iter().enumerate() {
         let (kind, should_extract) = match stmt {
             Stmt::Local(Local { init: Some(_), .. }) => (LogicalUnitKind::LocalBinding, true),
             Stmt::Expr(Expr::If(_), _) => (LogicalUnitKind::ConditionalBranch, true),
@@ -223,6 +225,7 @@ pub fn extract_logical_units(item_fn: &ItemFn) -> Vec<LogicalUnit> {
             let dependencies = collect_dependencies(stmt);
 
             units.push(LogicalUnit {
+                index,
                 unit_id,
                 kind,
                 stmt: stmt.clone(),

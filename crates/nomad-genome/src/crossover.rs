@@ -82,23 +82,194 @@ fn extract_in_scope_locals(stmts: &[syn::Stmt], locus_idx: usize) -> HashSet<Str
     in_scope
 }
 
-fn find_donor_definition(donor_stmts: &[syn::Stmt], var: &str) -> Option<(usize, syn::Stmt)> {
-    for (idx, stmt) in donor_stmts.iter().enumerate() {
-        if let syn::Stmt::Local(local) = stmt {
-            if let Some(p) = local_pat_ident(&local.pat) {
-                if p.ident == var {
-                    return Some((idx, stmt.clone()));
+/// Vrai si `stmt` est un `let` de premier niveau qui lie `var`.
+fn defines_var(stmt: &syn::Stmt, var: &str) -> bool {
+    matches!(stmt, syn::Stmt::Local(l) if local_pat_ident(&l.pat).is_some_and(|p| p.ident == var))
+}
+
+fn path_ident(expr: &syn::Expr) -> Option<String> {
+    match expr {
+        syn::Expr::Path(p) if p.qself.is_none() => p.path.get_ident().map(|i| i.to_string()),
+        _ => None,
+    }
+}
+
+/// Noms affectes par une instruction, a toute profondeur (`x = ..`, `x += ..`), et noms
+/// lies a l'interieur (`let`, motifs) : ces derniers sont locaux a l'instruction.
+#[derive(Default)]
+struct WriteCollector {
+    written: HashSet<String>,
+    bound: HashSet<String>,
+}
+
+impl<'ast> syn::visit::Visit<'ast> for WriteCollector {
+    fn visit_expr_assign(&mut self, n: &'ast syn::ExprAssign) {
+        if let Some(name) = path_ident(&n.left) {
+            self.written.insert(name);
+        }
+        syn::visit::visit_expr_assign(self, n);
+    }
+    fn visit_expr_binary(&mut self, n: &'ast syn::ExprBinary) {
+        if matches!(
+            n.op,
+            syn::BinOp::AddAssign(_)
+                | syn::BinOp::SubAssign(_)
+                | syn::BinOp::MulAssign(_)
+                | syn::BinOp::DivAssign(_)
+                | syn::BinOp::RemAssign(_)
+        ) {
+            if let Some(name) = path_ident(&n.left) {
+                self.written.insert(name);
+            }
+        }
+        syn::visit::visit_expr_binary(self, n);
+    }
+    fn visit_pat_ident(&mut self, p: &'ast syn::PatIdent) {
+        self.bound.insert(p.ident.to_string());
+        syn::visit::visit_pat_ident(self, p);
+    }
+}
+
+fn writes_of(stmt: &syn::Stmt) -> WriteCollector {
+    let mut w = WriteCollector::default();
+    syn::visit::Visit::visit_stmt(&mut w, stmt);
+    w
+}
+
+/// Renomme des variables (lectures, ecritures et liaisons) selon `map`.
+struct Renamer<'a> {
+    map: &'a HashMap<String, String>,
+}
+
+impl syn::visit_mut::VisitMut for Renamer<'_> {
+    fn visit_expr_path_mut(&mut self, n: &mut syn::ExprPath) {
+        if n.qself.is_none() && n.path.segments.len() == 1 {
+            let seg = &mut n.path.segments[0];
+            if let Some(new) = self.map.get(&seg.ident.to_string()) {
+                seg.ident = syn::Ident::new(new, seg.ident.span());
+            }
+        }
+        syn::visit_mut::visit_expr_path_mut(self, n);
+    }
+    fn visit_pat_ident_mut(&mut self, p: &mut syn::PatIdent) {
+        if let Some(new) = self.map.get(&p.ident.to_string()) {
+            p.ident = syn::Ident::new(new, p.ident.span());
+        }
+        syn::visit_mut::visit_pat_ident_mut(self, p);
+    }
+}
+
+/// Nom libre pour la variable du donneur `var` : `_d_var`, sinon `_d2_var`, `_d3_var`...
+fn fresh_donor_name(var: &str, taken: &HashSet<String>) -> String {
+    let mut name = format!("_d_{var}");
+    let mut k = 2;
+    while taken.contains(&name) {
+        name = format!("_d{k}_{var}");
+        k += 1;
+    }
+    name
+}
+
+/// Backward program slicing syntaxique : rassemble ce que lit `stmt_to_insert` (l'unite
+/// d'indice `unit_index` du donneur, ou la regle derivee d'elle) pour l'inserer dans l'hote
+/// avant `locus_idx`.
+///
+/// - Une variable que le donneur definit avant l'unite est celle du donneur : sa definition,
+///   ses redefinitions et ses reaffectations (`x += ..`, `if c { x = .. }`) avant l'unite
+///   sont copiees dans l'ordre du donneur, puis renommees `_d_x` pour ne capturer ni ecraser
+///   aucune variable de l'hote. Une reaffectation qui ecrit aussi une variable de l'hote
+///   (`score` compris) rend la greffe impossible.
+/// - `score` et les variables que le donneur ne definit pas sont celles de l'hote
+///   (parametres ou variables en portee au locus) ; sinon la greffe est impossible.
+pub fn graft_slice(
+    stmt_to_insert: &syn::Stmt,
+    unit_index: usize,
+    donor_stmts: &[syn::Stmt],
+    host_stmts: &[syn::Stmt],
+    host_params: &HashSet<String>,
+    locus_idx: usize,
+) -> Option<Vec<syn::Stmt>> {
+    let mut host_scope = extract_in_scope_locals(host_stmts, locus_idx);
+    host_scope.extend(host_params.iter().cloned());
+    let limit = unit_index.min(donor_stmts.len());
+
+    let mut donor_vars = BTreeSet::new();
+    let mut included = BTreeSet::new();
+    let mut reassignments = BTreeSet::new();
+    let mut worklist = collect_free_variables(stmt_to_insert);
+    let mut visited = HashSet::new();
+
+    while let Some(var) = worklist.pop() {
+        if is_builtin_or_method(&var) || !visited.insert(var.clone()) {
+            continue;
+        }
+        let first_def = (0..limit).find(|&i| defines_var(&donor_stmts[i], &var));
+        let Some(first_def) = first_def.filter(|_| var != "score") else {
+            if host_scope.contains(&var) {
+                continue;
+            }
+            return None;
+        };
+        donor_vars.insert(var.clone());
+        for (i, s) in donor_stmts.iter().enumerate().take(limit).skip(first_def) {
+            let is_def = defines_var(s, &var);
+            if is_def || writes_of(s).written.contains(&var) {
+                included.insert(i);
+                if !is_def {
+                    reassignments.insert(i);
                 }
+                worklist.extend(collect_free_variables(s));
             }
         }
     }
-    None
+
+    // Une reaffectation copiee n'ecrit que des variables du donneur ou les siennes.
+    for &i in &reassignments {
+        let w = writes_of(&donor_stmts[i]);
+        if w
+            .written
+            .iter()
+            .any(|n| !donor_vars.contains(n) && !w.bound.contains(n))
+        {
+            return None;
+        }
+    }
+
+    let mut taken: HashSet<String> = host_params.clone();
+    for st in host_stmts.iter().chain(donor_stmts) {
+        taken.extend(collect_dependencies(st));
+    }
+    let mut map = HashMap::new();
+    for v in &donor_vars {
+        let name = fresh_donor_name(v, &taken);
+        taken.insert(name.clone());
+        map.insert(v.clone(), name);
+    }
+    let mut renamer = Renamer { map: &map };
+
+    let mut slice: Vec<syn::Stmt> = included.iter().map(|&i| donor_stmts[i].clone()).collect();
+    for st in &mut slice {
+        syn::visit_mut::VisitMut::visit_stmt_mut(&mut renamer, st);
+    }
+    let mut inserted = stmt_to_insert.clone();
+    match &mut inserted {
+        // Le nom lie par l'unite elle-meme est garde : l'hote peut le lire en aval.
+        syn::Stmt::Local(local) => {
+            if let Some(init) = &mut local.init {
+                syn::visit_mut::VisitMut::visit_expr_mut(&mut renamer, &mut init.expr);
+                if let Some((_, diverge)) = &mut init.diverge {
+                    syn::visit_mut::VisitMut::visit_expr_mut(&mut renamer, diverge);
+                }
+            }
+        }
+        st => syn::visit_mut::VisitMut::visit_stmt_mut(&mut renamer, st),
+    }
+    slice.push(inserted);
+    Some(slice)
 }
 
-/// Backward program slicing syntaxique minimal :
-/// Vérifie que l'ensemble des identifiants requis par `stmt_to_insert` est couvert par la
-/// signature de la fonction hôte ou ses variables en portée. Si une variable locale donneuse
-/// est requise, extrait et inclut récursivement ses déclarations depuis le donneur.
+/// Comme `graft_slice`, pour une instruction du donneur reperee par son contenu (a defaut,
+/// toutes les definitions du donneur sont disponibles).
 pub fn resolve_dependencies_with_backward_slice(
     stmt_to_insert: &syn::Stmt,
     donor_stmts: &[syn::Stmt],
@@ -106,43 +277,11 @@ pub fn resolve_dependencies_with_backward_slice(
     host_params: &HashSet<String>,
     locus_idx: usize,
 ) -> Option<Vec<syn::Stmt>> {
-    let mut in_scope = extract_in_scope_locals(host_stmts, locus_idx);
-    for p in host_params {
-        in_scope.insert(p.clone());
-    }
-
-    let mut needed_donor_indices = BTreeSet::new();
-    let mut worklist = collect_free_variables(stmt_to_insert);
-    let mut visited_vars = HashSet::new();
-
-    while let Some(var) = worklist.pop() {
-        if is_builtin_or_method(&var) || in_scope.contains(&var) {
-            continue;
-        }
-        if !visited_vars.insert(var.clone()) {
-            continue;
-        }
-
-        // Tenter de localiser la déclaration amont dans le donneur
-        if let Some((idx, def_stmt)) = find_donor_definition(donor_stmts, &var) {
-            needed_donor_indices.insert(idx);
-            for dep in collect_free_variables(&def_stmt) {
-                if !in_scope.contains(&dep) && !is_builtin_or_method(&dep) {
-                    worklist.push(dep);
-                }
-            }
-        } else {
-            // Variable non résolue (incompatible ou absente des deux organismes)
-            return None;
-        }
-    }
-
-    let mut full_slice = Vec::new();
-    for idx in needed_donor_indices {
-        full_slice.push(donor_stmts[idx].clone());
-    }
-    full_slice.push(stmt_to_insert.clone());
-    Some(full_slice)
+    let unit_index = donor_stmts
+        .iter()
+        .position(|s| s == stmt_to_insert)
+        .unwrap_or(donor_stmts.len());
+    graft_slice(stmt_to_insert, unit_index, donor_stmts, host_stmts, host_params, locus_idx)
 }
 
 /// ============================================================================
@@ -229,8 +368,9 @@ pub fn deterministic_ast_crossover(
             }
         }
 
-        if let Some(slice) = resolve_dependencies_with_backward_slice(
+        if let Some(slice) = graft_slice(
             &cand_stmt,
+            cand.index,
             &donor_fn.block.stmts,
             stmts,
             &host_params,
@@ -500,8 +640,9 @@ pub fn multi_locus_ast_crossover(
         }
     }
 
-    let slice1 = resolve_dependencies_with_backward_slice(
+    let slice1 = graft_slice(
         &stmt1,
+        unit1.index,
         &donor_fn.block.stmts,
         stmts,
         &host_params,
@@ -598,8 +739,9 @@ pub fn multi_locus_ast_crossover(
         }
     }
 
-    let slice2 = resolve_dependencies_with_backward_slice(
+    let slice2 = graft_slice(
         &stmt2,
+        unit2.index,
         &donor_fn.block.stmts,
         stmts,
         &host_params,
@@ -787,9 +929,9 @@ mod tests {
                 multi_locus_ast_crossover(&host, &donor, seed, 1),
             ] {
                 let (child, _) = res.expect("greffe");
-                if child.logic_code.contains("gap > 50.0") {
+                if child.logic_code.contains("_d_gap > 50.0") {
                     seen = true;
-                    assert!(child.logic_code.contains("let gap : f64"), "{}", child.logic_code);
+                    assert!(child.logic_code.contains("let _d_gap : f64"), "{}", child.logic_code);
                 }
             }
         }
@@ -977,12 +1119,91 @@ mod tests {
 
         assert!(child.is_crossover());
         // Verify backward slice pulled `custom_scale` declaration into child logic code
-        if child.logic_code.contains("score = score + custom_scale") {
+        if child.logic_code.contains("score = score + _d_custom_scale") {
             assert!(
-                child.logic_code.contains("let custom_scale ="),
+                child.logic_code.contains("let _d_custom_scale ="),
                 "Child must contain sliced definition of custom_scale"
             );
         }
         assert!(manifest.host_capsule == host.id);
+    }
+
+    fn body(code: &str) -> Vec<syn::Stmt> {
+        parse_heuristic_fn(&format!("{SIG} {{ {code} }}")).unwrap().block.stmts
+    }
+
+    fn params() -> HashSet<String> {
+        parse_heuristic_fn(&format!("{SIG} {{ 0.0 }}"))
+            .map(|f| extract_signature_params(&f))
+            .unwrap()
+    }
+
+    fn render(stmts: &[syn::Stmt]) -> String {
+        stmts.iter().map(|s| quote::quote!(#s).to_string()).collect::<Vec<_>>().join(" ")
+    }
+
+    /// Les variables du donneur sont renommees : la greffe ne lit ni n'ecrase la variable
+    /// homonyme de l'hote.
+    #[test]
+    fn donor_variables_do_not_capture_host_variables() {
+        let host = body("let gap = item_size as f64; let mut score = gap; score");
+        let donor = body(
+            "let gap = bin_residual as f64 * 3.0; let mut score = 0.0; \
+             if gap > 5.0 { score += gap; } score",
+        );
+        let slice = graft_slice(&donor[2], 2, &donor, &host, &params(), 2).expect("greffe");
+        let code = render(&slice);
+        assert!(code.contains("let _d_gap = bin_residual as f64 * 3.0"), "{code}");
+        assert!(code.contains("_d_gap > 5.0") && code.contains("score += _d_gap"), "{code}");
+        assert!(!code.contains("let gap"), "{code}");
+    }
+
+    /// Les reaffectations d'une variable du donneur, entre sa definition et l'unite, font
+    /// partie de la tranche, dans l'ordre du donneur.
+    #[test]
+    fn donor_reassignments_are_part_of_the_slice() {
+        let host = body("let mut score = bin_residual as f64; score");
+        let donor = body(
+            "let mut bonus = 0.0; if item_size > 50 { bonus += 10.0; } bonus *= 2.0; \
+             let mut score = 0.0; if bin_residual < 20 { score += bonus; } score",
+        );
+        let slice = graft_slice(&donor[4], 4, &donor, &host, &params(), 1).expect("greffe");
+        let code = render(&slice);
+        assert_eq!(slice.len(), 4, "{code}");
+        let def = code.find("let mut _d_bonus = 0.0").expect(&code);
+        let inc = code.find("_d_bonus += 10.0").expect(&code);
+        let dbl = code.find("_d_bonus *= 2.0").expect(&code);
+        let used = code.find("score += _d_bonus").expect(&code);
+        assert!(def < inc && inc < dbl && dbl < used, "{code}");
+        // Une reaffectation posterieure a l'unite n'est pas copiee.
+        let late = body(
+            "let mut bonus = 1.0; let mut score = 0.0; if item_size > 5 { score += bonus; } \
+             bonus += 9.0; score",
+        );
+        let slice = graft_slice(&late[2], 2, &late, &host, &params(), 1).expect("greffe");
+        assert!(!render(&slice).contains("9.0"));
+    }
+
+    /// Une reaffectation qui ecrit aussi une variable de l'hote ne peut pas etre copiee.
+    #[test]
+    fn reassignment_writing_a_host_variable_is_refused() {
+        let host = body("let mut score = bin_residual as f64; score");
+        let donor = body(
+            "let mut b = 0.0; let mut score = 1.0; \
+             if item_size > 5 { b += 1.0; score -= 1.0; } \
+             if bin_residual < 9 { score += b; } score",
+        );
+        assert!(graft_slice(&donor[3], 3, &donor, &host, &params(), 1).is_none());
+    }
+
+    /// Un nom `_d_x` deja pris dans l'hote (greffe anterieure) n'est pas reutilise.
+    #[test]
+    fn fresh_name_avoids_previous_grafts() {
+        let host = body("let mut score = bin_residual as f64; let _d_gap = 1.0; score += _d_gap; score");
+        let donor = body("let gap = item_size as f64; let mut score = 0.0; score += gap; score");
+        let slice = graft_slice(&donor[2], 2, &donor, &host, &params(), 3).expect("greffe");
+        let code = render(&slice);
+        assert!(code.contains("let _d2_gap = item_size as f64"), "{code}");
+        assert!(code.contains("score += _d2_gap"), "{code}");
     }
 }

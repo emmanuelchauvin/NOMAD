@@ -5,7 +5,7 @@ use thiserror::Error;
 use nomad_core::{GraftManifest, SkillCapsule, ValidationStatus};
 
 use crate::ast::parse_score_bin;
-use crate::unit::{collect_dependencies, collect_expr_dependencies};
+use crate::unit::{collect_dependencies, collect_expr_dependencies, collect_free_variables};
 
 #[derive(Debug, Error)]
 pub enum AntiDeadCodeError {
@@ -152,17 +152,18 @@ pub fn compute_liveness(item_fn: &ItemFn) -> Vec<bool> {
     // La dernière instruction (expression de retour) est toujours vivante
     let last_idx = stmts.len() - 1;
     is_live[last_idx] = true;
-    for dep in collect_dependencies(&stmts[last_idx]) {
+    // Seules les variables lues par l'expression rendue sont requises au depart : aucun nom
+    // n'est privilegie (`score` n'est vivant que si le resultat le lit).
+    for dep in collect_free_variables(&stmts[last_idx]) {
         needed_vars.insert(dep);
     }
-    // "score" est la variable cible canonique
-    needed_vars.insert("score".to_string());
 
     // Parcours arrière depuis last_idx - 1 jusqu'à 0
     for i in (0..last_idx).rev() {
         let stmt = &stmts[i];
         let defined = extract_defined_ident(stmt);
-        let deps = collect_dependencies(stmt);
+        // Variables lues (ni methodes, ni types, ni noms lies dans l'instruction).
+        let deps = collect_free_variables(stmt);
 
         match stmt {
             Stmt::Local(_) => {
@@ -172,7 +173,7 @@ pub fn compute_liveness(item_fn: &ItemFn) -> Vec<bool> {
                         needed_vars.remove(&var); // Définition : tue le besoin aval
                         // Les variables lues dans l'initialisation sont requises en amont
                         // (y compris si `var` est référencée sur le membre droit via shadowing)
-                        for d in collect_read_dependencies(stmt) {
+                        for d in collect_free_variables(stmt) {
                             needed_vars.insert(d);
                         }
                     } else {
@@ -564,5 +565,24 @@ mod tests {
         // stmt 1: if bin_residual < 10 { let dummy = 42.0; } (DEAD!)
         // stmt 2: score (live)
         assert_eq!(liveness_dead, vec![true, false, true]);
+    }
+
+    /// Aucun nom n'est vivant d'office : `score` est mort si le resultat ne le lit pas, et un
+    /// nom de methode (`.max`) ne garde pas en vie la variable homonyme.
+    #[test]
+    fn liveness_starts_from_the_returned_expression_only() {
+        let sig = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, \
+                   step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64";
+        let f = parse_score_bin(&format!(
+            "{sig} {{ let mut score = 1.0; let other = bin_residual as f64; other }}"
+        ))
+        .unwrap();
+        assert_eq!(compute_liveness(&f), vec![false, true, true]);
+
+        let f = parse_score_bin(&format!(
+            "{sig} {{ let max = 3.0; let mut score = bin_residual as f64; score.max(0.0) }}"
+        ))
+        .unwrap();
+        assert_eq!(compute_liveness(&f), vec![false, true, true]);
     }
 }
