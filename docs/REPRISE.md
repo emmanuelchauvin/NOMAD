@@ -29,12 +29,16 @@ avec le budget. C'est le préalable à la grille évolutive distribuée (evoluth
 | [RESULTATS_GEMINI_COURBE.md](RESULTATS_GEMINI_COURBE.md) | gemini-3.1-flash-lite | 1 359 appels, 24 seeds | **H1, H2, H3 établies** |
 | [PROTOCOLE_GLM_COURBE.md](PROTOCOLE_GLM_COURBE.md) | glm-5.3-flash (OpenRouter) | 1 359 appels | abandonné après l'essai préalable |
 | [RESULTATS_GLM_340.md](RESULTATS_GLM_340.md) | glm-5.3-flash (OpenRouter) | 344 appels, 24 seeds | **H1 établie**, H2 non (coût par appel ×4,4) |
+| [RESULTATS_GLM_LOCAL.md](RESULTATS_GLM_LOCAL.md) | glm-5.3-flash, évolution avec / sans croisement local et élagage | 344 appels, 12 seeds | H non établie (p = 0,77) ; coût par appel divisé par 2 |
 
 H1 : à appels égaux, l'évolution bat le tirage. H2 : à dépense égale aussi. H3 : l'avance
 est plus grande à 1 359 appels qu'à 340.
 
 ## Prochaines étapes, dans l'ordre
 
+0. **H2 sur GLM avec l'élagage** (proposé le 16 novembre, à décider) : l'élagage divise
+   par deux le coût d'un appel d'évolution (RESULTATS_GLM_LOCAL.md), la cause de l'échec
+   de H2 sur GLM. Protocole évolution + élagage contre tirage, à dépense égale.
 1. **Croisement AST** (worktree `../nomad-ast`, branche `ast-croisement`). Corrigé les 15 et
    16 novembre : sondes du niveau 3 sans OOD, enfant rejeté jamais champion, analyse de
    dépendances par portée, greffe non résolue refusée, locus 1 du croisement multi-locus
