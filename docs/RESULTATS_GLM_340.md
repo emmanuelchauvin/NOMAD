@@ -128,9 +128,10 @@ Pour comparaison, sur Gemini (24 seeds du protocole de courbe, palier 340) : év
    de l'évolution ne bouge plus après l'appel 52 ; sur 9238 et 9255, la note de validation
    ne bouge plus après 170 appels. Sur 9374 et 9238, le tirage trouve entre 85 et 170
    appels une heuristique à plus de 45 % que l'évolution n'égale pas.
-6. **Les relances ne donnent aucun champion.** Elles consomment environ 15 % des appels
-   d'évolution, pour aucun champion à aucun palier. Elles peuvent avoir servi de parents :
-   ce protocole ne le mesure pas.
+6. **Les relances ne donnent directement aucun champion.** Elles consomment environ 15 %
+   des appels d'évolution, pour aucun champion à aucun palier. Mais elles servent de
+   parents : 7 champions finaux sur 24 descendent d'une relance (mesure faite après le
+   dépouillement, voir plus bas).
 7. **L'évolution produit moitié moins de programmes invalides** que le tirage (5,2 % contre
    11,9 %) : partir d'un programme valide aide le modèle.
 
@@ -149,7 +150,12 @@ Hors protocole, à décider :
   élaguer les programmes par ablation avant de les montrer au modèle (l'élagage hors ligne
   des 24 champions Gemini retire 45 règles sur 273 sans perte, branche `ast-croisement`),
   ou demander au modèle une modification plutôt qu'un programme entier.
-- **Réduire les relances**, qui ne produisent pas de champion, sur Gemini comme sur GLM.
+- ~~Réduire les relances~~. Mesure faite le 16 novembre en remontant l'ascendance des
+  champions finaux (parents successifs dans le journal) : 7 champions GLM sur 24, et 11
+  champions Gemini sur 24 (protocole de courbe), descendent d'une proposition fraîche de
+  relance, qui est la racine de leur lignée. Les relances produisent rarement le champion
+  elles-mêmes, mais elles fondent souvent la lignée qui y mène : les réduire n'est pas
+  une piste.
 - **Tester H3 sur ce modèle**, l'évolution progressant encore à 344 appels.
 
 ## Lecture d'ensemble

@@ -49,8 +49,8 @@ est plus grande à 1 359 appels qu'à 340.
    45 règles sur 273 retirées sans perte, 130 bacs gagnés en validation (seed 8136 :
    −84). À brancher dans le moteur, aussi pour réduire le coût par appel, cause de l'échec
    de H2 sur GLM.
-3. **Relances** : elles ne produisent presque aucun champion (Gemini et GLM). Mesurer si
-   leurs descendants en produisent, puis tester un moteur avec moins de relances.
+3. **Relances** : mesuré le 16 novembre, elles fondent la lignée du champion final dans
+   7 runs GLM sur 24 et 11 runs Gemini sur 24. Elles sont utiles ; ne pas les réduire.
 4. **H3 sur un second modèle** (GLM, MiniMax M3 ou DeepSeek par OpenRouter). Essai
    préalable court d'abord.
 5. **Autre problème** : l'ordonnancement, après vérification que son benchmark est sain.
