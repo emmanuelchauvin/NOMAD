@@ -1,62 +1,59 @@
 # ==============================================================================
-# Script de packaging NOMAD V2 pour audit et revue par IA externe
-# Inclut le code source, la documentation, et les résultats complets du tir (30 seeds)
+# Extrait de NOMAD pour demander l'avis d'une IA externe sur le croisement AST.
+# Produit un seul fichier texte, nomad_extrait.txt, a coller ou joindre dans la conversation.
+#
+# Le code vient du worktree ../nomad-ast (branche ast-croisement, croisement corrige) s'il
+# existe, sinon de ce depot. Aucune donnee brute de tir n'est incluse, en particulier pas
+# celles du tir GLM en cours (le protocole interdit de les lire avant le depouillement).
+#
+# Usage : powershell -ExecutionPolicy Bypass -File create_nomad_extrait.ps1
 # ==============================================================================
+$ErrorActionPreference = 'Stop'
+$root = $PSScriptRoot
+$code = Join-Path (Split-Path -Parent $root) 'nomad-ast'
+if (-not (Test-Path (Join-Path $code 'crates'))) { $code = $root }
+$out = Join-Path $root 'nomad_extrait.txt'
 
-# 1. Créer un dossier temporaire de staging propre
-$tempDir = ".\nomad_clean_staging"
-if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
-New-Item -ItemType Directory -Path $tempDir | Out-Null
+# Documents, dans l'ordre de lecture. La demande d'avis vient en premier.
+$docs = @(
+    'docs\DEMANDE_AVIS_CROISEMENT.md',
+    'README.md',
+    'docs\GRID_ARCHITECTURE.md',
+    'docs\RESULTATS_GEMINI_COURBE.md',
+    'docs\REPRISE.md'
+) | ForEach-Object { Join-Path $root $_ }
 
-# 2. Copier les éléments essentiels du workspace (Code, Docs, Scripts, Résultats)
-$itemsToCopy = @(
-    "README.md",
-    "SPECIFICATIONS.md",
-    "TESTS.md",
-    "RAPPORT_CAMPAGNE_30_SEEDS.md",
-    "RAPPORT_SCHEDULING_MULTI_RESSOURCES.md",
-    "Cargo.toml",
-    "Cargo.lock",
-    "crates",
-    "scripts",
-    "campaign_results",
-    "scheduling_results",
-    "results_scheduling_validation",
-    "results_scheduling_ollama",
-    "results_scheduling_golden"
-)
+# Code utile pour juger le croisement : genome (AST, unites, greffe, controle structurel),
+# controle d'ablation, moteur, archive MAP-Elites, operateur LLM, mesures hors ligne.
+$sources = @(
+    'crates\nomad-genome\src\*.rs',
+    'crates\nomad-evaluator\src\anti_dead_code.rs',
+    'crates\nomad-orchestrator\src\engine.rs',
+    'crates\nomad-orchestrator\src\map_elites.rs',
+    'crates\nomad-operator\src\http_llm.rs',
+    'crates\nomad-cli\examples\*.rs'
+) | ForEach-Object { Get-ChildItem (Join-Path $code $_) -ErrorAction SilentlyContinue } |
+    ForEach-Object { $_.FullName }
 
-foreach ($item in $itemsToCopy) {
-    if (Test-Path $item) {
-        Copy-Item -Path $item -Destination $tempDir -Recurse -Force
-    }
+$files = @($docs) + @($sources) | Where-Object { Test-Path $_ }
+$branch = git -C $code rev-parse --abbrev-ref HEAD
+$commit = git -C $code rev-parse --short HEAD
+
+function Get-Rel($f) {
+    if ($f.StartsWith($code + '\crates')) { $f.Substring($code.Length + 1) } else { $f.Substring($root.Length + 1) }
 }
 
-# 3. Purger uniquement les artefacts superflus (builds, caches, VCS)
-Get-ChildItem -Path $tempDir -Recurse -Include target, .git, .DS_Store, __pycache__, *.pyc, *.html, *.pdf | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+$parts = @("NOMAD - extrait pour avis externe. Code : branche $branch, commit $commit.",
+    "Fichiers inclus :")
+$parts += $files | ForEach-Object { '  ' + (Get-Rel $_) }
+foreach ($f in $files) {
+    $rel = Get-Rel $f
+    $parts += "`n================================================================================"
+    $parts += "===== FICHIER : $rel ====="
+    $parts += "================================================================================`n"
+    $parts += Get-Content -Path $f -Raw -Encoding UTF8
+}
+$parts | Set-Content -Path $out -Encoding UTF8
 
-# 4. Générer l'archive nomad.zip finale (contenant code + docs + campaign_results complet)
-if (Test-Path "nomad.zip") { Remove-Item "nomad.zip" }
-Compress-Archive -Path "$tempDir\*" -DestinationPath "nomad.zip" -CompressionLevel Optimal
-
-# 5. Nettoyer le dossier temporaire
-Remove-Item $tempDir -Recurse -Force
-Write-Host "Archive nomad.zip générée avec succès ! (Code + Données du tir inclus)" -ForegroundColor Green
-
-# 6. Générer nomad_v2_fixed.txt (fichier tout-en-un optimisé pour le prompt d'une IA)
-# Concatène le code Rust, la documentation, le rapport de campagne et les statistiques JSON/CSV
-$filesForText = @()
-$filesForText += Get-ChildItem -Path crates -Recurse -Filter *.rs
-$filesForText += Get-Item -Path "README.md", "SPECIFICATIONS.md", "TESTS.md", "RAPPORT_CAMPAGNE_30_SEEDS.md", "RAPPORT_SCHEDULING_MULTI_RESSOURCES.md" -ErrorAction SilentlyContinue
-$filesForText += Get-Item -Path "campaign_results\stats.json", "campaign_results\stats.csv" -ErrorAction SilentlyContinue
-$filesForText += Get-Item -Path "results_scheduling_validation\stats.json", "results_scheduling_ollama\stats.json", "results_scheduling_golden\stats.json" -ErrorAction SilentlyContinue
-$filesForText += Get-Item -Path "scheduling_results\scheduling_runs3.json", "scheduling_results\scheduling_rebirth.json", "scheduling_results\scheduling_step4_oodprobe.json" -ErrorAction SilentlyContinue
-
-$filesForText | ForEach-Object {
-    "`n================================================================================"
-    "===== FILE: $($_.FullName) ====="
-    "================================================================================`n"
-    Get-Content -Path $_.FullName -Raw
-} | Set-Content -Path "nomad_v2_fixed.txt" -Encoding UTF8
-
-Write-Host "Fichier nomad_v2_fixed.txt généré avec succès ! (Rapport + stats.json/csv inclus)" -ForegroundColor Green
+$size = (Get-Item $out).Length
+Write-Host ("nomad_extrait.txt : {0} fichiers, {1:N0} Ko, environ {2:N0} tokens (code : $branch $commit)" -f $files.Count, ($size / 1KB), ($size / 3.5))

@@ -83,5 +83,6 @@ est plus grande à 1 359 appels qu'à 340.
   l'avancement. Relancer un lanceur reprend les seeds non terminées.
 - Les tirs utilisent le processeur pour évaluer les programmes, pas la carte graphique.
   Douze processus en parallèle chargent fortement un processeur à 6 cœurs.
-- Crédits : Gemini (clé Google, recharge automatique), OpenRouter (12 $ achetés, environ
+- Crédits : Gemini (clé Google, 17,23 € restants au 15 novembre, sans recharge
+  automatique), OpenRouter (12 $ achetés, environ
   0,75 $ dépensés au 15 novembre, sans recharge automatique).
