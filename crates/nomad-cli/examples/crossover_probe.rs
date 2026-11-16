@@ -134,7 +134,11 @@ fn main() {
                 };
                 if dispatch {
                     // Aiguillage de regime : memes paires, toutes les conditions, pas de greffe.
-                    for v in 0..REGIME_VARIANTS {
+                    // Donneur note une fois par paire ; conditions retenues : avancement,
+                    // taille de l'objet, bac (une par famille).
+                    let donor_score = train(donor);
+                    for v in [0usize, 3, 5] {
+                        debug_assert!(v < REGIME_VARIANTS);
                         let mut row = serde_json::json!({
                             "cond": cond, "seed": seed, "host_rank": hi, "donor_seed": donor_origin,
                             "donor_rank": donor_rank, "kind": "regime_dispatch", "variant": v,
@@ -145,7 +149,6 @@ fn main() {
                             Err(e) => row["error"] = e.to_string().into(),
                             Ok(child) => {
                                 let score = train(&child);
-                                let donor_score = train(donor);
                                 row["regime"] = child.metadata.get("regime").cloned().into();
                                 row["child_valid"] = score.is_valid.into();
                                 row["child_bins"] = score.total_bins.into();
