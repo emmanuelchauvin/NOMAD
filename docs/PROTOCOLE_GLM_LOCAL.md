@@ -37,9 +37,19 @@ programmes. L'élagage pourrait réduire ce coût : c'est mesuré ici, sans test
   [PROTOCOLE_GLM_340.md](PROTOCOLE_GLM_340.md) : hébergeur unique Relace (fp4) sans repli,
   raisonnement au minimum, pas de champ `seed`, température 0,7, top_p 0,95.
 - **Exécutable.** `target/frozen/nomad-local-ops.exe`, compilé depuis la branche
-  `ast-croisement`, tag `glm-local` (commit `c253590`), SHA-256
-  `3055c7b182145d11f0bcfcd3aa316fafc90266de9934048805999e22bcfb649b`. **Les deux bras
+  `ast-croisement`, tag `glm-local-v2` (commit `733a6b8`), SHA-256
+  `460636844eb4cebe614edd7a4e48e07d5febe73bf16071493f9def18ff529044`. **Les deux bras
   utilisent le même exécutable** ; seules deux variables d'environnement les distinguent.
+- **Premier lancement abandonné.** Un premier lancement avec l'exécutable du tag
+  `glm-local` (commit `c253590`, SHA-256 `3055c7b1…649b`, conservé sous
+  `nomad-local-ops-v1.exe`) a été arrêté le 16 novembre à 8 h 50, après 25 minutes et
+  1 927 appels (0,26 $), sans qu'aucun score ne soit lu. Une relecture extérieure (Argon)
+  a relevé, et nous avons vérifié, trois défauts qui touchaient ce test : la greffe
+  ignorait les `let` annotés d'un type (6,8 % des propositions GLM en contiennent),
+  l'élagage était refusé quand un critère de départage bougeait à nombre de bacs égal, et
+  l'ordre d'itération de l'archive (HashMap) n'était pas reproductible. Données brutes
+  conservées, non lues : `results_glm_local_abandon/` (commit `5318437`). Le relancement
+  reprend les mêmes seeds, le même dispositif et les mêmes critères.
 - **Benchmark.** Profil Weibull, fuel 400 000.
 - **Seeds.** 12 seeds neuves : 9600, 9617, ..., 9787 (9600 + 17 r). Extension prévue :
   9804 à 9991.
@@ -64,8 +74,8 @@ programmes. L'élagage pourrait réduire ce coût : c'est mesuré ici, sans test
 - **Élagage.** À la fin de chaque génération, si le meilleur élite a changé, chacune de
   ses instructions (sauf l'expression rendue) est retirée à son tour, du bas vers le haut, en
   une passe. Un retrait est gardé si le programme reste valide sans perdre de bac sur
-  l'entraînement. La version élaguée entre dans l'archive si elle est strictement meilleure
-  que l'original.
+  l'entraînement. Dès qu'une instruction est retirée, la version élaguée remplace
+  l'original dans l'archive : à bacs égaux, le code le plus court gagne.
 - **Aucun de ces opérateurs n'appelle le modèle.** Les propositions qu'ils produisent sont
   journalisées (types `crossover` et `prune`) avec le nombre d'appels déjà consommés.
 - **Lancement.** `scripts/campaign/lancer_glm_local.ps1` : un processus par seed et par bras,
