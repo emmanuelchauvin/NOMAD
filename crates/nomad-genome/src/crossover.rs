@@ -323,6 +323,91 @@ pub fn deterministic_ast_crossover(
     Ok((child_capsule, manifest))
 }
 
+/// Nombre de conditions d'aiguillage proposées par `regime_dispatch_crossover`.
+pub const REGIME_VARIANTS: usize = 6;
+
+/// Croisement par aiguillage de régime : l'enfant contient les deux parents entiers et, à
+/// chaque décision, exécute l'un ou l'autre selon une condition sur l'état (`variant`).
+/// Aucun fragment n'est extrait : chaque parent garde ses règles et ses variables, donc ni
+/// dépendance non résolue ni capture de nom. Un seul parent est exécuté par appel.
+///
+/// Variantes 0 à 4 : la condition ne dépend que de l'objet ou de l'avancement, donc tous les
+/// bacs d'une même décision sont notés par le même parent. Variante 5 : elle dépend du bac,
+/// et mélange alors deux échelles de score dans une même décision.
+pub fn regime_dispatch_crossover(
+    host: &SkillCapsule,
+    donor: &SkillCapsule,
+    variant: usize,
+    generation: usize,
+) -> Result<SkillCapsule, CrossoverError> {
+    let host_fn = parse_heuristic_fn(&host.logic_code)?;
+    let donor_fn = parse_heuristic_fn(&donor.logic_code)?;
+    if host_fn.block.stmts.is_empty() {
+        return Err(CrossoverError::EmptyHostBody(host.id.0.clone()));
+    }
+    // Les deux corps lisent les paramètres par leur nom : les signatures doivent coïncider.
+    let host_params = extract_signature_params(&host_fn);
+    let needed = [
+        "item_size",
+        "bin_residual",
+        "bin_capacity",
+        "step_index",
+        "total_items",
+        "mean_residual",
+    ];
+    if extract_signature_params(&donor_fn) != host_params
+        || needed.iter().any(|p| !host_params.contains(*p))
+    {
+        return Err(CrossoverError::UnresolvedDependencies(donor.id.0.clone()));
+    }
+
+    let (label, cond): (&str, syn::Expr) = match variant % REGIME_VARIANTS {
+        0 => ("late_half", syn::parse_quote!(step_index * 2 >= total_items)),
+        1 => ("early_half", syn::parse_quote!(step_index * 2 < total_items)),
+        2 => ("last_fifth", syn::parse_quote!(step_index * 5 >= total_items * 4)),
+        3 => ("large_item", syn::parse_quote!(item_size * 4 >= bin_capacity)),
+        4 => ("small_item", syn::parse_quote!(item_size * 4 < bin_capacity)),
+        _ => ("bin_above_mean", syn::parse_quote!((bin_residual as f64) >= mean_residual)),
+    };
+
+    let host_block = &host_fn.block;
+    let donor_block = &donor_fn.block;
+    let mut hybrid_fn = host_fn.clone();
+    // Le donneur est exécuté quand la condition est vraie, l'hôte sinon.
+    hybrid_fn.block = Box::new(syn::parse_quote!({
+        if #cond #donor_block else #host_block
+    }));
+
+    let hybrid_code = normalize_source(&hybrid_fn);
+    let child_fingerprint = compute_structural_fingerprint(&hybrid_fn);
+    let mut id_hasher = Sha256::new();
+    id_hasher.update(host.id.0.as_bytes());
+    id_hasher.update(donor.id.0.as_bytes());
+    id_hasher.update(label.as_bytes());
+    let short = hex::encode(id_hasher.finalize())[..10].to_string();
+
+    let mut metadata = HashMap::new();
+    metadata.insert("crossover_type".to_string(), "regime_dispatch".to_string());
+    metadata.insert("regime".to_string(), label.to_string());
+    metadata.insert("host_id".to_string(), host.id.0.clone());
+    metadata.insert("donor_id".to_string(), donor.id.0.clone());
+
+    Ok(SkillCapsule::new_v2(
+        format!("Dispatch-G{}-{}", generation, short),
+        format!("Regime dispatch [{}] : donor {} else host {}", label, donor.id, host.id),
+        hybrid_code,
+        vec![host.id.clone(), donor.id.clone()],
+        generation,
+        metadata,
+        "ScorePolicyV1",
+        PolicyKind::ScorePolicy,
+        Some(child_fingerprint),
+        Vec::new(),
+        ValidationStatus::Unvalidated,
+        None,
+    ))
+}
+
 /// ============================================================================
 /// multi_locus_ast_crossover : Croisement Génétique Multi-Sites (Multi-Loci)
 /// ============================================================================
@@ -663,6 +748,20 @@ mod tests {
 
     fn nomad_sandbox_free_check(s: &syn::Stmt) -> bool {
         crate::unit::collect_free_variables(s).contains(&"score".to_string())
+    }
+
+    /// L'aiguillage garde les deux parents entiers, dans une seule fonction analysable.
+    #[test]
+    fn regime_dispatch_keeps_both_parents() {
+        let host = capsule("h", "let mut score = bin_residual as f64; score += 111.0; score");
+        let donor = capsule("d", "let gap = item_size as f64; let mut score = gap * 222.0; score");
+        for v in 0..REGIME_VARIANTS {
+            let child = regime_dispatch_crossover(&host, &donor, v, 1).expect("aiguillage");
+            let f = parse_heuristic_fn(&child.logic_code).expect("enfant analysable");
+            assert_eq!(f.block.stmts.len(), 1);
+            assert!(child.logic_code.contains("111.0") && child.logic_code.contains("222.0"));
+            assert!(child.graft_manifest.is_none());
+        }
     }
 
     #[test]

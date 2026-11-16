@@ -10,11 +10,27 @@ use nomad_core::{
 use nomad_evaluator::{
     validate_anti_dead_code_3levels_with_score, OracleEvaluator, SchedulingOracle,
 };
-use nomad_genome::PhylogenyGraph;
+use nomad_genome::{
+    deterministic_ast_crossover, multi_locus_ast_crossover, normalize_source, parse_heuristic_fn,
+    PhylogenyGraph,
+};
 use nomad_operator::{MutationContext, SkillOperator};
 use nomad_sandbox::HeuristicSandbox;
 
 use crate::error::OrchestratorError;
+
+/// Compteurs des operateurs locaux du groupe D (croisement AST, elagage).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LocalOpsStats {
+    pub crossover_attempts: usize,
+    pub crossover_errors: usize,
+    pub crossover_accepted: usize,
+    pub prune_attempts: usize,
+    pub prune_accepted: usize,
+    pub rules_removed: usize,
+    /// Evaluations sur l'entrainement faites par ces operateurs.
+    pub evaluations: usize,
+}
 use crate::map_elites::MapElitesArchive;
 use crate::pso::LineageManager;
 
@@ -110,6 +126,9 @@ pub struct ExperimentRunReport {
     /// Toutes les propositions evaluees, dans l'ordre (absent des rapports anterieurs).
     #[serde(default)]
     pub proposals: Vec<ProposalRecord>,
+    /// Compteurs des operateurs locaux du groupe D (absent des rapports anterieurs).
+    #[serde(default)]
+    pub local_ops: LocalOpsStats,
 }
 
 /// ============================================================================
@@ -140,6 +159,10 @@ pub struct EvolutionEngine<'a> {
     pub crossover_rejected_count: usize,
     /// Generations consecutives sans nouveau meilleur score a l'entrainement.
     pub stagnant_generations: usize,
+    /// Operateurs locaux du groupe D (sans appel au modele) : compteurs descriptifs.
+    pub local_stats: LocalOpsStats,
+    /// Dernier champion deja elague (evite de l'elaguer a nouveau).
+    last_pruned_id: Option<String>,
     /// Index de la prochaine proposition fraiche (prolonge le cycle des archetypes).
     pub fresh_seed_counter: usize,
     /// Journal de toutes les propositions evaluees, dans l'ordre.
@@ -175,6 +198,8 @@ impl<'a> EvolutionEngine<'a> {
             crossover_not_evaluable_count: 0,
             crossover_rejected_count: 0,
             stagnant_generations: 0,
+            local_stats: LocalOpsStats::default(),
+            last_pruned_id: None,
             fresh_seed_counter: 0,
             proposals: Vec::new(),
             best_trail: Vec::new(),
@@ -442,6 +467,7 @@ impl<'a> EvolutionEngine<'a> {
 
         Ok(ExperimentRunReport {
             proposals: self.proposals.clone(),
+            local_ops: self.local_stats.clone(),
             group: self.config.group,
             rng_seed: self.config.rng_seed,
             total_generations: generation_records.len(),
@@ -610,6 +636,166 @@ impl<'a> EvolutionEngine<'a> {
         (capsule, score)
     }
 
+    /// Note un programme sur l'entrainement, comme une proposition du modele.
+    fn train_score(&mut self, capsule: &SkillCapsule) -> BenchmarkScore {
+        self.local_stats.evaluations += 1;
+        self.oracle.evaluate_dataset_with_lookahead(
+            &self.oracle.in_distribution,
+            capsule,
+            self.sandbox,
+            self.config.fuel_limit_per_call,
+            self.config.lookahead,
+        )
+    }
+
+    /// Elites de l'archive, du meilleur au moins bon (ordre deterministe).
+    fn ranked_elites(&self) -> Vec<(SkillCapsule, BenchmarkScore)> {
+        let mut ranked: Vec<(&String, &crate::map_elites::ArchiveEntry)> =
+            self.archive.grid.iter().collect();
+        ranked.sort_by(|a, b| a.1.fitness.cmp(&b.1.fitness).then_with(|| a.0.cmp(b.0)));
+        ranked
+            .into_iter()
+            .map(|(_, e)| (e.capsule.clone(), e.fitness.clone()))
+            .collect()
+    }
+
+    /// Un croisement AST local : hote choisi par la regle de selection des parents, donneur
+    /// tire uniformement parmi les autres elites. L'enfant n'est garde que s'il bat son hote
+    /// sur l'entrainement : une greffe qui ameliore l'hote n'est pas du code mort, le
+    /// controle par ablation est donc inutile ici.
+    fn local_crossover(&mut self, generation: usize, rng: &mut ChaCha8Rng) {
+        let ranked = self.ranked_elites();
+        if ranked.len() < 2 {
+            return;
+        }
+        let Some(host) = self.archive.select_parent(self.config.parent_selection, rng) else {
+            return;
+        };
+        let Some(host_score) = ranked
+            .iter()
+            .find(|(c, _)| c.id == host.id)
+            .map(|(_, s)| s.clone())
+        else {
+            return;
+        };
+        let donors: Vec<&SkillCapsule> = ranked
+            .iter()
+            .map(|(c, _)| c)
+            .filter(|c| c.id != host.id && c.logic_code != host.logic_code)
+            .collect();
+        if donors.is_empty() {
+            return;
+        }
+        let donor = donors[rand::Rng::gen_range(rng, 0..donors.len())].clone();
+        let seed: u64 = rand::Rng::gen(rng);
+        self.local_stats.crossover_attempts += 1;
+
+        let res = if seed % 2 == 0 {
+            multi_locus_ast_crossover(&host, &donor, seed, generation)
+                .or_else(|_| deterministic_ast_crossover(&host, &donor, seed, generation))
+        } else {
+            deterministic_ast_crossover(&host, &donor, seed, generation)
+                .or_else(|_| multi_locus_ast_crossover(&host, &donor, seed, generation))
+        };
+        let Ok((mut child, _)) = res else {
+            self.local_stats.crossover_errors += 1;
+            return;
+        };
+        // L'enfant est juge comme les autres propositions, sans controle d'ablation.
+        child.graft_manifest = None;
+        let score = self.train_score(&child);
+        let accepted = score.is_valid && score < host_score;
+        self.phylogeny.insert_capsule(&child);
+        self.record_proposal_checked(&child, &score, "crossover", accepted);
+        if accepted {
+            self.local_stats.crossover_accepted += 1;
+            self.lineages.record_evolution(
+                child.id.clone(),
+                &host.id,
+                Some(donor.id.clone()),
+                child.semantic_interface.clone(),
+                true,
+            );
+            self.archive.insert(child, score);
+        }
+    }
+
+    /// Elague le meilleur elite s'il est nouveau : chaque instruction (sauf l'expression
+    /// rendue) est retiree a son tour, du bas vers le haut, et le retrait est garde si le
+    /// programme reste valide sans perdre de bac. La version elaguee est inseree si elle est
+    /// strictement meilleure que l'original (meme nombre de bacs : moins de fuel).
+    fn prune_best_elite(&mut self, generation: usize) {
+        let Some((best, best_score)) = self.ranked_elites().into_iter().next() else {
+            return;
+        };
+        if self.last_pruned_id.as_deref() == Some(best.id.0.as_str()) {
+            return;
+        }
+        self.last_pruned_id = Some(best.id.0.clone());
+        let Ok(original) = parse_heuristic_fn(&best.logic_code) else {
+            return;
+        };
+        let n = original.block.stmts.len();
+        if n < 2 {
+            return;
+        }
+        self.local_stats.prune_attempts += 1;
+        let build = |keep: &[bool]| {
+            let mut f = original.clone();
+            f.block.stmts = original
+                .block
+                .stmts
+                .iter()
+                .zip(keep)
+                .filter(|(_, k)| **k)
+                .map(|(s, _)| s.clone())
+                .collect();
+            normalize_source(&f)
+        };
+        let mut keep = vec![true; n];
+        let mut current = best_score.clone();
+        let mut removed = 0usize;
+        for i in (0..n - 1).rev() {
+            keep[i] = false;
+            let mut trial = best.clone();
+            trial.logic_code = build(&keep);
+            let s = self.train_score(&trial);
+            if s.is_valid && s.total_bins <= current.total_bins {
+                current = s;
+                removed += 1;
+            } else {
+                keep[i] = true;
+            }
+        }
+        if removed == 0 || !(current < best_score) {
+            return;
+        }
+        let mut pruned = SkillCapsule::new(
+            &format!("Pruned-G{}-{}", generation, &best.id.0[..best.id.0.len().min(8)]),
+            &format!("Elagage de {} : {} instruction(s) retiree(s)", best.id, removed),
+            &build(&keep),
+            vec![best.id.clone()],
+            generation,
+            best.metadata.clone(),
+        );
+        pruned.ast_fingerprint = parse_heuristic_fn(&pruned.logic_code)
+            .ok()
+            .map(|f| nomad_genome::compute_structural_fingerprint(&f));
+        self.local_stats.prune_accepted += 1;
+        self.local_stats.rules_removed += removed;
+        self.phylogeny.insert_capsule(&pruned);
+        self.record_proposal_checked(&pruned, &current, "prune", true);
+        self.lineages.record_evolution(
+            pruned.id.clone(),
+            &best.id,
+            None,
+            pruned.semantic_interface.clone(),
+            true,
+        );
+        self.last_pruned_id = Some(pruned.id.0.clone());
+        self.archive.insert(pruned, current);
+    }
+
     fn produce_next_generation(
         &mut self,
         current_pop: &[EvaluatedIndividual],
@@ -754,6 +940,14 @@ impl<'a> EvolutionEngine<'a> {
 
                     self.archive.insert(mutated.clone(), score.clone());
                     next_population.push(EvaluatedIndividual::new(mutated, score));
+                }
+
+                // Operateurs locaux, sans appel au modele ni effet sur le budget d'appels.
+                for _ in 0..self.config.local_crossovers {
+                    self.local_crossover(next_gen_idx, rng);
+                }
+                if self.config.prune_champion {
+                    self.prune_best_elite(next_gen_idx);
                 }
             }
 
@@ -1076,5 +1270,38 @@ mod tests {
         assert!(engine.proposals[1].is_new_best);
         assert_eq!(engine.best_trail.len(), 1);
         assert_eq!(engine.best_trail[0].0, 1);
+    }
+
+    /// L'elagage retire une regle sans effet, garde la regle utile, et la version elaguee
+    /// devient le meilleur elite.
+    #[test]
+    fn pruning_removes_a_dead_rule_and_keeps_the_useful_one() {
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+        let config = ExperimentConfig {
+            group: nomad_core::ExperimentalGroup::GroupD,
+            fuel_limit_per_call: 400_000,
+            ..Default::default()
+        };
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        let code = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32,             step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {             let mut score = (bin_residual - item_size) as f64;             if bin_residual > 1000 { score += 5.0; }             score }";
+        let capsule = SkillCapsule::new("Best", "d", code, vec![], 1, Default::default());
+        let score = engine.train_score(&capsule);
+        assert!(score.is_valid);
+        engine.archive.insert(capsule, score.clone());
+
+        engine.prune_best_elite(2);
+        assert_eq!(engine.local_stats.prune_accepted, 1);
+        assert_eq!(engine.local_stats.rules_removed, 1);
+        let (best, best_score) = engine.ranked_elites().into_iter().next().unwrap();
+        assert!(!best.logic_code.contains("1000"), "regle morte non retiree");
+        assert!(best.logic_code.contains("let mut score"), "regle utile retiree");
+        assert_eq!(best_score.total_bins, score.total_bins);
+        assert!(best_score < score);
+
+        // Le meme champion n'est pas elague deux fois.
+        engine.prune_best_elite(3);
+        assert_eq!(engine.local_stats.prune_attempts, 1);
     }
 }

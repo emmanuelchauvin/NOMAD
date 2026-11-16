@@ -114,6 +114,17 @@ pub struct ExperimentConfig {
     /// programme connu (groupe D). Variable `NOMAD_INFORMED_MUTATION=1`.
     #[serde(default)]
     pub informed_mutation: bool,
+    /// Groupe D : nombre de croisements AST locaux (greffes entre elites de l'archive, sans
+    /// appel au modele) tentes a chaque generation. Un enfant n'entre dans l'archive que
+    /// s'il bat son hote sur l'entrainement. 0 : jamais (comportement historique).
+    /// Variable `NOMAD_LOCAL_CROSSOVERS`.
+    #[serde(default)]
+    pub local_crossovers: usize,
+    /// Groupe D : a chaque nouveau champion, retirer une a une ses regles sans effet
+    /// (ablation sur l'entrainement, une passe) et inserer la version elaguee si elle est
+    /// strictement meilleure. Variable `NOMAD_PRUNE_CHAMPION=1`.
+    #[serde(default)]
+    pub prune_champion: bool,
 }
 
 fn env_usize(name: &str) -> usize {
@@ -153,6 +164,8 @@ impl Default for ExperimentConfig {
             initial_population_size: env_usize("NOMAD_INIT_POP"),
             stagnation_patience: env_usize("NOMAD_STAGNATION_PATIENCE"),
             informed_mutation: env_usize("NOMAD_INFORMED_MUTATION") == 1,
+            local_crossovers: env_usize("NOMAD_LOCAL_CROSSOVERS"),
+            prune_champion: env_usize("NOMAD_PRUNE_CHAMPION") == 1,
         }
     }
 }

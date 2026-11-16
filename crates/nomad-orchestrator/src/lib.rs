@@ -509,6 +509,55 @@ mod tests {
         )
     }
 
+    fn local_ops_run(crossovers: usize, prune: bool) -> crate::engine::ExperimentRunReport {
+        let config = ExperimentConfig {
+            group: ExperimentalGroup::GroupD,
+            rng_seed: 7,
+            population_size: 5,
+            max_generations: 6,
+            initial_population_size: 8,
+            stagnation_patience: 3,
+            informed_mutation: true,
+            local_crossovers: crossovers,
+            prune_champion: prune,
+            ..Default::default()
+        };
+        let oracle = OracleEvaluator::new(7);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        engine.execute_run().expect("Run execution should succeed")
+    }
+
+    /// Les operateurs locaux ne consomment aucun appel au modele, sont journalises avec le
+    /// nombre d'appels deja faits, et ne changent rien quand ils sont desactives.
+    #[test]
+    fn local_operators_are_free_and_off_by_default() {
+        let off = local_ops_run(0, false);
+        assert!(off.proposals.iter().all(|p| p.kind == "fresh" || p.kind == "mutation"));
+        assert_eq!(off.local_ops.evaluations, 0);
+        assert_eq!(off.proposals.len(), off.budget_consumed.llm_calls_consumed);
+
+        let on = local_ops_run(3, true);
+        assert_eq!(
+            on.budget_consumed.llm_calls_consumed,
+            off.budget_consumed.llm_calls_consumed
+        );
+        assert_eq!(on.local_ops.crossover_attempts, 3 * 5);
+        let llm = on.proposals.iter().filter(|p| p.kind == "fresh" || p.kind == "mutation").count();
+        assert_eq!(llm, on.budget_consumed.llm_calls_consumed);
+        let mut last = 0;
+        for p in &on.proposals {
+            assert!(p.llm_calls_consumed >= last, "journal non ordonne par appels");
+            last = p.llm_calls_consumed;
+            if p.kind == "crossover" || p.kind == "prune" {
+                assert!(!p.is_new_best || p.is_valid);
+            }
+        }
+        let accepted = on.proposals.iter().filter(|p| p.kind == "prune").count();
+        assert_eq!(accepted, on.local_ops.prune_accepted);
+    }
+
     #[test]
     fn test_informed_mutation_passes_measured_context_to_the_operator() {
         // 5 generations de 4 mutations, toutes informees.

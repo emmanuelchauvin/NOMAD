@@ -17,7 +17,10 @@ use std::collections::HashSet;
 
 use nomad_core::{ExperimentConfig, SkillCapsule, ValidationStatus};
 use nomad_evaluator::{validate_anti_dead_code_3levels_with_score, OracleEvaluator};
-use nomad_genome::{deterministic_ast_crossover, multi_locus_ast_crossover};
+use nomad_genome::{
+    deterministic_ast_crossover, multi_locus_ast_crossover, regime_dispatch_crossover,
+    REGIME_VARIANTS,
+};
 use nomad_sandbox::DeterministicSandbox;
 
 struct Rng(u64);
@@ -82,6 +85,8 @@ fn main() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(400_000);
     let config = ExperimentConfig::default();
+    // NOMAD_PROBE_DISPATCH=1 : mesure l'aiguillage de regime au lieu de la greffe.
+    let dispatch = std::env::var("NOMAD_PROBE_DISPATCH").is_ok();
     let sandbox = DeterministicSandbox::new();
 
     let archives: Vec<Vec<SkillCapsule>> = seeds.iter().map(|s| load_archive(dir, *s)).collect();
@@ -127,6 +132,49 @@ fn main() {
                     deterministic_ast_crossover(host, donor, cross_seed, 1)
                         .or_else(|_| multi_locus_ast_crossover(host, donor, cross_seed, 1))
                 };
+                if dispatch {
+                    // Aiguillage de regime : memes paires, toutes les conditions, pas de greffe.
+                    for v in 0..REGIME_VARIANTS {
+                        let mut row = serde_json::json!({
+                            "cond": cond, "seed": seed, "host_rank": hi, "donor_seed": donor_origin,
+                            "donor_rank": donor_rank, "kind": "regime_dispatch", "variant": v,
+                            "host_bins": host_scores[hi].total_bins,
+                            "champion_bins": host_scores.iter().filter(|s| s.is_valid).map(|s| s.total_bins).min(),
+                        });
+                        match regime_dispatch_crossover(host, donor, v, 1) {
+                            Err(e) => row["error"] = e.to_string().into(),
+                            Ok(child) => {
+                                let score = train(&child);
+                                let donor_score = train(donor);
+                                row["regime"] = child.metadata.get("regime").cloned().into();
+                                row["child_valid"] = score.is_valid.into();
+                                row["child_bins"] = score.total_bins.into();
+                                row["child_fuel"] = score.total_fuel.into();
+                                row["host_fuel"] = host_scores[hi].total_fuel.into();
+                                row["donor_valid"] = donor_score.is_valid.into();
+                                row["donor_bins"] = donor_score.total_bins.into();
+                                let best_parent = if donor_score.is_valid {
+                                    host_scores[hi].total_bins.min(donor_score.total_bins)
+                                } else {
+                                    host_scores[hi].total_bins
+                                };
+                                if score.is_valid && score.total_bins < best_parent {
+                                    let v_child = oracle.evaluate_validation(&child, &sandbox, fuel);
+                                    let v_host = oracle.evaluate_validation(host, &sandbox, fuel);
+                                    let v_donor = oracle.evaluate_validation(donor, &sandbox, fuel);
+                                    row["val_child_valid"] = v_child.is_valid.into();
+                                    row["val_child_bins"] = v_child.total_bins.into();
+                                    row["val_host_bins"] = v_host.total_bins.into();
+                                    row["val_donor_valid"] = v_donor.is_valid.into();
+                                    row["val_donor_bins"] = v_donor.total_bins.into();
+                                    row["child_code"] = child.logic_code.clone().into();
+                                }
+                            }
+                        }
+                        println!("{row}");
+                    }
+                    continue;
+                }
                 let mut row = serde_json::json!({
                     "cond": cond, "seed": seed, "host_rank": hi, "donor_seed": donor_origin,
                     "donor_rank": donor_rank,

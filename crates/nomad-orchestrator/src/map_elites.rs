@@ -388,7 +388,12 @@ impl MapElitesArchive {
 
     /// Returns the global best elite capsule across all niches.
     pub fn best_elite(&self) -> Option<&ArchiveEntry> {
-        self.grid.values().min_by(|a, b| a.fitness.cmp(&b.fitness))
+        // Egalite de score : la cle de niche departage, pour un resultat independant de
+        // l'ordre d'iteration de la table.
+        self.grid
+            .iter()
+            .min_by(|a, b| a.1.fitness.cmp(&b.1.fitness).then_with(|| a.0.cmp(b.0)))
+            .map(|(_, e)| e)
     }
 
     /// Returns all current niche elites.
