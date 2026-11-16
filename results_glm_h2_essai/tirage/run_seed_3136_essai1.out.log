@@ -1,0 +1,78 @@
+2026-11-16T19:26:10.755681Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=3136, Pop=29, MaxGens=1
+2026-11-16T19:29:00.173351Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 923db84dc5c72d77 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3136 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4209 bins (excess: +165), Efficiency: 96.08%, Fuel: 26559995
+ Best In-Dist (w/o Lookahead) : 4232 bins (excess: +188), Efficiency: 95.56%
+ Dynamic Trajectory: tLDR = 0.2534
+ Behavior Profile : DeadSpaceRatio: 66.1%, NewBinRatio: 42.1%, ResVar: 0.46
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.151
+ Validation Score : 4189 bins (excess: +167), Efficiency: 96.01%
+ OOD-1 Score      : 10370 bins (excess: +359), Efficiency: 96.54%
+ OOD-2 Score      : 3603 bins (excess: +83), Efficiency: 97.70%
+ Lineage Nodes    : 29, Transitions: 0
+ Best Heuristic   : LLM-Seed-023
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect-fit reward: tiny post-residual is highly desirable.
+    if post_residual == 0 {
+        score -= 1000.0;
+    } else if post_residual <= 5 {
+        score -= 200.0;
+    }
+
+    // 2-step lookahead: reward bins whose post-residual can host the next item,
+    // especially with a snug fit; penalize leaving a gap that just misses it.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            let slack = (post_residual - next_item_size) as f64;
+            // snug second-step fit preferred
+            if slack <= 5.0 {
+                score -= 150.0;
+            } else {
+                score -= 50.0 * (1.0 - slack / bin_capacity as f64);
+            }
+        } else {
+            // near-miss penalty: dead space that cannot host the next item
+            let miss = (next_item_size - post_residual) as f64;
+            score += 2.0 * miss.min(40.0);
+        }
+    }
+
+    // Compare against mean residual: bins tighter than average are better targets.
+    score += (post_residual as f64 - mean_residual) * 0.8;
+
+    // Last-chance bonus: if this is the only bin that fits, strongly prefer it
+    // over opening a new bin unless the fit is terrible.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 120.0;
+    }
+
+    // New-bin candidate: neutral-ish baseline, slightly penalized so we prefer
+    // reusing open bins unless they are genuinely poor fits. A new bin is
+    // attractive when the item is large relative to capacity (little waste risk).
+    if bin_residual == bin_capacity {
+        score = bin_capacity as f64 - post_residual as f64; // = 0 for empty bin base
+        // large items open bins cheaply; small items should reuse existing bins
+        score += (bin_capacity as f64 - item_size as f64) * 1.5;
+        if fitting_bins_count <= 1 {
+            score -= 80.0; // opening a bin beats wasting a last-chance bin? no: keep reuse
+            score += 200.0; // actually prefer reuse when another bin fits
+        }
+        if next_item_size > 0 && post_residual >= next_item_size {
+            score -= 60.0; // fresh bin can host next item too
+        }
+    }
+
+    // Late in the stream, consolidation matters more: penalize spreading.
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score += progress * (open_bins_count as f64) * 0.5;
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2_essai\tirage\run_seed_3136_tirage.json.tmp
