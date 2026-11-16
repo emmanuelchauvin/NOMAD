@@ -1,6 +1,6 @@
 # Reprise du projet sur une autre machine
 
-État au 16 novembre 2026, branche `weibull-benchmark`. Cette fiche sert à reprendre
+État au 16 novembre 2026 au soir, branche `weibull-benchmark`. Cette fiche sert à reprendre
 le travail sur un autre PC ou avec un autre assistant : elle résume où en est la preuve et ce
 qui reste à faire.
 
@@ -34,51 +34,61 @@ avec le budget. C'est le préalable à la grille évolutive distribuée (evoluth
 H1 : à appels égaux, l'évolution bat le tirage. H2 : à dépense égale aussi. H3 : l'avance
 est plus grande à 1 359 appels qu'à 340.
 
-## Prochaines étapes, dans l'ordre
+## Où on en est le soir du 16 novembre
 
-0. **H2 sur GLM avec l'élagage** (proposé le 16 novembre, à décider) : l'élagage divise
-   par deux le coût d'un appel d'évolution (RESULTATS_GLM_LOCAL.md), la cause de l'échec
-   de H2 sur GLM. Protocole évolution + élagage contre tirage, à dépense égale.
-1. **Croisement AST** (worktree `../nomad-ast`, branche `ast-croisement`). Corrigé les 15 et
-   16 novembre : sondes du niveau 3 sans OOD, enfant rejeté jamais champion, analyse de
-   dépendances par portée, greffe non résolue refusée, locus 1 du croisement multi-locus
-   placé après la déclaration de `score` (48 enfants sur 192 étaient invalides à cause de
-   lui). Banc hors ligne (`mesures/`, 12 runs Gemini, 192 enfants) : 6 enfants battent le
-   champion de leur run, tous confirmés en validation (jusqu'à −80 bacs), dont 4 entre
-   îles. Corrigés le 16 novembre (commit `e3411e7` et précédents) : budget vérifié avant le
-   croisement du groupe C, niveau 1 strict, archive ordonnée (BTreeMap), `let` typés,
-   étiquettes du croisement conservées. Restent : niveau 3 qui accepte un enfant moins bon
-   que son hôte, anciens usages de `collect_dependencies` (noms de méthodes comptés comme
-   variables), renommage des variables du donneur.
-   Puis protocole groupe C contre groupe D.
-2. **Élagage par ablation** (`examples/prune_champions.rs`) : sur les 24 champions Gemini,
-   45 règles sur 273 retirées sans perte, 130 bacs gagnés en validation (seed 8136 :
-   −84). À brancher dans le moteur, aussi pour réduire le coût par appel, cause de l'échec
-   de H2 sur GLM.
-3. **Relances** : mesuré le 16 novembre, elles fondent la lignée du champion final dans
-   7 runs GLM sur 24 et 11 runs Gemini sur 24. Elles sont utiles ; ne pas les réduire.
-4. **H3 sur un second modèle** (GLM, MiniMax M3 ou DeepSeek par OpenRouter). Essai
-   préalable court d'abord.
-5. **Autre problème** : l'ordonnancement. Relu le 16 novembre : la capacité des nœuds est
-   bien contrôlée, mais le benchmark est **peu discriminant** en l'état. Sur la seed 9600,
-   First-Fit est à 37 nœuds de la borne L1 sur 75 instances d'entraînement (706 contre
-   669), et les quatre heuristiques classiques tiennent en 5 nœuds : peu de marge,
-   beaucoup d'égalités. À revoir avant tout protocole (tâches plus grosses ou plus
-   hétérogènes, comme le profil Weibull du bin packing). Le descripteur `new_bin_ratio`
-   suppose 50 tâches par instance (faux sur OOD-1 et OOD-2, sans effet sur l'archive).
-6. **Îles** : export/import fait le 16 novembre (branche `ast-croisement`,
-   `MapElitesArchive::export_migrants` et `EvolutionEngine::import_migrants` : le code
-   voyage seul, il est re-noté sur les instances de l'île d'accueil, sans appel au
-   modèle ; test `migrants_travel_between_islands_and_are_rescored`). Reste : une
-   commande CLI et un protocole.
-7. **Gabarits de repli silencieux** (`nomad-operator/src/http_llm.rs`,
-   `normalize_to_ast_score_bin` et `_score_node`) : une réponse illisible du modèle devient
-   un First-Fit ou un Best-Fit noté valide. 2,4 % des propositions GLM, 0,1 % Gemini ;
-   aucun champion à un palier (voir RESULTATS_GLM_340.md). À décider pour les prochains
-   protocoles : marquer ces propositions invalides, ou au moins les étiqueter.
-8. **Aiguillage de régime** (croisement qui garde les deux parents sous une condition) :
-   mesuré hors ligne, gains d'au plus 9 bacs (0,2 %) et fuel doublé ; non retenu
-   (`../nomad-ast/docs/MESURE_AIGUILLAGE.md`).
+Deux machines : le **laptop** (sans GPU) fait tourner les tirs ; la **tour** (RTX) sert aux
+essais et aux bancs hors ligne. Une branche par machine pour éviter les conflits git.
+
+**Branches**
+
+- `weibull-benchmark` : protocoles, résultats, scripts de campagne et d'analyse.
+- `ast-croisement` (worktree `../nomad-ast` sur le laptop) : tout le code récent.
+  Croisement AST corrigé, opérateurs locaux du groupe D (`NOMAD_LOCAL_CROSSOVERS`,
+  `NOMAD_PRUNE_CHAMPION`), îles (`export_migrants` / `import_migrants`), étiquette
+  `fallback_template`, corrections d'Argon. 87 tests passent. Mesures hors ligne dans
+  `mesures/` et `docs/MESURE_AIGUILLAGE.md`.
+
+**Décidé le 16 novembre (en attente du go pour le tir)**
+
+1. **H2 sur GLM avec l'élagage.** Bras évolution + élagage (sans croisement local) contre
+   tirage, 24 seeds neuves, 344 appels, même exécutable figé pour les deux bras ; H1 à
+   appels égaux, H2 à dépense égale avec `k* = 344 / r`, `r` mesuré. Coût estimé ~2,10 $ ;
+   si l'essai de fumée projette plus de 3 $, demander avant de lancer. Avant de figer
+   l'exécutable : rendre **invalides** les propositions remplacées par un gabarit de
+   repli (aujourd'hui seulement étiquetées). Durée estimée 8 à 12 h, à lancer sur le
+   laptop.
+
+**À faire ensuite, gratuit**
+
+2. **Aligner le groupe C sur le groupe D** avant tout protocole C contre D : mutation
+   informée, relances, enfant accepté seulement s'il bat son hôte, suppression de l'appel
+   au modèle de secours dans `HttpLlamaOperator::crossover` (son enfant, sans manifeste,
+   est rejeté à 100 % par le groupe C).
+3. **Greffe** : renommer les variables du donneur (`_d_v`) et inclure ses réassignations
+   dans la tranche ; `compute_liveness` sans `score` codé en dur, avec
+   `collect_free_variables`.
+4. **Banc mélanges contre règles complètes** (bon candidat pour la tour, plusieurs heures
+   de CPU). Argon propose de supprimer les mélanges `score * 0,95 + 0,05 × variable du
+   donneur` du croisement. Mais dans le tir GLM local, 845 croisements sur 1 656 en
+   ajoutent un, et 25 des 45 champions issus d'un croisement viennent d'un mélange ajouté.
+   À comparer hors ligne, sur les mêmes paires, à une greffe de règles complètes avant de
+   décider. Point d'Argon exact mais sans effet dans NOMAD : `let score = …` sans `mut`
+   ne compilerait pas en Rust, notre interpréteur l'accepte.
+5. **Commande CLI des îles**, puis protocole.
+6. **H3 sur GLM** si H2 est établie.
+7. **Ordonnancement** : benchmark peu discriminant, à refaire avant tout protocole. Sur la
+   seed 9600, First-Fit est à 37 nœuds de L1 sur 75 instances, et les quatre heuristiques
+   classiques tiennent en 5 nœuds.
+
+**Acquis, pour mémoire**
+
+- Relances : elles fondent la lignée du champion final dans 7 runs GLM sur 24 et 11
+  Gemini sur 24 ; ne pas les réduire.
+- Aiguillage de régime : non retenu (gains ≤ 0,2 %, fuel doublé).
+- Gabarits de repli : 2,4 % des propositions GLM, 0,1 % Gemini, aucun champion à un
+  palier ; résultats publiés non touchés (RESULTATS_GLM_340.md).
+- Élagage : ~3 fois moins de code, coût par appel divisé par 2, pas de gain de qualité à
+  appels égaux (RESULTATS_GLM_LOCAL.md).
 
 ## Installer l'environnement
 
@@ -98,6 +108,9 @@ est plus grande à 1 359 appels qu'à 340.
   recompilée sur une autre machine n'aura pas forcément la même empreinte que l'original
   (SHA-256 `1f16312c10511e5407bf316a1aa12be32f05d6f4549dc35e946f9dbe66ce4c22`) : c'est le
   même code source, et le contrôle ci-dessous suffit à vérifier qu'il se comporte pareil.
+- Pour le code récent : `git worktree add ../nomad-ast ast-croisement`, puis `cargo test`
+  dans ce dossier. L'exécutable du protocole GLM local se reconstruit depuis le tag
+  `glm-local-v2` (SHA-256 de l'original `460636844eb4…9044`).
 - Vérifier : `cargo test` sur la branche, puis
   `python scripts/analysis/gemini_courbe.py controle --seeds24` doit afficher
   « 0 probleme(s) ».
@@ -115,7 +128,9 @@ est plus grande à 1 359 appels qu'à 340.
 - Les tirs utilisent le processeur pour évaluer les programmes, pas la carte graphique.
   Douze processus en parallèle chargent fortement un processeur à 6 cœurs.
 - Crédits : Gemini (clé Google, 17,23 € restants au 15 novembre, sans recharge
-  automatique), OpenRouter (12 $ achetés, environ
-  4,25 $ dépensés au 16 novembre après le tir GLM à 344 appels, sans recharge automatique).
+  automatique), OpenRouter (environ
+  6,70 $ dépensés au 16 novembre au soir, **recharge automatique activée**). Les deux
+  machines partagent le même compte : ne pas lancer deux tirs payants en même temps sans
+  le savoir.
   Les clés Gemini et MiniMax sont aussi enregistrées dans OpenRouter : `gemini-3.1-flash-lite`
   et MiniMax M3 y sont utilisables (vérifier la facturation avec une clé propre).
