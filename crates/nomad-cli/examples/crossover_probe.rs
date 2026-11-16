@@ -157,6 +157,13 @@ fn main() {
                         row["status"] = status_label(&child.validation).into();
                         row["child_valid"] = score.is_valid.into();
                         row["child_bins"] = score.total_bins.into();
+                        if !score.is_valid {
+                            // Cause de l'invalidite : premier message d'erreur sur l'entrainement.
+                            let (_, evals) = oracle.evaluate_dataset_with_evals(
+                                &oracle.in_distribution, &child, &sandbox, fuel, config.lookahead);
+                            row["error"] = evals.iter().find_map(|e| e.error_message.clone()).into();
+                            row["child_code"] = child.logic_code.clone().into();
+                        }
                         if score.is_valid && score.total_bins < host_scores[hi].total_bins {
                             let v_child = oracle.evaluate_validation(&child, &sandbox, fuel);
                             let v_host = oracle.evaluate_validation(host, &sandbox, fuel);

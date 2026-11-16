@@ -45,7 +45,6 @@ fn is_builtin_or_method(name: &str) -> bool {
             | "None"
             | "true"
             | "false"
-            | "score"
     )
 }
 
@@ -363,8 +362,17 @@ pub fn multi_locus_ast_crossover(
         return Err(CrossoverError::EmptyHostBody(host.id.0.clone()));
     }
 
-    // Locus 1: début du corps (immédiatement après l'initialisation du score à l'index 0)
-    let locus1 = if stmts.len() > 1 { 1 } else { 0 };
+    // Locus 1 : juste après la déclaration de `score` dans l'hôte, où qu'elle soit. Avant
+    // elle, une greffe qui lit `score` ne compile pas ; un hôte sans `let score` de premier
+    // niveau ne peut pas recevoir ce croisement.
+    let locus1 = stmts
+        .iter()
+        .position(|s| matches!(s, syn::Stmt::Local(l)
+            if matches!(&l.pat, syn::Pat::Ident(p) if p.ident == "score")
+                || matches!(&l.pat, syn::Pat::Type(t)
+                    if matches!(&*t.pat, syn::Pat::Ident(p) if p.ident == "score"))))
+        .map(|i| i + 1)
+        .ok_or_else(|| CrossoverError::UnresolvedDependencies(host.id.0.clone()))?;
     let mut stmt1 = unit1.stmt.clone();
     if let syn::Stmt::Local(local) = &unit1.stmt {
         if let syn::Pat::Ident(pat_ident) = &local.pat {
@@ -628,6 +636,35 @@ mod tests {
 
     /// Si aucune unite du donneur n'est resoluble dans l'hote, le croisement echoue au lieu
     /// d'inserer un fragment qui ne compilerait pas.
+    /// L'hôte calcule des variables avant `score` : la greffe du locus 1 doit venir après la
+    /// déclaration de `score`, sinon l'enfant lit une variable non définie.
+    #[test]
+    fn multi_locus_graft_follows_host_score_declaration() {
+        let host = capsule(
+            "h",
+            "let progress = step_index as f64 / total_items as f64;              let gap = bin_residual as f64;              let mut score = gap * 2.0;              if progress > 0.5 { score -= 1.0; }              score",
+        );
+        let donor = capsule(
+            "d",
+            "let mut score = bin_residual as f64;              if bin_residual < 10 { score += 3.0; }              if item_size > 20 { score -= 2.0; }              score",
+        );
+        let sandbox = nomad_sandbox_free_check;
+        for seed in 0..40u64 {
+            let (child, _) = multi_locus_ast_crossover(&host, &donor, seed, 1).expect("greffe");
+            let f = parse_heuristic_fn(&child.logic_code).unwrap();
+            let decl = f.block.stmts.iter().position(|s| {
+                matches!(s, syn::Stmt::Local(l) if matches!(&l.pat, syn::Pat::Ident(p) if p.ident == "score"))
+            }).unwrap();
+            for s in &f.block.stmts[..decl] {
+                assert!(!sandbox(s), "score lu avant sa declaration : {}", child.logic_code);
+            }
+        }
+    }
+
+    fn nomad_sandbox_free_check(s: &syn::Stmt) -> bool {
+        crate::unit::collect_free_variables(s).contains(&"score".to_string())
+    }
+
     #[test]
     fn unresolvable_donor_is_refused() {
         let host = capsule("Host", "let mut score = bin_residual as f64; score");
