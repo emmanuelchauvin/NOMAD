@@ -1,6 +1,8 @@
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+#[cfg(test)]
 use std::collections::HashMap;
 
 use nomad_core::{
@@ -53,7 +55,9 @@ pub struct MapElitesArchive {
     /// Résolution de l'axe Y (entropie ou déséquilibre CPU/RAM).
     pub dim_y: usize,
     /// Grille associative indexée par coordonnées "x,y".
-    pub grid: HashMap<String, ArchiveEntry>,
+    /// Table ordonnee : l'ordre d'iteration, donc les tirages qui en dependent, est le meme
+    /// d'une execution a l'autre.
+    pub grid: BTreeMap<String, ArchiveEntry>,
     /// Nombre total d'échantillonnages effectués (compteur global pour UCB).
     pub total_samples: usize,
     /// Facteur d'exploration de la curiosité UCB (typiquement sqrt(2) ≈ 1.414).
@@ -80,7 +84,7 @@ impl MapElitesArchive {
         Self {
             dim_x: dim_x.max(1),
             dim_y: dim_y.max(1),
-            grid: HashMap::new(),
+            grid: BTreeMap::new(),
             total_samples: 0,
             ucb_exploration_factor: 1.414,
             domain,

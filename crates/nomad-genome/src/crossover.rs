@@ -48,6 +48,15 @@ fn is_builtin_or_method(name: &str) -> bool {
     )
 }
 
+/// Nom lie par un `let`, avec ou sans annotation de type (`let x = ..` ou `let x: f64 = ..`).
+fn local_pat_ident(pat: &syn::Pat) -> Option<&syn::PatIdent> {
+    match pat {
+        syn::Pat::Ident(p) => Some(p),
+        syn::Pat::Type(t) => local_pat_ident(&t.pat),
+        _ => None,
+    }
+}
+
 fn extract_signature_params(item_fn: &syn::ItemFn) -> HashSet<String> {
     let mut params = HashSet::new();
     for input in &item_fn.sig.inputs {
@@ -65,7 +74,7 @@ fn extract_in_scope_locals(stmts: &[syn::Stmt], locus_idx: usize) -> HashSet<Str
     let limit = locus_idx.min(stmts.len());
     for s in &stmts[..limit] {
         if let syn::Stmt::Local(l) = s {
-            if let syn::Pat::Ident(p) = &l.pat {
+            if let Some(p) = local_pat_ident(&l.pat) {
                 in_scope.insert(p.ident.to_string());
             }
         }
@@ -76,7 +85,7 @@ fn extract_in_scope_locals(stmts: &[syn::Stmt], locus_idx: usize) -> HashSet<Str
 fn find_donor_definition(donor_stmts: &[syn::Stmt], var: &str) -> Option<(usize, syn::Stmt)> {
     for (idx, stmt) in donor_stmts.iter().enumerate() {
         if let syn::Stmt::Local(local) = stmt {
-            if let syn::Pat::Ident(p) = &local.pat {
+            if let Some(p) = local_pat_ident(&local.pat) {
                 if p.ident == var {
                     return Some((idx, stmt.clone()));
                 }
@@ -188,11 +197,11 @@ pub fn deterministic_ast_crossover(
     for cand in &candidate_units {
         let mut cand_stmt = cand.stmt.clone();
         if let syn::Stmt::Local(local) = &cand.stmt {
-            if let syn::Pat::Ident(pat_ident) = &local.pat {
+            if let Some(pat_ident) = local_pat_ident(&local.pat) {
                 let var_name = pat_ident.ident.to_string();
                 let already_defined = stmts.iter().any(|s| {
                     if let syn::Stmt::Local(l) = s {
-                        if let syn::Pat::Ident(p) = &l.pat {
+                        if let Some(p) = local_pat_ident(&l.pat) {
                             return p.ident == var_name;
                         }
                     }
@@ -453,18 +462,16 @@ pub fn multi_locus_ast_crossover(
     let locus1 = stmts
         .iter()
         .position(|s| matches!(s, syn::Stmt::Local(l)
-            if matches!(&l.pat, syn::Pat::Ident(p) if p.ident == "score")
-                || matches!(&l.pat, syn::Pat::Type(t)
-                    if matches!(&*t.pat, syn::Pat::Ident(p) if p.ident == "score"))))
+            if local_pat_ident(&l.pat).is_some_and(|p| p.ident == "score")))
         .map(|i| i + 1)
         .ok_or_else(|| CrossoverError::UnresolvedDependencies(host.id.0.clone()))?;
     let mut stmt1 = unit1.stmt.clone();
     if let syn::Stmt::Local(local) = &unit1.stmt {
-        if let syn::Pat::Ident(pat_ident) = &local.pat {
+        if let Some(pat_ident) = local_pat_ident(&local.pat) {
             let var_name = pat_ident.ident.to_string();
             let already_defined = stmts.iter().any(|s| {
                 if let syn::Stmt::Local(l) = s {
-                    if let syn::Pat::Ident(p) = &l.pat {
+                    if let Some(p) = local_pat_ident(&l.pat) {
                         return p.ident == var_name;
                     }
                 }
@@ -524,11 +531,11 @@ pub fn multi_locus_ast_crossover(
     let use_regime_dispatch = seed % 2 == 1;
 
     if let syn::Stmt::Local(local) = &unit2.stmt {
-        if let syn::Pat::Ident(pat_ident) = &local.pat {
+        if let Some(pat_ident) = local_pat_ident(&local.pat) {
             let var_name = pat_ident.ident.to_string();
             let _already_defined = stmts.iter().any(|s| {
                 if let syn::Stmt::Local(l) = s {
-                    if let syn::Pat::Ident(p) = &l.pat {
+                    if let Some(p) = local_pat_ident(&l.pat) {
                         return p.ident == var_name;
                     }
                 }
@@ -762,6 +769,31 @@ mod tests {
             assert!(child.logic_code.contains("111.0") && child.logic_code.contains("222.0"));
             assert!(child.graft_manifest.is_none());
         }
+    }
+
+    /// Un `let` annote d'un type est une definition comme une autre : la variable du donneur
+    /// est retrouvee et copiee avec la regle qui la lit.
+    #[test]
+    fn typed_let_is_a_definition() {
+        let host = capsule("h", "let mut score: f64 = bin_residual as f64; score");
+        let donor = capsule(
+            "d",
+            "let gap: f64 = item_size as f64 * 2.0; let mut score = 0.0;              if gap > 50.0 { score += gap; } score",
+        );
+        let mut seen = false;
+        for seed in 0..40u64 {
+            for res in [
+                deterministic_ast_crossover(&host, &donor, seed, 1),
+                multi_locus_ast_crossover(&host, &donor, seed, 1),
+            ] {
+                let (child, _) = res.expect("greffe");
+                if child.logic_code.contains("gap > 50.0") {
+                    seen = true;
+                    assert!(child.logic_code.contains("let gap : f64"), "{}", child.logic_code);
+                }
+            }
+        }
+        assert!(seen, "la regle qui lit gap n'a jamais ete greffee");
     }
 
     #[test]

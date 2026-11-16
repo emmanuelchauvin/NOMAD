@@ -722,8 +722,8 @@ impl<'a> EvolutionEngine<'a> {
 
     /// Elague le meilleur elite s'il est nouveau : chaque instruction (sauf l'expression
     /// rendue) est retiree a son tour, du bas vers le haut, et le retrait est garde si le
-    /// programme reste valide sans perdre de bac. La version elaguee est inseree si elle est
-    /// strictement meilleure que l'original (meme nombre de bacs : moins de fuel).
+    /// programme reste valide sans perdre de bac. La version elaguee remplace l'original des
+    /// qu'une instruction a ete retiree : a bacs egaux, le code le plus court gagne.
     fn prune_best_elite(&mut self, generation: usize) {
         let Some((best, best_score)) = self.ranked_elites().into_iter().next() else {
             return;
@@ -767,7 +767,7 @@ impl<'a> EvolutionEngine<'a> {
                 keep[i] = true;
             }
         }
-        if removed == 0 || !(current < best_score) {
+        if removed == 0 {
             return;
         }
         let mut pruned = SkillCapsule::new(
@@ -793,7 +793,21 @@ impl<'a> EvolutionEngine<'a> {
             true,
         );
         self.last_pruned_id = Some(pruned.id.0.clone());
-        self.archive.insert(pruned, current);
+        // A bacs egaux, le programme le plus court remplace l'original, meme si un critere
+        // de departage (tLDR, efficacite) a legerement bouge. Si sa niche est tenue par un
+        // meilleur elite, l'original reprend sa place.
+        let key = self
+            .archive
+            .grid
+            .iter()
+            .find(|(_, e)| e.capsule.id == best.id)
+            .map(|(k, _)| k.clone());
+        let original = key.and_then(|k| self.archive.grid.remove(&k));
+        if !self.archive.insert(pruned, current) {
+            if let Some(entry) = original {
+                self.archive.insert(entry.capsule, entry.fitness);
+            }
+        }
     }
 
     fn produce_next_generation(
@@ -1298,7 +1312,7 @@ mod tests {
         assert!(!best.logic_code.contains("1000"), "regle morte non retiree");
         assert!(best.logic_code.contains("let mut score"), "regle utile retiree");
         assert_eq!(best_score.total_bins, score.total_bins);
-        assert!(best_score < score);
+        assert_eq!(engine.archive.grid.len(), 1, "l'original doit etre remplace");
 
         // Le meme champion n'est pas elague deux fois.
         engine.prune_best_elite(3);
