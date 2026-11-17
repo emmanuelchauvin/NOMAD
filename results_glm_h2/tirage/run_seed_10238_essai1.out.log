@@ -1,0 +1,76 @@
+2026-11-17T00:17:10.487085Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10238, Pop=344, MaxGens=1
+2026-11-17T01:10:22.494303Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-17T01:40:02.252841Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 08b4a196cc3c16ad on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10238 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4114 bins (excess: +69), Efficiency: 98.32%, Fuel: 59399702
+ Best In-Dist (w/o Lookahead) : 4129 bins (excess: +84), Efficiency: 97.97%
+ Dynamic Trajectory: tLDR = 3.1179
+ Behavior Profile : DeadSpaceRatio: 38.6%, NewBinRatio: 41.1%, ResVar: 0.40
+ MAP-Elites Niches: 18 active (18.0% coverage), QD-Score: 12.772
+ Validation Score : 4116 bins (excess: +74), Efficiency: 98.20%
+ OOD-1 Score      : 10216 bins (excess: +152), Efficiency: 98.51%
+ OOD-2 Score      : 3586 bins (excess: +43), Efficiency: 98.80%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-080
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let cap = bin_capacity as f64;
+    let post = post_residual as f64;
+    let item = item_size as f64;
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    let norm_post = post / cap; // normalized post residual in [0,1]
+
+    // Smooth polynomial base: penalize leftover space, with stronger penalty
+    // for mid-range waste (dead space that is hard to reuse) than for
+    // near-zero or near-full residuals.
+    let x = norm_post;
+    let mut score = 12.0 * x - 8.0 * x * x + 16.0 * x * x * x;
+
+    // Tight fit reward: smooth coupling of item size with post residual.
+    // Large items leaving small residuals get extra reward.
+    let tightness = 1.0 - norm_post;
+    let size_factor = item / cap;
+    score -= 6.0 * tightness * tightness * (0.5 + size_factor);
+
+    // Dead-space hazard: residuals too small for typical future items.
+    // Smooth sigmoid-like gate around half capacity.
+    let gate = 1.0 / (1.0 + (norm_post - 0.45) * 14.0).exp();
+    score += 5.0 * gate * (1.0 - progress) * norm_post;
+
+    // Stream-progress coupling: late in the stream, waste is costlier.
+    let late = progress * progress;
+    score += 8.0 * late * norm_post;
+
+    // Last-chance bonus: if this is the only fitting bin, strongly prefer it.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 10.0;
+    }
+
+    // Lookahead: if next item fits exactly in post residual, reward heavily;
+    // smooth reward decaying with mismatch.
+    if next_item_size > 0 {
+        let mismatch = (post_residual as f64 - next_item_size as f64).abs() / cap;
+        score -= 7.0 * (1.0 - 2.0 * mismatch).max(0.0) * (1.0 - mismatch);
+    }
+
+    // Crowd-out penalty: many open bins with high mean residual suggests
+    // fragmentation; discourage adding to it mildly, encourage consolidation.
+    let frag = mean_residual / cap - norm_post;
+    score += 2.0 * frag.max(0.0);
+
+    // New-bin candidate handling: an empty bin has norm_post == 1.0.
+    // Its polynomial base is high; only open a new bin when no existing bin
+    // offers a reasonable fit (item large relative to best residual is
+    // captured by the other bins' scores already). Add a mild adaptive
+    // discount so a fresh bin beats very poor fits late in the stream.
+    if bin_residual == bin_capacity {
+        score -= 4.0 + 3.0 * late + size_factor * 2.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\tirage\run_seed_10238_tirage.json.tmp

@@ -1,0 +1,98 @@
+2026-11-16T19:29:52.122127Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10000, Pop=344, MaxGens=1
+2026-11-16T19:39:39.754511Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Failed to read JSON: Une connexion établie a été abandonnée par un logiciel de votre ordinateur hôte. (os error 10053)). Retrying in 4s...
+2026-11-16T20:09:08.282319Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T20:48:59.488545Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T22:17:22.375897Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 6cd7f402740c40a6 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10000 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4184 bins (excess: +136), Efficiency: 96.75%, Fuel: 30782688
+ Best In-Dist (w/o Lookahead) : 4217 bins (excess: +169), Efficiency: 95.99%
+ Dynamic Trajectory: tLDR = 0.2555
+ Behavior Profile : DeadSpaceRatio: 68.0%, NewBinRatio: 41.8%, ResVar: 0.39
+ MAP-Elites Niches: 12 active (12.0% coverage), QD-Score: 8.639
+ Validation Score : 4150 bins (excess: +135), Efficiency: 96.75%
+ OOD-1 Score      : 10288 bins (excess: +286), Efficiency: 97.22%
+ OOD-2 Score      : 3654 bins (excess: +95), Efficiency: 97.40%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-036
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Harmonic classes: partition post_residual into capacity-fraction classes.
+    // Class boundaries at 1/4, 1/3, 1/2 of capacity — dead space below these
+    // thresholds is progressively more wasteful.
+    let quarter = bin_capacity / 4;
+    let third = bin_capacity / 3;
+    let half = bin_capacity / 2;
+
+    if post_residual == 0 {
+        score -= 50.0; // perfect closure — best possible outcome
+    } else if post_residual < quarter {
+        score += 40.0; // tiny unusable sliver — heavy penalty
+    } else if post_residual < third {
+        score += 15.0;
+    } else if post_residual > half {
+        score -= 10.0; // large residual remains useful
+    }
+
+    // Integer-division harmonic class of post_residual: reward residuals that
+    // are "friendly" sizes (divisible by common small item sizes 10/20/25).
+    if post_residual % 10 == 0 {
+        score -= 6.0;
+        if post_residual % 20 == 0 { score -= 4.0; }
+    }
+    if post_residual % 25 == 0 { score -= 5.0; }
+
+    // Lookahead coupling: if the next item fits exactly into post_residual,
+    // strongly favor this bin (chain packing).
+    if next_item_size > 0 {
+        if next_item_size == post_residual {
+            score -= 30.0;
+        } else if next_item_size <= post_residual {
+            let gap = post_residual - next_item_size;
+            if gap < quarter {
+                score += gap as f64 * 0.5; // next item would leave a sliver
+            } else {
+                score -= 8.0; // next item leaves a healthy residual
+            }
+        } else {
+            // next item won't fit here; residual must stand alone
+            score += 5.0;
+        }
+    }
+
+    // Last-chance bin: if this is the only bin that fits, strongly prefer it
+    // over opening a new bin unless residual would be a tiny sliver.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 20.0;
+        if post_residual < quarter { score += 15.0; } // but not if it makes a sliver
+    }
+
+    // New-bin candidate handling: neutral-ish baseline so it's chosen only when
+    // all open bins score poorly (e.g. all would leave slivers).
+    if bin_residual == bin_capacity {
+        score = 45.0 + post_residual as f64 * 0.1;
+        if next_item_size > 0 && next_item_size <= bin_capacity {
+            // slightly favor new bin if next item is large (future-proofing)
+            let progress = step_index as f64 / total_items.max(1) as f64;
+            score -= progress * 5.0;
+        }
+    }
+
+    // Late in the stream, consolidate: penalize spreading across many bins.
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    if open_bins_count > 4 {
+        score += (open_bins_count as f64 - 4.0) * 2.0 * progress;
+    }
+
+    // Mild tie-break: prefer bins whose residual is close to the mean
+    // (keeps residual distribution balanced).
+    score += (post_residual as f64 - mean_residual).abs() * 0.05;
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\tirage\run_seed_10000_tirage.json.tmp

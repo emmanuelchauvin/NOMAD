@@ -1,0 +1,61 @@
+2026-11-16T19:29:52.137008Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10153, Pop=344, MaxGens=1
+2026-11-16T22:16:12.553286Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 26c8fb1753048220 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10153 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4171 bins (excess: +135), Efficiency: 96.77%, Fuel: 41248238
+ Best In-Dist (w/o Lookahead) : 4228 bins (excess: +192), Efficiency: 95.46%
+ Dynamic Trajectory: tLDR = 1.3603
+ Behavior Profile : DeadSpaceRatio: 22.9%, NewBinRatio: 41.7%, ResVar: 0.48
+ MAP-Elites Niches: 16 active (16.0% coverage), QD-Score: 11.808
+ Validation Score : 4170 bins (excess: +137), Efficiency: 96.72%
+ OOD-1 Score      : 10166 bins (excess: +116), Efficiency: 98.86%
+ OOD-2 Score      : 3598 bins (excess: +79), Efficiency: 97.81%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-263
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit reward
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // Aggressive 2-step lookahead: reward when next item exactly fills post_residual
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 800.0;
+        } else if post_residual > next_item_size {
+            // next item fits here after current item: chain reward scaled by leftover
+            let chain_left = post_residual - next_item_size;
+            score -= 300.0 - (chain_left as f64).min(200.0);
+        } else {
+            // next item cannot use the post residual: penalize dead space
+            score += (next_item_size - post_residual) as f64 * 0.5;
+        }
+    }
+
+    // Relative to mean residual: prefer bins tighter than average
+    score += (mean_residual - bin_residual as f64) * 0.3;
+
+    // Last-chance bin before opening a new bin
+    if fitting_bins_count == 1 {
+        score -= 150.0;
+    }
+
+    // Penalize opening a new bin when existing bins fit reasonably well
+    if bin_residual == bin_capacity && fitting_bins_count > 0 {
+        let best_possible = post_residual as f64;
+        score += 50.0 + best_possible * 0.2;
+    }
+
+    // Late-stream consolidation: prefer filling existing bins toward the end
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score -= progress * (bin_capacity - post_residual) as f64 * 0.1;
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\tirage\run_seed_10153_tirage.json.tmp

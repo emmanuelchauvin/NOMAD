@@ -1,0 +1,20 @@
+2026-11-16T19:29:51.769519Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10170, Pop=8, MaxGens=47
+2026-11-16T22:59:07.889469Z  INFO nomad_orchestrator::engine: Evaluating winning capsule b052ea6b3c02e016 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10170 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4076 bins (excess: +53), Efficiency: 98.70%, Fuel: 60194255
+ Best In-Dist (w/o Lookahead) : 4207 bins (excess: +184), Efficiency: 95.63%
+ Dynamic Trajectory: tLDR = 2.0876
+ Behavior Profile : DeadSpaceRatio: 26.0%, NewBinRatio: 40.8%, ResVar: 0.41
+ MAP-Elites Niches: 18 active (18.0% coverage), QD-Score: 15.014
+ Validation Score : 4086 bins (excess: +52), Efficiency: 98.73%
+ OOD-1 Score      : 10139 bins (excess: +93), Efficiency: 99.08%
+ OOD-2 Score      : 3589 bins (excess: +31), Efficiency: 99.14%
+ Lineage Nodes    : 347, Transitions: 259
+ Best Heuristic   : Pruned-G42-7821c749
+ Logic Code       : pub fn score_bin (item_size : u32 , bin_residual : u32 , bin_capacity : u32 , step_index : usize , total_items : usize , open_bins_count : usize , mean_residual : f64 , next_item_size : u32 , post_residual : u32 , fitting_bins_count : usize) -> f64 { let mut score = post_residual as f64 ; let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 } ; let pr = post_residual as f64 ; let cap = bin_capacity as f64 ; let norm_pr = pr / cap ; let prog2 = progress * progress ; if post_residual == 0 { score -= 900.0 ; } if next_item_size > 0 { let nxt = next_item_size as f64 ; if pr == nxt { score -= 560.0 ; } else if pr >= nxt { let slack = (pr - nxt) . min (30.0) ; let tight = 1.0 - (pr - nxt) / cap ; score -= (170.0 - slack * 0.30) * (1.0 - prog2) * (0.8 + 0.4 * tight) ; } else { let gap = nxt - pr ; let scarcity = if fitting_bins_count > 1 { 1.0 } else { 1.6 } ; score += gap * (1.0 + 1.2 * progress) * 0.55 * scarcity ; } } let tightness = 1.0 - norm_pr ; score -= tightness * tightness * (1.0 + 2.4 * progress) * 6.5 ; let dead = pr - (next_item_size as f64) . min (pr) ; if dead > 0.0 && pr < cap * 0.2 { score += dead * (0.35 + 0.5 * progress) ; } if fitting_bins_count <= 1 && post_residual > 0 && pr >= item_size as f64 { score += 42.0 * (1.0 - progress) ; } if pr < next_item_size as f64 && pr < cap * 0.25 && next_item_size > item_size { score += 12.0 * (1.0 - progress) ; } score }
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\evolution\run_seed_10170_evolution.json.tmp

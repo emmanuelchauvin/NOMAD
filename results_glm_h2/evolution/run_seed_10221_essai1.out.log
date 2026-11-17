@@ -1,0 +1,20 @@
+2026-11-16T19:29:51.883046Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10221, Pop=8, MaxGens=47
+2026-11-16T23:16:33.180656Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 073b42160eee3080 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10221 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4022 bins (excess: +48), Efficiency: 98.81%, Fuel: 61622660
+ Best In-Dist (w/o Lookahead) : 4150 bins (excess: +176), Efficiency: 95.76%
+ Dynamic Trajectory: tLDR = 2.1097
+ Behavior Profile : DeadSpaceRatio: 31.8%, NewBinRatio: 40.2%, ResVar: 0.35
+ MAP-Elites Niches: 13 active (13.0% coverage), QD-Score: 11.412
+ Validation Score : 4054 bins (excess: +57), Efficiency: 98.60%
+ OOD-1 Score      : 10135 bins (excess: +86), Efficiency: 99.15%
+ OOD-2 Score      : 3586 bins (excess: +46), Efficiency: 98.72%
+ Lineage Nodes    : 341, Transitions: 220
+ Best Heuristic   : Pruned-G15-6d9a73fd
+ Logic Code       : pub fn score_bin (item_size : u32 , bin_residual : u32 , bin_capacity : u32 , step_index : usize , total_items : usize , open_bins_count : usize , mean_residual : f64 , next_item_size : u32 , post_residual : u32 , fitting_bins_count : usize) -> f64 { let mut score = post_residual as f64 ; if post_residual == 0 { score -= 980.0 ; } else if post_residual <= 3 { score -= 260.0 ; } else if post_residual <= 8 { score -= 95.0 ; } let tightness = item_size as f64 / bin_residual . max (1) as f64 ; score -= 38.0 * tightness * tightness ; if next_item_size > 0 { if post_residual == next_item_size { score -= 400.0 ; } else if post_residual >= next_item_size { let slack = (post_residual - next_item_size) as f64 ; score -= 135.0 - slack * 3.0 ; if slack <= 4.0 { score -= 60.0 ; } if slack >= 10.0 && slack <= 60.0 { score -= 18.0 ; } } else { if post_residual >= 30 { score += 14.0 ; } else { score += 82.0 ; } } } if post_residual > 0 && post_residual < 12 { score += 155.0 - 9.0 * post_residual as f64 ; } else if post_residual >= 12 && post_residual < 22 { score += 9.0 ; } let progress = step_index as f64 / total_items . max (1) as f64 ; score -= 15.0 * progress * tightness ; if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size && post_residual < 25 { score += 48.0 - 1.2 * post_residual as f64 ; } if bin_residual == bin_capacity && progress > 0.75 && fitting_bins_count > 0 { score += 42.0 * progress ; } if bin_residual == bin_capacity && progress > 0.5 && fitting_bins_count > 0 { score += 25.0 * progress ; } if open_bins_count > 10 && post_residual > 0 { score -= 3.0 * (mean_residual - post_residual as f64) . abs () . min (10.0) ; } if post_residual > 0 && next_item_size > 0 && post_residual < next_item_size { let dead = post_residual as f64 ; score += 2.0 * dead . max (1.0) . ln () * (1.0 - progress) * 12.0 ; } score }
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\evolution\run_seed_10221_evolution.json.tmp

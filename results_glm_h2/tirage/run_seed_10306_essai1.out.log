@@ -1,0 +1,72 @@
+2026-11-16T19:29:52.177545Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10306, Pop=344, MaxGens=1
+2026-11-16T19:51:41.543710Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T21:59:09.590163Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T22:26:10.219175Z  INFO nomad_orchestrator::engine: Evaluating winning capsule dd6c2ecd5eb6fd05 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10306 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4150 bins (excess: +134), Efficiency: 96.78%, Fuel: 51852909
+ Best In-Dist (w/o Lookahead) : 4249 bins (excess: +233), Efficiency: 94.52%
+ Dynamic Trajectory: tLDR = 1.5222
+ Behavior Profile : DeadSpaceRatio: 2.8%, NewBinRatio: 41.5%, ResVar: 0.61
+ MAP-Elites Niches: 18 active (18.0% coverage), QD-Score: 12.572
+ Validation Score : 4179 bins (excess: +126), Efficiency: 97.00%
+ OOD-1 Score      : 10108 bins (excess: +78), Efficiency: 99.23%
+ OOD-2 Score      : 3665 bins (excess: +84), Efficiency: 97.72%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-172
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Strict dead-space avoidance: residuals below the minimum item size (1..=10)
+    // are pure waste; penalize them super-linearly.
+    if post_residual > 0 && post_residual < 10 {
+        score += (10 - post_residual) as f64 * 12.0;
+    }
+
+    // Perfect fit reward.
+    if post_residual == 0 {
+        score -= 60.0;
+    }
+
+    // Tightness reward: fraction of the bin consumed by this placement.
+    let fill_ratio = item_size as f64 / bin_capacity as f64;
+    score -= fill_ratio * 25.0;
+
+    // Penalize creating a residual that no plausible item can use later:
+    // if post_residual < next_item_size, this bin's leftover is likely dead.
+    if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+        score += (next_item_size - post_residual) as f64 * 4.0;
+    } else if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 8.0; // this bin can still serve the lookahead item
+    }
+
+    // Open-bin pressure: when many bins are open, prefer consolidating into
+    // existing ones rather than opening more; when few are open, allow spreading.
+    let pressure = (open_bins_count as f64).ln().max(0.0);
+    score += pressure * 3.0;
+
+    // Last-chance bonus: if this is the only bin that fits, strongly prefer it
+    // over opening a new bin.
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 40.0;
+    }
+
+    // Deviation from mean residual: prefer bins that deviate from the mean
+    // (reduces fragmentation diversity across bins).
+    let dev = (bin_residual as f64 - mean_residual).abs();
+    score += dev * 0.15;
+
+    // Mild stream-progression term: later in the stream, be more conservative
+    // with new bins (slight extra penalty on the empty-bin candidate).
+    if bin_residual == bin_capacity {
+        let progress = step_index as f64 / (total_items.max(1) as f64);
+        score += 5.0 + progress * 10.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\tirage\run_seed_10306_tirage.json.tmp
