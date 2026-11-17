@@ -1,0 +1,73 @@
+2026-11-17T07:58:36.013669Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=3153, Pop=8, MaxGens=2
+2026-11-17T08:01:13.774263Z  INFO nomad_orchestrator::engine: Evaluating winning capsule ef6a9fa5efe527a6 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3153 | Generations: 2
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4231 bins (excess: +184), Efficiency: 95.65%, Fuel: 27507723
+ Best In-Dist (w/o Lookahead) : 4233 bins (excess: +186), Efficiency: 95.61%
+ Dynamic Trajectory: tLDR = 0.2837
+ Behavior Profile : DeadSpaceRatio: 65.7%, NewBinRatio: 42.3%, ResVar: 0.52
+ MAP-Elites Niches: 3 active (3.0% coverage), QD-Score: 2.459
+ Validation Score : 4216 bins (excess: +185), Efficiency: 95.61%
+ OOD-1 Score      : 10499 bins (excess: +421), Efficiency: 95.99%
+ OOD-2 Score      : 3638 bins (excess: +85), Efficiency: 97.67%
+ Lineage Nodes    : 30, Transitions: 8
+ Best Heuristic   : LLM-Seed-018
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit is ideal.
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // 2-step lookahead: strongly reward if the next item fits the leftover space.
+    if next_item_size > 0 {
+        if next_item_size <= post_residual {
+            let slack = (post_residual - next_item_size) as f64;
+            score -= 200.0 - slack * 0.5;
+            if next_item_size == post_residual {
+                score -= 500.0; // chained perfect fit
+            }
+        } else {
+            // Penalize leftovers too small for the next item (dead space risk),
+            // scaled by how close the leftover is to being useless.
+            let dead = post_residual as f64 / bin_capacity as f64;
+            let next_rel = next_item_size as f64 / bin_capacity as f64;
+            if post_residual < next_item_size {
+                score += dead * 60.0 * (next_rel - dead).max(0.0) * 4.0;
+            }
+        }
+    }
+
+    // Prefer bins whose residual is below mean (tighter packing target),
+    // penalize placing into unusually empty bins.
+    score += (mean_residual - post_residual as f64) * 0.3;
+
+    // Last-chance bin: strongly favor using it to avoid opening a new bin.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 150.0;
+    }
+
+    // Discourage opening a new bin when good fits exist among open bins.
+    if bin_residual == bin_capacity {
+        let mut penalty = 250.0;
+        if post_residual > 0 && next_item_size > 0 && next_item_size > post_residual {
+            penalty -= 100.0; // opening a bin that won't chain is worse
+        }
+        if fitting_bins_count > 0 && post_residual < item_size {
+            penalty += 50.0;
+        }
+        score += penalty;
+    }
+
+    // Mild late-stream pressure to consolidate into fewer bins.
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score -= progress * (open_bins_count as f64).ln().max(0.0) * 2.0;
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h3_essai\evolution\run_seed_3153_evolution.json.tmp
