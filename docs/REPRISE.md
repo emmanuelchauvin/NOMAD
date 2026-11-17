@@ -35,7 +35,7 @@ avec le budget. C'est le préalable à la grille évolutive distribuée (evoluth
 H1 : à appels égaux, l'évolution bat le tirage. H2 : à dépense égale aussi. H3 : l'avance
 est plus grande à 1 359 appels qu'à 340.
 
-## Où on en est le soir du 16 novembre
+## Où on en est le 17 novembre
 
 Deux machines : le **laptop** (sans GPU) fait tourner les tirs ; la **tour** (RTX) sert aux
 essais et aux bancs hors ligne. Une branche par machine pour éviter les conflits git.
@@ -43,41 +43,43 @@ essais et aux bancs hors ligne. Une branche par machine pour éviter les conflit
 **Branches**
 
 - `weibull-benchmark` : protocoles, résultats, scripts de campagne et d'analyse.
-- `ast-croisement` (worktree `../nomad-ast` sur le laptop) : tout le code récent.
-  Croisement AST corrigé, opérateurs locaux du groupe D (`NOMAD_LOCAL_CROSSOVERS`,
-  `NOMAD_PRUNE_CHAMPION`), îles (`export_migrants` / `import_migrants`), étiquette
-  `fallback_template`, corrections d'Argon. 87 tests passent. Mesures hors ligne dans
-  `mesures/` et `docs/MESURE_AIGUILLAGE.md`.
+- `ast-croisement` (worktree `../nomad-ast` sur le laptop) : tout le code récent, y compris
+  le travail de la tour du 16 au 17 novembre (branche `tour-alignement-c`, fusionnée en
+  avance rapide) : groupe C aligné sur le groupe D, greffe corrigée (variables du donneur
+  renommées, réaffectations dans la tranche, vivacité sans `score` codé en dur), mode de
+  greffe `RulesOnly`. 97 tests passent. Le tag `glm-h2-elagage` (`7caeeb1`) reste
+  l'exécutable figé des protocoles H2 et H3.
 
-**Fait dans la nuit du 16 au 17 novembre**
+**Fait du 16 au 17 novembre**
 
-1. **H2 sur GLM avec l'élagage.** Bras évolution + élagage (sans croisement local) contre
-   tirage, 24 seeds neuves, 344 appels, même exécutable figé pour les deux bras ; H1 à
-   appels égaux, H2 à dépense égale avec `k* = 344 / r`, `r` mesuré. Coût estimé ~2,10 $ ;
-   si l'essai de fumée projette plus de 3 $, demander avant de lancer. Avant de figer
-   l'exécutable : rendre **invalides** les propositions remplacées par un gabarit de
-   repli (aujourd'hui seulement étiquetées). Durée estimée 8 à 12 h, à lancer sur le
-   laptop. **Fait : H1 et H2 établies** ([RESULTATS_GLM_H2.md](RESULTATS_GLM_H2.md)), 2,03 $.
+- **H2 sur GLM avec l'élagage : H1 et H2 établies** ([RESULTATS_GLM_H2.md](RESULTATS_GLM_H2.md)),
+  2,03 $.
+- **Groupe C aligné sur le groupe D**, greffe corrigée (tour).
+- **Banc mélanges contre règles complètes** (tour, `docs/MESURE_GREFFE_MELANGE_REGLES.md`
+  sur `ast-croisement`) : autant d'enfants gardés dans les deux modes, gains plus grands et
+  plus solides en validation avec les règles complètes (80 % contre 68 %), code ajouté cinq
+  fois plus gros. Exploratoire, sans test fixé à l'avance.
 
-**À faire ensuite, gratuit**
+**En attente du go**
 
-2. **Aligner le groupe C sur le groupe D** avant tout protocole C contre D : mutation
-   informée, relances, enfant accepté seulement s'il bat son hôte, suppression de l'appel
-   au modèle de secours dans `HttpLlamaOperator::crossover` (son enfant, sans manifeste,
-   est rejeté à 100 % par le groupe C).
-3. **Greffe** : renommer les variables du donneur (`_d_v`) et inclure ses réassignations
-   dans la tranche ; `compute_liveness` sans `score` codé en dur, avec
-   `collect_free_variables`.
-4. **Banc mélanges contre règles complètes** (bon candidat pour la tour, plusieurs heures
-   de CPU). Argon propose de supprimer les mélanges `score * 0,95 + 0,05 × variable du
-   donneur` du croisement. Mais dans le tir GLM local, 845 croisements sur 1 656 en
-   ajoutent un, et 25 des 45 champions issus d'un croisement viennent d'un mélange ajouté.
-   À comparer hors ligne, sur les mêmes paires, à une greffe de règles complètes avant de
-   décider. Point d'Argon exact mais sans effet dans NOMAD : `let score = …` sans `mut`
-   ne compilerait pas en Rust, notre interpréteur l'accepte.
-5. **Commande CLI des îles**, puis protocole.
-6. **H3 sur GLM** si H2 est établie.
-7. **Ordonnancement** : benchmark peu discriminant, à refaire avant tout protocole. Sur la
+1. **H3 sur GLM** ([PROTOCOLE_GLM_H3.md](PROTOCOLE_GLM_H3.md)) : mêmes bras et même
+   exécutable que H2, 1 359 appels, 24 seeds neuves (10400 à 10791). Test principal :
+   l'écart évolution − tirage à 1 359 appels contre l'écart à 344. Coût estimé 10 à 15 $
+   (le coût d'un appel d'évolution monte au fil du run), durée estimée 20 à 30 h sur le
+   laptop. Lancement : `scripts/campaign/lancer_glm_h3.ps1` (`-Essai` d'abord).
+
+**À faire ensuite**
+
+2. **Brancher le mode de greffe dans le moteur** (gratuit, tour) : `RulesOnly` n'existe
+   aujourd'hui que dans le banc. Variable d'environnement, élagage du champion aussi dans
+   le groupe C, tests.
+3. **Protocole groupe C contre groupe D sur GLM** : groupe C aligné, règles complètes et
+   élagage, contre groupe D avec élagage. Environ 3 $. Après H3, pour ne pas faire deux
+   tirs payants en même temps sur le même compte.
+4. **Commande CLI des îles**, puis protocole îles contre une seule population.
+5. **Greffe : remplacer au lieu d'empiler** (revue d'Argon, non traité) ; le grossissement
+   du code en règles complètes le rend plus utile.
+6. **Ordonnancement** : benchmark peu discriminant, à refaire avant tout protocole. Sur la
    seed 9600, First-Fit est à 37 nœuds de L1 sur 75 instances, et les quatre heuristiques
    classiques tiennent en 5 nœuds.
 
