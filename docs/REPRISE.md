@@ -1,6 +1,6 @@
 # Reprise du projet sur une autre machine
 
-État au 16 novembre 2026 au soir, branche `weibull-benchmark`. Cette fiche sert à reprendre
+État au 17 novembre 2026 au matin, branche `weibull-benchmark`. Cette fiche sert à reprendre
 le travail sur un autre PC ou avec un autre assistant : elle résume où en est la preuve et ce
 qui reste à faire.
 
@@ -30,6 +30,7 @@ avec le budget. C'est le préalable à la grille évolutive distribuée (evoluth
 | [PROTOCOLE_GLM_COURBE.md](PROTOCOLE_GLM_COURBE.md) | glm-5.3-flash (OpenRouter) | 1 359 appels | abandonné après l'essai préalable |
 | [RESULTATS_GLM_340.md](RESULTATS_GLM_340.md) | glm-5.3-flash (OpenRouter) | 344 appels, 24 seeds | **H1 établie**, H2 non (coût par appel ×4,4) |
 | [RESULTATS_GLM_LOCAL.md](RESULTATS_GLM_LOCAL.md) | glm-5.3-flash, évolution avec / sans croisement local et élagage | 344 appels, 12 seeds | H non établie (p = 0,77) ; coût par appel divisé par 2 |
+| [RESULTATS_GLM_H2.md](RESULTATS_GLM_H2.md) | glm-5.3-flash, évolution avec élagage | 344 appels, 24 seeds | **H1, H2 établies** (r = 2,12, k* = 162, p = 0,014) |
 
 H1 : à appels égaux, l'évolution bat le tirage. H2 : à dépense égale aussi. H3 : l'avance
 est plus grande à 1 359 appels qu'à 340.
@@ -48,7 +49,7 @@ essais et aux bancs hors ligne. Une branche par machine pour éviter les conflit
   `fallback_template`, corrections d'Argon. 87 tests passent. Mesures hors ligne dans
   `mesures/` et `docs/MESURE_AIGUILLAGE.md`.
 
-**Décidé le 16 novembre (en attente du go pour le tir)**
+**Fait dans la nuit du 16 au 17 novembre**
 
 1. **H2 sur GLM avec l'élagage.** Bras évolution + élagage (sans croisement local) contre
    tirage, 24 seeds neuves, 344 appels, même exécutable figé pour les deux bras ; H1 à
@@ -56,7 +57,7 @@ essais et aux bancs hors ligne. Une branche par machine pour éviter les conflit
    si l'essai de fumée projette plus de 3 $, demander avant de lancer. Avant de figer
    l'exécutable : rendre **invalides** les propositions remplacées par un gabarit de
    repli (aujourd'hui seulement étiquetées). Durée estimée 8 à 12 h, à lancer sur le
-   laptop.
+   laptop. **Fait : H1 et H2 établies** ([RESULTATS_GLM_H2.md](RESULTATS_GLM_H2.md)), 2,03 $.
 
 **À faire ensuite, gratuit**
 
@@ -129,7 +130,7 @@ essais et aux bancs hors ligne. Une branche par machine pour éviter les conflit
   Douze processus en parallèle chargent fortement un processeur à 6 cœurs.
 - Crédits : Gemini (clé Google, 17,23 € restants au 15 novembre, sans recharge
   automatique), OpenRouter (environ
-  6,70 $ dépensés au 16 novembre au soir, **recharge automatique activée**). Les deux
+  8,75 $ dépensés au 17 novembre au matin, **recharge automatique activée**). Les deux
   machines partagent le même compte : ne pas lancer deux tirs payants en même temps sans
   le savoir.
   Les clés Gemini et MiniMax sont aussi enregistrées dans OpenRouter : `gemini-3.1-flash-lite`
