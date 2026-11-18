@@ -38,8 +38,9 @@ est plus grande à 1 359 appels qu'à 340.
 
 ## Où on en est le 18 novembre
 
-Deux machines : le **laptop** (sans GPU) fait tourner les tirs ; la **tour** (RTX) sert aux
-essais et aux bancs hors ligne. Une branche par machine pour éviter les conflits git.
+Deux machines : le **laptop** (sans GPU) et la **tour** (RTX). **Depuis le 18 novembre au
+soir, tout se fait depuis le laptop** (tirs, code, bancs hors ligne) ; la tour n'a plus de
+tâche en cours.
 
 **Branches**
 
@@ -73,7 +74,7 @@ essais et aux bancs hors ligne. Une branche par machine pour éviter les conflit
    H3 (même message, même endroit). Ils sont maintenant comparés par classes de 1e-4. Le
    départage des quasi-égalités change : tout nouvel exécutable figé diffère sur ce point
    de `glm-h2-elagage`.
-2. **Brancher le mode de greffe dans le moteur** (gratuit, tour) : `RulesOnly` n'existe
+2. **Brancher le mode de greffe dans le moteur** (gratuit) : `RulesOnly` n'existe
    aujourd'hui que dans le banc. Variable d'environnement, élagage du champion aussi dans
    le groupe C, tests.
 3. **Limiter la taille du code** : sur GLM, le champion final de l'évolution fait 9 120
@@ -88,8 +89,12 @@ essais et aux bancs hors ligne. Une branche par machine pour éviter les conflit
    seed 9600, First-Fit est à 37 nœuds de L1 sur 75 instances, et les quatre heuristiques
    classiques tiennent en 5 nœuds.
 
-**À décider pour les prochains protocoles** : définir le point de dépense égale par la
-dépense cumulée plutôt que par le coût moyen par appel (voir RESULTATS_GLM_H3.md).
+**Décidé le 18 novembre pour les prochains protocoles** : à dépense égale, le bras le plus
+cher est arrêté quand sa **dépense cumulée** atteint celle de l'autre bras, et non plus au
+budget divisé par le coût moyen par appel (voir RESULTATS_GLM_H3.md).
+
+**En cours** : banc hors ligne `prune_probe` (point 3) sur les 24 champions finaux du
+protocole H3 : élagage du moteur, élagage répété jusqu'au point fixe, élagage profond.
 
 **Acquis, pour mémoire**
 
