@@ -142,12 +142,29 @@ impl BenchmarkScore {
     }
 }
 
+/// Classe d'un réel à 1e-4 près, pour les critères 3 et 4 de l'ordre ci-dessous : deux
+/// valeurs de la même classe sont à égalité et départagées par le critère suivant.
+///
+/// Comparer les classes donne un ordre total. L'ancienne comparaison « à 1e-4 près »
+/// n'en était pas un (a ≈ b et b ≈ c sans a ≈ c), et le tri de Rust s'arrêtait parfois sur
+/// « user-provided comparison function does not correctly implement a total order ».
+/// NaN compte comme la pire valeur ; la conversion est saturante pour les infinis.
+fn tolerance_class(x: f64) -> i64 {
+    if x.is_nan() {
+        i64::MIN
+    } else {
+        (x * 1e4).round() as i64
+    }
+}
+
 /// Comparison order according to the scientific specifications:
 /// 1. Validity (valid beats invalid)
 /// 2. Total bins used (fewer bins is better)
 /// 3. Dynamic Lyapunov / Imbalance Quality (higher tLDR / lower imbalance is better)
 /// 4. Mean efficiency (higher packing efficiency is better)
 /// 5. Fuel consumption (lower fuel/gas is ultimate parsimony tie-breaker)
+///
+/// Criteria 3 and 4 compare classes of 1e-4 (`tolerance_class`), so that the order is total.
 impl PartialOrd for BenchmarkScore {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -167,30 +184,16 @@ impl Ord for BenchmarkScore {
         }
 
         // 2. Total bins used (smaller is better)
-        match self.total_bins.cmp(&other.total_bins) {
-            Ordering::Less => Ordering::Less,
-            Ordering::Greater => Ordering::Greater,
-            Ordering::Equal => {
-                // 3. Dynamic Lyapunov / Imbalance Quality (tLDR score: higher is better)
-                let tldr_diff = self.tldr_score - other.tldr_score;
-                if tldr_diff > 1e-4 {
-                    Ordering::Less // self is better
-                } else if tldr_diff < -1e-4 {
-                    Ordering::Greater // other is better
-                } else {
-                    // 4. Mean efficiency (higher is better)
-                    let eff_diff = self.mean_efficiency - other.mean_efficiency;
-                    if eff_diff > 1e-4 {
-                        Ordering::Less // self is better
-                    } else if eff_diff < -1e-4 {
-                        Ordering::Greater // other is better
-                    } else {
-                        // 5. Fuel consumption as parsimony tie-breaker (smaller is better)
-                        self.total_fuel.cmp(&other.total_fuel)
-                    }
-                }
-            }
-        }
+        self.total_bins
+            .cmp(&other.total_bins)
+            // 3. Dynamic Lyapunov / Imbalance Quality (tLDR score: higher is better)
+            .then_with(|| tolerance_class(other.tldr_score).cmp(&tolerance_class(self.tldr_score)))
+            // 4. Mean efficiency (higher is better)
+            .then_with(|| {
+                tolerance_class(other.mean_efficiency).cmp(&tolerance_class(self.mean_efficiency))
+            })
+            // 5. Fuel consumption as parsimony tie-breaker (smaller is better)
+            .then_with(|| self.total_fuel.cmp(&other.total_fuel))
     }
 }
 
@@ -213,5 +216,113 @@ impl EvaluatedIndividual {
             ood2_score: None,
             rank: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn score(bins: usize, tldr: f64, efficiency: f64, fuel: u64) -> BenchmarkScore {
+        BenchmarkScore {
+            is_valid: true,
+            total_bins: bins,
+            total_theoretical_min_bins: 0,
+            total_excess_bins: 0,
+            mean_efficiency: efficiency,
+            total_fuel: fuel,
+            solved_instances: 1,
+            total_instances: 1,
+            behavior: BehaviorDescriptor::default(),
+            tldr_score: tldr,
+            trajectory_metrics: None,
+        }
+    }
+
+    /// Vérifie sur tous les couples et triplets que `cmp` est un ordre total :
+    /// antisymétrique et transitif.
+    fn assert_total_order(scores: &[BenchmarkScore]) {
+        for (i, a) in scores.iter().enumerate() {
+            for (j, b) in scores.iter().enumerate() {
+                assert_eq!(a.cmp(b), b.cmp(a).reverse(), "antisymetrie : {i} et {j}");
+                if a.cmp(b) == Ordering::Greater {
+                    continue;
+                }
+                for (k, c) in scores.iter().enumerate() {
+                    if b.cmp(c) != Ordering::Greater {
+                        assert_ne!(
+                            a.cmp(c),
+                            Ordering::Greater,
+                            "transitivite : {i} <= {j} et {j} <= {k}, mais {i} > {k}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// tLDR deux à deux à moins de 1e-4, sauf les extrêmes : une comparaison « à 1e-4
+    /// près » donnait a < b (efficacité), b < c (efficacité) et c < a (tLDR).
+    #[test]
+    fn near_ties_do_not_form_a_cycle() {
+        let a = score(10, 0.0, 0.9, 1);
+        let b = score(10, 0.00006, 0.8, 1);
+        let c = score(10, 0.00012, 0.7, 1);
+        assert_total_order(&[a, b, c]);
+    }
+
+    #[test]
+    fn order_is_total_on_near_ties_nan_infinities_and_invalid_scores() {
+        let tldrs = [
+            0.0,
+            0.00003,
+            0.00006,
+            0.00009,
+            0.00012,
+            0.00015,
+            -0.00005,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ];
+        let efficiencies = [0.5, 0.50004, 0.50008, 0.50012, f64::NAN];
+        let mut scores = Vec::new();
+        for &tldr in &tldrs {
+            for &efficiency in &efficiencies {
+                for fuel in [1, 2] {
+                    scores.push(score(10, tldr, efficiency, fuel));
+                }
+            }
+        }
+        scores.push(score(9, 0.0, 0.5, 1));
+        scores.push(score(11, 0.0, 0.5, 1));
+        let mut invalid = score(8, 1.0, 1.0, 0);
+        invalid.is_valid = false;
+        scores.push(invalid.clone());
+        invalid.total_bins = 12;
+        scores.push(invalid);
+        assert_total_order(&scores);
+    }
+
+    /// Situation du tri des 1 359 candidats d'un run de tirage, arrêté par
+    /// « user-provided comparison function does not correctly implement a total order »
+    /// (protocole GLM H3, seed 10417) : beaucoup de scores aux mêmes bacs et aux tLDR
+    /// voisins.
+    #[test]
+    fn sorting_many_near_ties_does_not_panic() {
+        let mut scores: Vec<BenchmarkScore> = (0..2000)
+            .map(|i| score(10, i as f64 * 0.00006, 1.0 - i as f64 * 0.0002, 1))
+            .collect();
+        let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+        for i in (1..scores.len()).rev() {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            scores.swap(i, (state >> 33) as usize % (i + 1));
+        }
+        scores.sort();
+        assert!(scores
+            .windows(2)
+            .all(|w| w[0].cmp(&w[1]) != Ordering::Greater));
     }
 }
