@@ -52,7 +52,10 @@ le plus net du projet.
     `BenchmarkScore` (`crates/nomad-core/src/metric.rs`) tient deux `tldr_score` pour
     égaux à 1e-4 près puis passe aux critères suivants, ce qui ne donne pas un ordre total ;
     le tri des candidats en fin de génération (`engine.rs`) peut le détecter et s'arrêter.
-    À corriger avant le prochain exécutable figé.
+    À corriger avant le prochain exécutable figé. *Ajout du 18 novembre, après ce
+    dépouillement : cause confirmée par un test qui reproduit l'arrêt (même message, même
+    endroit), corrigée sur `ast-croisement` (commit `dff2084`). Les résultats ci-dessus,
+    obtenus avec l'exécutable figé, ne changent pas.*
 - **Dépense : 11,90 $** (estimée 10 à 15 $), dont 0,23 $ pour les deux essais ratés.
 
 ## Coût par appel et point de dépense égale

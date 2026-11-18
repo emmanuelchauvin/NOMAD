@@ -48,7 +48,7 @@ essais et aux bancs hors ligne. Une branche par machine pour éviter les conflit
   le travail de la tour du 16 au 17 novembre (branche `tour-alignement-c`, fusionnée en
   avance rapide) : groupe C aligné sur le groupe D, greffe corrigée (variables du donneur
   renommées, réaffectations dans la tranche, vivacité sans `score` codé en dur), mode de
-  greffe `RulesOnly`. 97 tests passent. Le tag `glm-h2-elagage` (`7caeeb1`) reste
+  greffe `RulesOnly`, ordre de `BenchmarkScore` corrigé. 100 tests passent. Le tag `glm-h2-elagage` (`7caeeb1`) reste
   l'exécutable figé des protocoles H2 et H3.
 
 **Fait du 16 au 18 novembre**
@@ -67,10 +67,12 @@ essais et aux bancs hors ligne. Une branche par machine pour éviter les conflit
 
 **À faire ensuite**
 
-1. **Corriger l'ordre de `BenchmarkScore`** (gratuit, avant le prochain exécutable figé) :
-   `tldr_score` y est comparé avec une tolérance de 1e-4, ce qui ne donne pas un ordre
-   total. Un run de tirage du protocole H3 s'est arrêté dessus en fin de run (relancé
-   depuis le début). Cause probable, à reproduire par un test avant de corriger.
+1. **Fait le 18 novembre : ordre de `BenchmarkScore` corrigé** (`dff2084` sur
+   `ast-croisement`). `tldr_score` et l'efficacité moyenne étaient comparés « à 1e-4
+   près », ce qui ne donne pas un ordre total ; un test reproduit l'arrêt du run de tirage
+   H3 (même message, même endroit). Ils sont maintenant comparés par classes de 1e-4. Le
+   départage des quasi-égalités change : tout nouvel exécutable figé diffère sur ce point
+   de `glm-h2-elagage`.
 2. **Brancher le mode de greffe dans le moteur** (gratuit, tour) : `RulesOnly` n'existe
    aujourd'hui que dans le banc. Variable d'environnement, élagage du champion aussi dans
    le groupe C, tests.
