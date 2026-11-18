@@ -1,0 +1,109 @@
+[2m2026-11-17T14:47:22.801057Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=10723, Pop=1359, MaxGens=1
+[2m2026-11-17T15:46:24.856417Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T18:26:09.582423Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T19:31:42.560369Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T19:45:02.070850Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Ollama HTTP 429: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"z-ai/glm-5.3-flash is temporarily rate-limited upstream. Please retry shortly, or add your own provider key to use your own limits: https://openrouter.ai/workspaces/default/byok","provider_name":"Relace","is_byok":false,"limit_source":"upstream_provider_shared_pool","remedy_hint":"Retry shortly, add your own provider key to use your own limits (https://openrouter.ai/workspaces/default/byok), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing."}},"user_id":"user_2vtv0iBBQd5MJ0Hs5J7UufjL2GG"}). Retrying in 4s...
+[2m2026-11-17T20:02:13.084942Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T21:31:18.436193Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T21:53:16.448078Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 8c1afe52fb3b1a2b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10723 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4115 bins (excess: +93), Efficiency: 97.74%, Fuel: 56758690
+ Best In-Dist (w/o Lookahead) : 4216 bins (excess: +194), Efficiency: 95.40%
+ Dynamic Trajectory: tLDR = 3.3373
+ Behavior Profile : DeadSpaceRatio: 40.4%, NewBinRatio: 41.2%, ResVar: 0.65
+ MAP-Elites Niches: 34 active (34.0% coverage), QD-Score: 22.800
+ Validation Score : 4148 bins (excess: +105), Efficiency: 97.47%
+ OOD-1 Score      : 10183 bins (excess: +127), Efficiency: 98.75%
+ OOD-2 Score      : 3594 bins (excess: +44), Efficiency: 98.78%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-851
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Harmonic class of the leftover space: residues mod 10 partition dead space.
+    let residue = post_residual % 10;
+    let harmonic = (post_residual / 10) as f64; // number of full 10-slots left
+
+    // Penalize leftovers that are too small to be useful (dead space).
+    // A leftover < 10 is nearly unusable given min item size 1..100 unknown;
+    // weight by harmonic class: prefer leftovers that are multiples of 10.
+    if residue == 0 {
+        score -= 6.0 * harmonic.min(8.0);
+    } else {
+        // non-aligned leftovers: penalty grows as residue deviates from 0/5
+        let dev = residue.min(10 - residue) as f64;
+        score += 1.5 * dev;
+    }
+
+    // Perfect fit: enormous reward.
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // Lookahead coupling: if the next item fits exactly into post_residual,
+    // strongly reward this placement (chain packing).
+    if next_item_size > 0 {
+        if next_item_size == post_residual {
+            score -= 120.0;
+        } else if next_item_size < post_residual {
+            // reward proportional to how tightly next item nests
+            let slack = (post_residual - next_item_size) as f64;
+            score -= 8.0 * (1.0 - slack / bin_capacity as f64);
+            if (post_residual - next_item_size) % 10 == 0 {
+                score -= 4.0; // nested leftover stays harmonic-aligned
+            }
+        } else {
+            // next item won't fit here: mild penalty for stranding space
+            score += 5.0;
+        }
+    }
+
+    // Last-chance bin: if this is the only bin that fits, strongly prefer it
+    // over opening a new bin, unless the fit is terrible.
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 40.0;
+        if post_residual <= 5 {
+            score -= 30.0; // near-perfect last-chance fit
+        }
+    }
+
+    // New-bin candidate handling: an empty bin has residual == capacity.
+    // Only prefer a fresh bin when existing fits are very poor (large post_residual
+    // relative to capacity) or when many bins are open and mean residual is high.
+    if bin_residual == bin_capacity {
+        // baseline for fresh bin: keep it moderately high so it loses to good fits
+        score = bin_capacity as f64 * 0.55;
+        let progress = step_index as f64 / total_items.max(1) as f64;
+        let crowded = (open_bins_count as f64).ln().max(0.0);
+        // open a new bin if mean residual across open bins is small (they're all tight)
+        let tight = (mean_residual / bin_capacity as f64) < 0.15;
+        if tight || fitting_bins_count == 0 {
+            score -= 25.0 + 10.0 * crowded * (1.0 - progress);
+        }
+        // late in the stream, avoid spawning bins for tiny gains
+        if progress > 0.9 {
+            score += 10.0;
+        }
+    } else {
+        // penalty for leaving very large holes in partially filled bins
+        let frac = post_residual as f64 / bin_capacity as f64;
+        if frac > 0.6 {
+            score += 12.0 * frac;
+        }
+        // slight preference for filling fuller bins (best-fit bias already via base)
+        score -= 0.05 * (1.0 - frac) * (bin_residual as f64);
+    }
+
+    // Mean-residual steering: prefer bins below the mean residual (tighter bins)
+    if (bin_residual as f64) < mean_residual && bin_residual < bin_capacity {
+        score -= 3.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h3\tirage\run_seed_10723_tirage.json.tmp

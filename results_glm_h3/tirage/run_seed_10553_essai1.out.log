@@ -1,0 +1,66 @@
+[2m2026-11-17T14:16:43.787313Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=10553, Pop=1359, MaxGens=1
+[2m2026-11-17T18:17:10.529750Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T20:17:06.552374Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T20:49:19.152859Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 17f53f2fd2294669 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10553 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4136 bins (excess: +121), Efficiency: 97.08%, Fuel: 32318718
+ Best In-Dist (w/o Lookahead) : 4199 bins (excess: +184), Efficiency: 95.62%
+ Dynamic Trajectory: tLDR = 0.6290
+ Behavior Profile : DeadSpaceRatio: 56.2%, NewBinRatio: 41.4%, ResVar: 0.41
+ MAP-Elites Niches: 33 active (33.0% coverage), QD-Score: 23.331
+ Validation Score : 4144 bins (excess: +122), Efficiency: 97.06%
+ OOD-1 Score      : 10321 bins (excess: +230), Efficiency: 97.77%
+ OOD-2 Score      : 3615 bins (excess: +72), Efficiency: 98.01%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-1087
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Strict dead-space avoidance: gaps too small for the smallest plausible item are pure waste.
+    let min_item = 1u32;
+    if post_residual > 0 && post_residual < min_item.max(1).max(next_item_size.min(item_size)) {
+        // Unusable sliver: heavy penalty scaled by how close it is to a "just barely unusable" gap.
+        score += 40.0 + (bin_capacity as f64 - post_residual as f64) * 0.2;
+    }
+    // Penalize any residual that cannot fit the lookahead item (k=2 lookahead dead zone).
+    if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+        score += 15.0 + 0.3 * (next_item_size - post_residual) as f64;
+    }
+    // Reward a perfect or near-perfect fit.
+    if post_residual == 0 {
+        score -= 60.0;
+    } else if post_residual <= 5 {
+        score -= 25.0;
+    }
+
+    // Open-bin pressure: with many open bins, discourage spreading; with few bins, opening new ones is cheap.
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    let pressure = (open_bins_count as f64).ln().max(0.0) * (2.0 + 6.0 * progress);
+    score += pressure;
+
+    // Last-chance bin: strongly favor using it instead of opening a new bin.
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 30.0;
+    }
+
+    // New-bin candidate: only attractive when the item is large relative to mean residual space
+    // (i.e., existing bins would be shredded) or late in the stream with tight bins.
+    if bin_residual == bin_capacity {
+        let fit_ratio = item_size as f64 / bin_capacity as f64;
+        let tightness = mean_residual / bin_capacity as f64;
+        let base = 45.0 + 0.5 * post_residual as f64;
+        let discount = 55.0 * (fit_ratio - 0.35).max(0.0) * (1.0 - tightness).max(0.0);
+        score = base - discount + pressure;
+    }
+
+    // Mild preference for bins whose residual is close to the item (best-fit sharpening).
+    score += 0.15 * (bin_residual as f64 - item_size as f64).abs();
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h3\tirage\run_seed_10553_tirage.json.tmp

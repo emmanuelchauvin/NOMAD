@@ -1,0 +1,76 @@
+[2m2026-11-17T14:39:39.447063Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=10485, Pop=1359, MaxGens=1
+[2m2026-11-17T17:40:31.922098Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T21:08:05.013164Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule d56d0a1e7ece6d60 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10485 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4118 bins (excess: +99), Efficiency: 97.60%, Fuel: 68239676
+ Best In-Dist (w/o Lookahead) : 4158 bins (excess: +139), Efficiency: 96.66%
+ Dynamic Trajectory: tLDR = 2.7302
+ Behavior Profile : DeadSpaceRatio: 10.5%, NewBinRatio: 41.2%, ResVar: 0.64
+ MAP-Elites Niches: 31 active (31.0% coverage), QD-Score: 22.692
+ Validation Score : 4104 bins (excess: +96), Efficiency: 97.67%
+ OOD-1 Score      : 10150 bins (excess: +140), Efficiency: 98.62%
+ OOD-2 Score      : 3580 bins (excess: +69), Efficiency: 98.07%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-363
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Exact fit is ideal
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // Aggressive 2-step lookahead: reward when next item fits the post residual exactly or well
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let next_fit = post_residual - next_item_size;
+        score -= 60.0 * (1.0 - next_fit as f64 / bin_capacity as f64);
+        if next_fit == 0 {
+            score -= 300.0; // perfect 2-chain
+        }
+    } else if next_item_size > 0 {
+        // next item cannot fit here; penalize small dead residuals proportionally
+        let dead = post_residual as f64;
+        if dead < 10.0 {
+            score += 40.0; // tiny unusable sliver
+        } else {
+            score += 10.0 * (1.0 - dead / bin_capacity as f64);
+        }
+    }
+
+    // Compare against mean residual: prefer bins whose post residual is near the mean
+    // (keeps residuals balanced), but avoid leaving residuals that are hard to fill.
+    let dev = (post_residual as f64 - mean_residual).abs();
+    score += 0.5 * dev;
+
+    // Last chance: strongly favor using the only bin that fits
+    if fitting_bins_count == 1 && bin_residual >= item_size {
+        score -= 250.0;
+    }
+
+    // Prefer fuller bins (small residual before placement)
+    score += 0.3 * (bin_residual as f64 / bin_capacity as f64);
+
+    // Early in stream: be more willing to open new bins (penalize open bins less later)
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    if bin_residual == bin_capacity {
+        // New bin candidate: attractive early or when item is large relative to residuals
+        score -= 80.0 * (1.0 - progress);
+        if item_size as f64 > mean_residual {
+            score -= 30.0;
+        }
+    } else {
+        // Using existing bins gets more attractive as stream progresses
+        score -= 20.0 * progress;
+    }
+
+    // Penalty proportional to number of open bins to discourage sprawl
+    score += 2.0 * open_bins_count as f64;
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h3\tirage\run_seed_10485_tirage.json.tmp
