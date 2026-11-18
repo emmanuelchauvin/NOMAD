@@ -49,7 +49,7 @@ tâche en cours.
   le travail de la tour du 16 au 17 novembre (branche `tour-alignement-c`, fusionnée en
   avance rapide) : groupe C aligné sur le groupe D, greffe corrigée (variables du donneur
   renommées, réaffectations dans la tranche, vivacité sans `score` codé en dur), mode de
-  greffe `RulesOnly`, ordre de `BenchmarkScore` corrigé. 100 tests passent. Le tag `glm-h2-elagage` (`7caeeb1`) reste
+  greffe `RulesOnly`, ordre de `BenchmarkScore` corrigé, `NOMAD_GRAFT_MODE`. 103 tests passent. Le tag `glm-h2-elagage` (`7caeeb1`) reste
   l'exécutable figé des protocoles H2 et H3.
 
 **Fait du 16 au 18 novembre**
@@ -74,9 +74,11 @@ tâche en cours.
    H3 (même message, même endroit). Ils sont maintenant comparés par classes de 1e-4. Le
    départage des quasi-égalités change : tout nouvel exécutable figé diffère sur ce point
    de `glm-h2-elagage`.
-2. **Brancher le mode de greffe dans le moteur** (gratuit) : `RulesOnly` n'existe
-   aujourd'hui que dans le banc. Variable d'environnement, élagage du champion aussi dans
-   le groupe C, tests.
+2. **Fait le 18 novembre : mode de greffe branché dans le moteur** (`7933c59` sur
+   `ast-croisement`). `NOMAD_GRAFT_MODE=rules` : greffe en règles complètes pour les
+   croisements locaux du groupe D et le croisement du groupe C (absent ou `mixing` :
+   mélanges, comme avant ; valeur inconnue : arrêt avant le premier appel).
+   `NOMAD_PRUNE_CHAMPION=1` élague aussi le champion du groupe C.
 3. **Limiter la taille du code** : sur GLM, le champion final de l'évolution fait 9 120
    caractères à 1 359 appels et le coût d'un appel triple au fil du run. Pistes : greffe
    qui remplace au lieu d'empiler (revue d'Argon), élagage plus fort. À mesurer hors ligne
