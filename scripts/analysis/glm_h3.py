@@ -66,9 +66,13 @@ def effects(p, ref):
     return v, t
 
 
-def usage(arm, seed):
+def usage(arm, seed, complete_only=True):
+    """Appels et tokens d'une seed. Par defaut, seulement l'essai qui a produit le rapport
+    (le dernier) : le protocole mesure r sur les runs complets. complete_only=False ajoute
+    les essais rates, pour la depense reelle."""
     calls = prompt = completion = 0
-    for path in glob.glob(f"{OUT}/{arm}/usage_seed_{seed}_essai*.jsonl"):
+    paths = sorted(glob.glob(f"{OUT}/{arm}/usage_seed_{seed}_essai*.jsonl"))
+    for path in (paths[-1:] if complete_only else paths):
         for line in open(path, encoding="utf-8"):
             if line.strip():
                 row = json.loads(line)
@@ -166,8 +170,8 @@ for a in ARMS:
 print(f"Controles : {len(SEEDS)} seeds x {len(ARMS)} bras, {len(problems)} probleme(s)")
 for p in problems:
     print("  ", p)
-total_cost = sum(cost(t[1], t[2]) for t in tok.values())
-print(f"Cout total {total_cost:.2f} $")
+total_cost = sum(cost(*usage(a, s, complete_only=False)[1:]) for a in ARMS for s in SEEDS)
+print(f"Cout total {total_cost:.2f} $ (essais rates compris)")
 if CONTROLE:
     print("Mode controle : aucun score affiche.")
     sys.exit(0)
@@ -230,7 +234,11 @@ for a in ARMS:
     c, pi, co = tok[a]
     print(f"   {a} : requetes {c}, tokens entree {pi}, sortie {co}, cout {cost(pi, co):.2f} $, "
           f"{per_call[a]:.6f} $ par appel")
-print(f"   r = {r:.4f}, k* = floor({BUDGET} / r) = {k_star}")
+    calls_all = sum(usage(a, s, complete_only=False)[0] for s in SEEDS)
+    if calls_all > c:
+        cost_all = sum(cost(*usage(a, s, complete_only=False)[1:]) for s in SEEDS)
+        print(f"      essais rates, hors r : {calls_all - c} requetes, {cost_all - cost(pi, co):.2f} $")
+print(f"   r = {r:.4f} (runs complets), k* = floor({BUDGET} / r) = {k_star}")
 print("   cout par appel selon le rang de l'appel dans le run :")
 for a in ARMS:
     cells, lo = [], 0
