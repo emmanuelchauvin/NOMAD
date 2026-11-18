@@ -15,8 +15,8 @@ use nomad_core::{
     LineageEvolutionState, MomentumAction, PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus,
 };
 use nomad_genome::{
-    compute_structural_fingerprint, deterministic_ast_crossover, multi_locus_ast_crossover,
-    parse_heuristic_fn, parse_score_bin,
+    ast_crossover_with, compute_structural_fingerprint, parse_heuristic_fn, parse_score_bin,
+    GraftMode,
 };
 
 /// Calculates the SHA-256 cryptographic hash of a local model weight file (e.g., GGUF format).
@@ -816,13 +816,8 @@ Return ONLY the mutated Rust function inside a ```rust ... ``` code block withou
         metadata.insert("parent_b".to_string(), parent_b.id.to_string());
 
         // Attempt deterministic multi-loci or single-locus AST crossover first
-        let ast_res = if seed.is_multiple_of(2) {
-            multi_locus_ast_crossover(parent_a, parent_b, seed, generation)
-                .or_else(|_| deterministic_ast_crossover(parent_a, parent_b, seed, generation))
-        } else {
-            deterministic_ast_crossover(parent_a, parent_b, seed, generation)
-                .or_else(|_| multi_locus_ast_crossover(parent_a, parent_b, seed, generation))
-        };
+        let ast_res =
+            ast_crossover_with(parent_a, parent_b, seed, generation, GraftMode::from_env());
 
         if let Ok((mut child, manifest)) = ast_res {
             child.name = name;

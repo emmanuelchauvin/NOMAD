@@ -11,8 +11,7 @@ use nomad_evaluator::{
     validate_anti_dead_code_3levels_with_score, OracleEvaluator, SchedulingOracle,
 };
 use nomad_genome::{
-    deterministic_ast_crossover, multi_locus_ast_crossover, normalize_source, parse_heuristic_fn,
-    PhylogenyGraph,
+    ast_crossover_with, normalize_source, parse_heuristic_fn, GraftMode, PhylogenyGraph,
 };
 use nomad_operator::{MutationContext, SkillOperator};
 use nomad_sandbox::HeuristicSandbox;
@@ -168,6 +167,8 @@ pub struct EvolutionEngine<'a> {
     pub local_stats: LocalOpsStats,
     /// Dernier champion deja elague (evite de l'elaguer a nouveau).
     last_pruned_id: Option<String>,
+    /// Mode de greffe des croisements locaux (`NOMAD_GRAFT_MODE`, lu a la construction).
+    graft_mode: GraftMode,
     /// Index de la prochaine proposition fraiche (prolonge le cycle des archetypes).
     pub fresh_seed_counter: usize,
     /// Journal de toutes les propositions evaluees, dans l'ordre.
@@ -205,6 +206,7 @@ impl<'a> EvolutionEngine<'a> {
             stagnant_generations: 0,
             local_stats: LocalOpsStats::default(),
             last_pruned_id: None,
+            graft_mode: GraftMode::from_env(),
             fresh_seed_counter: 0,
             proposals: Vec::new(),
             best_trail: Vec::new(),
@@ -710,13 +712,7 @@ impl<'a> EvolutionEngine<'a> {
         let seed: u64 = rand::Rng::gen(rng);
         self.local_stats.crossover_attempts += 1;
 
-        let res = if seed % 2 == 0 {
-            multi_locus_ast_crossover(&host, &donor, seed, generation)
-                .or_else(|_| deterministic_ast_crossover(&host, &donor, seed, generation))
-        } else {
-            deterministic_ast_crossover(&host, &donor, seed, generation)
-                .or_else(|_| multi_locus_ast_crossover(&host, &donor, seed, generation))
-        };
+        let res = ast_crossover_with(&host, &donor, seed, generation, self.graft_mode);
         let Ok((mut child, _)) = res else {
             self.local_stats.crossover_errors += 1;
             return;
@@ -1292,6 +1288,12 @@ impl<'a> EvolutionEngine<'a> {
                         }
                     }
                 }
+
+                // Elagage du champion, comme dans le groupe D : la version elaguee entre dans
+                // l'archive, ou le groupe C choisit ses parents et son elite.
+                if self.config.prune_champion {
+                    self.prune_best_elite(next_gen_idx);
+                }
             }
         }
 
@@ -1365,5 +1367,57 @@ mod tests {
         // Le meme champion n'est pas elague deux fois.
         engine.prune_best_elite(3);
         assert_eq!(engine.local_stats.prune_attempts, 1);
+    }
+
+    /// Avec la greffe en regles completes, un croisement local ne produit jamais de melange
+    /// `score * 0.95 + .. * 0.05`, meme quand le donneur a une definition que l'hote ne lit
+    /// pas.
+    #[test]
+    fn local_crossovers_follow_the_graft_mode() {
+        let oracle = OracleEvaluator::new(42);
+        let sandbox = DeterministicSandbox::new();
+        let operator = DeterministicMockOperator::default();
+        let config = ExperimentConfig {
+            group: nomad_core::ExperimentalGroup::GroupD,
+            fuel_limit_per_call: 400_000,
+            ..Default::default()
+        };
+        let header = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32,             step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {";
+        let host = format!("{header} let mut score = (bin_residual - item_size) as f64; score }}");
+        let donor = format!(
+            "{header} let mut score = bin_residual as f64;              let ratio = item_size as f64 / bin_capacity as f64;              if ratio > 0.5 {{ score -= 10.0; }} score }}"
+        );
+        let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+        engine.graft_mode = GraftMode::RulesOnly;
+        // Deux niches distinctes, posees a la main : les deux programmes restent elites.
+        for (i, (name, code)) in [("Host", &host), ("Donor", &donor)].into_iter().enumerate() {
+            let capsule = SkillCapsule::new(name, "d", code, vec![], 1, Default::default());
+            let score = engine.train_score(&capsule);
+            assert!(score.is_valid, "{name} invalide");
+            let entry = crate::map_elites::ArchiveEntry {
+                capsule,
+                niche_coord: (i, 0),
+                behavior: score.behavior.clone(),
+                fitness: score,
+                structural_fingerprint: None,
+                times_sampled: 0,
+                times_replaced: 0,
+            };
+            engine.archive.grid.insert(format!("{i}_0"), entry);
+        }
+        assert_eq!(engine.ranked_elites().len(), 2, "les deux programmes doivent etre elites");
+        let mut rng = ChaCha8Rng::seed_from_u64(1);
+        for g in 0..20 {
+            engine.local_crossover(g, &mut rng);
+        }
+        let children: Vec<_> = engine.proposals.iter().filter(|p| p.kind == "crossover").collect();
+        assert!(!children.is_empty(), "aucun croisement produit");
+        for child in children {
+            assert!(
+                !child.logic_code.contains("0.95"),
+                "melange en mode regles : {}",
+                child.logic_code
+            );
+        }
     }
 }

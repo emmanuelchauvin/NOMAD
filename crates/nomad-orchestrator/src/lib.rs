@@ -628,6 +628,39 @@ mod tests {
         assert_eq!(accepted, on.local_ops.prune_accepted);
     }
 
+    /// Groupe C : l'elagage du champion s'applique aussi, sans appel au modele.
+    #[test]
+    fn group_c_prunes_its_champion() {
+        let run = |prune: bool| {
+            let config = ExperimentConfig {
+                group: ExperimentalGroup::GroupC,
+                rng_seed: 7,
+                population_size: 5,
+                max_generations: 6,
+                initial_population_size: 8,
+                stagnation_patience: 3,
+                informed_mutation: true,
+                prune_champion: prune,
+                ..Default::default()
+            };
+            let oracle = OracleEvaluator::new(7);
+            let sandbox = DeterministicSandbox::new();
+            let operator = DeterministicMockOperator::default();
+            let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, &operator);
+            engine.execute_run().expect("Run execution should succeed")
+        };
+        let off = run(false);
+        let on = run(true);
+        assert_eq!(off.local_ops.prune_attempts, 0);
+        assert!(on.local_ops.prune_attempts > 0, "aucun elagage tente en groupe C");
+        assert_eq!(
+            on.budget_consumed.llm_calls_consumed,
+            off.budget_consumed.llm_calls_consumed
+        );
+        let pruned = on.proposals.iter().filter(|p| p.kind == "prune").count();
+        assert_eq!(pruned, on.local_ops.prune_accepted);
+    }
+
     /// Echange entre iles : les meilleurs elites d'un run voyagent en JSON, sont re-notes
     /// sur les instances de l'ile d'accueil et entrent dans son archive, sans appel au modele.
     #[test]

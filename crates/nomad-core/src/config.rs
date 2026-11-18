@@ -120,7 +120,7 @@ pub struct ExperimentConfig {
     /// Variable `NOMAD_LOCAL_CROSSOVERS`.
     #[serde(default)]
     pub local_crossovers: usize,
-    /// Groupe D : a chaque nouveau champion, retirer une a une ses regles sans effet
+    /// Groupes C et D : a chaque nouveau champion, retirer une a une ses regles sans effet
     /// (ablation sur l'entrainement, une passe) et inserer la version elaguee si elle est
     /// strictement meilleure. Variable `NOMAD_PRUNE_CHAMPION=1`.
     #[serde(default)]

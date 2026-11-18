@@ -9,8 +9,7 @@ use nomad_core::{
     LineageEvolutionState, PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus,
 };
 use nomad_genome::{
-    compute_structural_fingerprint, deterministic_ast_crossover, multi_locus_ast_crossover,
-    parse_score_bin,
+    ast_crossover_with, compute_structural_fingerprint, parse_score_bin, GraftMode,
 };
 
 #[derive(Debug, Error)]
@@ -339,13 +338,8 @@ impl SkillOperator for DeterministicMockOperator {
         if (parent_a.logic_code.contains("score_") || parent_a.logic_code.contains("fn score"))
             && (parent_b.logic_code.contains("score_") || parent_b.logic_code.contains("fn score"))
         {
-            let ast_res = if seed.is_multiple_of(2) {
-                multi_locus_ast_crossover(parent_a, parent_b, seed, generation)
-                    .or_else(|_| deterministic_ast_crossover(parent_a, parent_b, seed, generation))
-            } else {
-                deterministic_ast_crossover(parent_a, parent_b, seed, generation)
-                    .or_else(|_| multi_locus_ast_crossover(parent_a, parent_b, seed, generation))
-            };
+            let ast_res =
+                ast_crossover_with(parent_a, parent_b, seed, generation, GraftMode::from_env());
 
             if let Ok((child, manifest)) = ast_res {
                 let audit = ReproducibilityAudit {

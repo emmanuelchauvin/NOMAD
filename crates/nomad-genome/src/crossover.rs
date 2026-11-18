@@ -301,6 +301,47 @@ fn is_score_rule(unit: &LogicalUnit) -> bool {
     !matches!(unit.stmt, syn::Stmt::Local(_)) && writes_of(&unit.stmt).written.contains("score")
 }
 
+impl GraftMode {
+    /// Lit la valeur de `NOMAD_GRAFT_MODE` : absente, vide ou `mixing` donne `Mixing`,
+    /// `rules` donne `RulesOnly` ; toute autre valeur est une erreur.
+    pub fn parse(value: Option<&str>) -> Result<Self, String> {
+        match value.map(str::trim) {
+            None | Some("") | Some("mixing") => Ok(GraftMode::Mixing),
+            Some("rules") => Ok(GraftMode::RulesOnly),
+            Some(other) => Err(format!(
+                "NOMAD_GRAFT_MODE={other:?} inconnu (valeurs : mixing, rules)"
+            )),
+        }
+    }
+
+    /// Mode de greffe choisi par la variable `NOMAD_GRAFT_MODE`. S'arrete sur une valeur
+    /// inconnue : le moteur l'appelle a sa construction, une faute de frappe arrete le run
+    /// avant le premier appel au modele.
+    pub fn from_env() -> Self {
+        Self::parse(std::env::var("NOMAD_GRAFT_MODE").ok().as_deref())
+            .unwrap_or_else(|e| panic!("{e}"))
+    }
+}
+
+/// Croisement AST d'un hote et d'un donneur, comme dans le moteur et les operateurs : greffe
+/// multi-locus si la graine est paire, a un locus sinon, et l'autre operateur si le premier
+/// echoue.
+pub fn ast_crossover_with(
+    host: &SkillCapsule,
+    donor: &SkillCapsule,
+    seed: u64,
+    generation: usize,
+    mode: GraftMode,
+) -> Result<(SkillCapsule, GraftManifest), CrossoverError> {
+    if seed.is_multiple_of(2) {
+        multi_locus_ast_crossover_with(host, donor, seed, generation, mode)
+            .or_else(|_| deterministic_ast_crossover_with(host, donor, seed, generation, mode))
+    } else {
+        deterministic_ast_crossover_with(host, donor, seed, generation, mode)
+            .or_else(|_| multi_locus_ast_crossover_with(host, donor, seed, generation, mode))
+    }
+}
+
 fn units_for_mode(units: Vec<LogicalUnit>, mode: GraftMode) -> Vec<LogicalUnit> {
     match mode {
         GraftMode::Mixing => units,
@@ -887,6 +928,15 @@ pub fn multi_locus_ast_crossover_with(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn graft_mode_is_read_from_its_variable() {
+        assert_eq!(GraftMode::parse(None), Ok(GraftMode::Mixing));
+        assert_eq!(GraftMode::parse(Some("")), Ok(GraftMode::Mixing));
+        assert_eq!(GraftMode::parse(Some("mixing")), Ok(GraftMode::Mixing));
+        assert_eq!(GraftMode::parse(Some(" rules ")), Ok(GraftMode::RulesOnly));
+        assert!(GraftMode::parse(Some("regles")).is_err());
+    }
     use super::*;
 
     const SIG: &str = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32,         step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64";
