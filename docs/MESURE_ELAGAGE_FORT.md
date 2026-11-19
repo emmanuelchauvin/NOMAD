@@ -92,3 +92,42 @@ validation. C'est encore trop lent pour chaque nouveau champion : 41 min de CPU 
 (machine chargée par 8 processus). Le coût est maintenant dans les tris (437 en médiane,
 soit environ 110 notes complètes) plus que dans les notes complètes (58). Pistes : tri sur
 une instance sur huit, ou élaguer seulement quand le champion dépasse une taille seuil.
+
+## Suite : tri sur une instance sur huit, champions de plus de 5 000 caractères (19-20 novembre 2026)
+
+Même élagage rapide, tri sur une instance sur huit (`PRUNE_SCREEN_STRIDE=8`, commit
+`5a3bac5`), sur les 17 champions de plus de 5 000 caractères (les 7 autres ne seraient pas
+élagués avec ce seuil). 8 processus équilibrés selon les temps du banc précédent, du 19/11
+19:27 au 20/11 00:29. Données brutes `mesures/prune_seuil/`, commitées avant lecture
+(`b73f41d`).
+
+| Sur les 17 mêmes champions | Profond | Rapide, tri 1/4 | Rapide, tri 1/8 |
+|---|---|---|---|
+| Réduction de taille, médiane | | 35,4 % | 31,8 % |
+| Caractères, total (original 202 645) | | 121 773 | 118 580 |
+| Validation : mieux / égal / pire | | 7 / 1 / 9 | 6 / 0 / 11 |
+| Validation : bacs gagnés, total | | −3 | +2 |
+| Travail, médiane (total), en notes complètes | 400 (10 344) | 204 (4 324) | 167 (3 286) |
+| Temps par champion, médiane | | 73 min | 82 min |
+
+Travail : notes complètes de l'entraînement plus tris comptés à leur part d'instances. Aucun
+programme invalide, aucun bac perdu sur l'entraînement.
+
+**Le temps mesuré trompe ici.** Le tri sur un huitième fait 24 % de travail en moins en
+médiane, mais chaque note complète a pris 25,5 s contre 16,3 s : les 17 plus gros champions
+tournaient ensemble, la machine était plus chargée que dans le banc précédent. Le travail
+est la mesure à retenir. (Pendant le banc, une lecture des seuls temps avait conclu à
+l'absence de gain : c'était une erreur.)
+
+**Fréquence avec le seuil**, comptée sur les 24 runs H3 (taille du code seulement) : 33,5
+nouveaux champions par run en médiane (17 à 54), dont 16,5 de plus de 5 000 caractères
+(0 à 33) ; 20 runs sur 24 franchissent le seuil, en médiane vers l'appel 200 sur 1 359.
+Ces tailles sont celles de champions élagués par le moteur seulement ; avec un élagage
+profond, un champion repasserait sous le seuil et les dépassements seraient moins
+nombreux, ce que seul un run en ligne mesure.
+
+**Lecture.** Les deux pistes combinées divisent le travail par 2,4 contre l'élagage
+profond, pour la même réduction et sans effet sur la validation. Un élagage au-dessus du
+seuil vaut encore environ 170 notes complètes, soit 30 à 45 min de CPU seul sur la machine ;
+une quinzaine par run représenterait l'équivalent de 2 500 notes, de l'ordre du coût de
+l'évaluation des 1 359 propositions elles-mêmes. Trop cher tel quel pour le moteur.
