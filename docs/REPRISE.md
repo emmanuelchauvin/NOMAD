@@ -95,8 +95,11 @@ tâche en cours.
 cher est arrêté quand sa **dépense cumulée** atteint celle de l'autre bras, et non plus au
 budget divisé par le coût moyen par appel (voir RESULTATS_GLM_H3.md).
 
-**En cours** : banc hors ligne `prune_probe` (point 3) sur les 24 champions finaux du
-protocole H3 : élagage du moteur, élagage répété jusqu'au point fixe, élagage profond.
+**Banc d'élagage fait (point 3)** : `MESURE_ELAGAGE_FORT.md` sur `ast-croisement`. Sur les
+24 champions finaux H3, l'élagage du moteur ne retire rien sur 22 ; l'élagage profond
+retire 33,5 % du code en médiane (jusqu'à 83 %) sans effet sur la validation, mais coûte
+63 min de CPU par champion en médiane : à accélérer (dichotomie, sous-ensemble
+d'instances) ou à faire moins souvent avant d'entrer dans le moteur.
 
 **Acquis, pour mémoire**
 
