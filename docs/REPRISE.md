@@ -100,6 +100,9 @@ budget divisé par le coût moyen par appel (voir RESULTATS_GLM_H3.md).
 retire 33,5 % du code en médiane (jusqu'à 83 %) sans effet sur la validation, mais coûte
 63 min de CPU par champion en médiane : à accélérer (dichotomie, sous-ensemble
 d'instances) ou à faire moins souvent avant d'entrer dans le moteur.
+Version rapide mesurée le 19/11 (même fiche) : même réduction (32,8 %), validation
+inchangée, temps divisé par deux (41 min de CPU en médiane) ; encore trop lente pour chaque
+champion.
 
 **Acquis, pour mémoire**
 
