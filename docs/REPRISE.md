@@ -103,6 +103,10 @@ d'instances) ou à faire moins souvent avant d'entrer dans le moteur.
 Version rapide mesurée le 19/11 (même fiche) : même réduction (32,8 %), validation
 inchangée, temps divisé par deux (41 min de CPU en médiane) ; encore trop lente pour chaque
 champion.
+Tri sur une instance sur huit et seuil de 5 000 caractères (19-20/11) : travail divisé par
+2,4 contre le profond, même réduction ; environ 16 élagages par run au-dessus du seuil,
+soit autant de travail que l'évaluation du run. Prochaine piste : greffe qui remplace au
+lieu d'empiler, ou élaguer bien plus rarement (champion transmis à chaque relance).
 
 **Acquis, pour mémoire**
 
