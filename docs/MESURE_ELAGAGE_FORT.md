@@ -61,3 +61,34 @@ environ 4 080 : l'élagage profond est neutre pour la qualité.
 
 Ce banc ne mesure pas l'effet sur le coût d'un run ni sur la qualité finale en ligne : un
 code plus court change aussi ce que le modèle voit et propose.
+
+## Suite : élagage profond rapide (19 novembre 2026)
+
+Mode `PRUNE_PROBE_MODE=rapide` de `prune_probe` (commit `53b0141`), depuis le champion
+original : bloc par bloc en ordre préfixe (une instruction englobante est essayée avant son
+contenu), par tranches décroissantes (moitié, quart, ..., une instruction), et tri préalable
+sur une instance sur quatre de l'entraînement (rejet si invalide ou un bac perdu sur ce
+quart ; sinon note complète avec le critère du moteur). Même découpage en 8 processus,
+du 19/11 07:43 à 14:59. Données brutes `mesures/prune_rapide/`, commitées avant lecture
+(`11697d9`).
+
+| | Profond (une passe + point fixe + profond) | Rapide |
+|---|---|---|
+| Réduction de taille, médiane (moyenne) | 33,5 % (34,7 %) | 32,8 % (32,8 %) |
+| Caractères, total des 24 (original 228 396) | 136 984 | 142 440 |
+| Validation : mieux / égal / pire que l'original | 10 / 3 / 11 | 10 / 2 / 12 |
+| Validation : bacs gagnés, total | +10 | +12 |
+| Temps par champion, médiane (max) | 69 min (6,2 h) | 41 min (3,2 h) |
+| Temps total | 43,6 h CPU | 23,1 h CPU |
+| Rapport de temps rapide / profond, médiane (min ; max) | | 0,53 (0,32 ; 0,85) |
+| Notes complètes, médiane ; tris sur un quart, médiane | | 58 ; 437 |
+
+Aucun programme invalide sur la validation. Contre le profond, le rapide donne un code plus
+court sur 6 seeds, égal sur 6, plus long sur 12, avec des écarts de part et d'autre (seed
+10553 : 9 615 contre 6 484 ; seed 10723 : 4 658 contre 6 430).
+
+**Lecture.** La même réduction (un tiers) pour la moitié du temps, sans effet sur la
+validation. C'est encore trop lent pour chaque nouveau champion : 41 min de CPU en médiane
+(machine chargée par 8 processus). Le coût est maintenant dans les tris (437 en médiane,
+soit environ 110 notes complètes) plus que dans les notes complètes (58). Pistes : tri sur
+une instance sur huit, ou élaguer seulement quand le champion dépasse une taille seuil.
