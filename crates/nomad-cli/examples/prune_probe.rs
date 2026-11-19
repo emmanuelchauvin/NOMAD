@@ -15,7 +15,9 @@
 //!
 //! Usage : prune_probe <dossier> <suffixe, ex. evolution> <seed>...
 //! Lit <dossier>/run_seed_<seed>_<suffixe>.json.
-//! Variables : NOMAD_BP_PROFILE=weibull, NOMAD_FUEL_LIMIT (defaut 400000).
+//! Variables : NOMAD_BP_PROFILE=weibull, NOMAD_FUEL_LIMIT (defaut 400000),
+//! PRUNE_PROBE_MODE=rapide (elagage rapide seul), PRUNE_SCREEN_STRIDE (tri sur une instance
+//! sur N, defaut 4).
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -354,13 +356,17 @@ fn main() {
         );
 
         if fast_only {
+            let stride: usize = std::env::var("PRUNE_SCREEN_STRIDE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(4);
             let subset = nomad_evaluator::Dataset::new(
                 "quart",
                 oracle
                     .in_distribution
                     .instances
                     .iter()
-                    .step_by(4)
+                    .step_by(stride)
                     .cloned()
                     .collect(),
             );
@@ -384,6 +390,7 @@ fn main() {
             d["screens"] = json!(fast.screens);
             d["secs"] = json!(fast.o.secs);
             d["code"] = json!(normalize_source(&fast.o.f));
+            d["screen_stride"] = json!(stride);
             line["rapide"] = d;
             println!("{line}");
             continue;
