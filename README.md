@@ -33,7 +33,7 @@
 
 ### Not established
 1. **H3 on GLM.** The median advantage stays between 20 and 27 points from 85 to 1,359 calls, because the GLM draw keeps improving. Only consistency grows (17/24 seeds won at 344 calls, 24/24 at 1,359).
-2. **Crossover.** Tested once (12 seeds, 344 calls, p = 0.77), in an experiment that confounded crossover with pruning and used the pre-fix graft. None of the established results rests on crossover: the winning system is a population with rank selection, LLM-informed mutation and restarts.
+2. **Crossover: not properly tested, not refuted.** The only test (12 seeds, 344 calls, p = 0.77) confounded crossover with pruning and used the pre-fix graft; meanwhile crossovers did produce 45 new champions out of 1,656 attempts, at no cost in calls. A clean test (corrected graft, crossover alone, 24 seeds) is the open question. None of the established results rests on crossover: the winning system is a population with rank selection, LLM-informed mutation and restarts.
 
 ### Limits
 - A single problem (online bin packing, Weibull profile) and a single instance set.
