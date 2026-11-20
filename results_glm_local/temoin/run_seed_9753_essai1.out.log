@@ -1,0 +1,119 @@
+2026-11-16T08:15:30.931450Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9753, Pop=8, MaxGens=47
+2026-11-16T09:28:38.292940Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une connexion établie a été abandonnée par un logiciel de votre ordinateur hôte. (os error 10053)). Retrying in 4s...
+2026-11-16T09:29:45.672256Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T09:30:12.879512Z  WARN nomad_operator::http_llm: Ollama request attempt 2/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Network Error: Error encountered in the status line: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 15s...
+2026-11-16T13:14:20.880663Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 0bf39ed76e9c0c72 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9753 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4065 bins (excess: +63), Efficiency: 98.45%, Fuel: 58609031
+ Best In-Dist (w/o Lookahead) : 4186 bins (excess: +184), Efficiency: 95.61%
+ Dynamic Trajectory: tLDR = 1.7668
+ Behavior Profile : DeadSpaceRatio: 24.9%, NewBinRatio: 40.6%, ResVar: 0.36
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.790
+ Validation Score : 4072 bins (excess: +71), Efficiency: 98.26%
+ OOD-1 Score      : 10132 bins (excess: +96), Efficiency: 99.05%
+ OOD-2 Score      : 3597 bins (excess: +39), Efficiency: 98.92%
+ Lineage Nodes    : 342, Transitions: 257
+ Best Heuristic   : LLM-Seed-033-mut-g45-mut-g46
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let cap = bin_capacity as f64;
+
+    // Perfect closure: huge reward.
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // Two-step lookahead with graded chain rewards.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let slack = post_residual - next_item_size;
+        if slack == 0 {
+            score -= 850.0;
+        } else {
+            let large_next = next_item_size as f64 > 0.5 * cap;
+            let base = if large_next { 480.0 } else { 260.0 };
+            let slack_frac = slack as f64 / cap;
+            let mut chain = base * (1.0 - slack_frac * slack_frac);
+            if slack as f64 >= 0.5 * next_item_size as f64 {
+                chain += 60.0;
+            }
+            let slack_q = (slack as f64 / cap - 0.25).abs();
+            if slack_q < 0.05 {
+                chain += 25.0;
+            }
+            // Reward chains that also leave room for a third small item.
+            if slack >= 2 * next_item_size {
+                chain += 30.0;
+            }
+            score -= chain;
+        }
+    } else if next_item_size > 0 && post_residual < next_item_size {
+        let dead = (next_item_size - post_residual) as f64;
+        let wasted_frac = (dead / cap).min(1.0);
+        let scarcity = 1.0 + 0.25 / (fitting_bins_count.max(1) as f64);
+        score += 0.55 * dead * (1.0 - 0.4 * (mean_residual / cap).min(1.0)) * (0.5 + wasted_frac) * scarcity;
+    }
+
+    // Tight-bin preference with soft quadratic deviation term.
+    let dev = mean_residual - post_residual as f64;
+    score -= 0.3 * dev + 0.05 * dev * dev / cap;
+
+    // Last-chance bin.
+    if fitting_bins_count == 1 && bin_residual >= item_size {
+        score -= 220.0;
+    }
+
+    // New-bin candidate logic.
+    if bin_residual == bin_capacity {
+        let progress = step_index as f64 / total_items.max(1) as f64;
+        let sliver_thresh = ((next_item_size.max(item_size) as f64) * 0.5).min(0.15 * cap).max(3.0);
+        let awkward = if fitting_bins_count > 0 && post_residual > 0 && (post_residual as f64) < sliver_thresh {
+            80.0 * (1.0 - post_residual as f64 / sliver_thresh)
+        } else {
+            0.0
+        };
+        score -= awkward;
+        score += 40.0 + 130.0 * progress;
+        if next_item_size as f64 > 0.5 * cap {
+            score -= 35.0;
+        }
+        if open_bins_count > 4 && mean_residual > 0.25 * cap {
+            score += 65.0;
+        }
+        if progress > 0.7 && open_bins_count > 2 {
+            score += 45.0 * progress;
+        }
+        if next_item_size > 0 && fitting_bins_count > 0 && post_residual < next_item_size && next_item_size as f64 > 0.4 * cap {
+            score -= 25.0;
+        }
+        let fill_new = item_size as f64 / cap;
+        if fill_new > 0.95 {
+            score -= 30.0 * (fill_new - 0.95) / 0.05;
+        }
+        // Extra: avoid opening a new bin while many open bins still have usable space.
+        if fitting_bins_count >= 2 && mean_residual > 0.3 * cap {
+            score += 20.0;
+        }
+    }
+
+    // Compactness bonus graded by fill ratio.
+    let fill = (bin_capacity - post_residual) as f64 / cap;
+    if post_residual > 0 {
+        score -= 20.0 * fill * fill;
+        if fill > 0.9 {
+            score -= 15.0 * (fill - 0.9) / 0.1;
+        }
+        // Penalize unusable sliver residuals, scaled by remaining stream length.
+        if (post_residual as f64) < 0.1 * cap {
+            let stream_left = 1.0 - (step_index as f64 / total_items.max(1) as f64);
+            score += 12.0 * (1.0 - post_residual as f64 / (0.1 * cap)) * (0.5 + 0.5 * stream_left);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_local\temoin\run_seed_9753_temoin.json.tmp

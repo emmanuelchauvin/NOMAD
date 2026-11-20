@@ -1,0 +1,69 @@
+2026-11-16T22:22:25.477846Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10068, Pop=344, MaxGens=1
+2026-11-16T22:23:05.687990Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: timed out reading response). Retrying in 4s...
+2026-11-16T22:23:50.108059Z  WARN nomad_operator::http_llm: Ollama request attempt 2/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: timed out reading response). Retrying in 15s...
+2026-11-16T22:29:52.098323Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-17T00:36:51.470321Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4afc2e8b2f3cf429 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10068 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4137 bins (excess: +124), Efficiency: 97.01%, Fuel: 43113667
+ Best In-Dist (w/o Lookahead) : 4187 bins (excess: +174), Efficiency: 95.84%
+ Dynamic Trajectory: tLDR = 1.3869
+ Behavior Profile : DeadSpaceRatio: 24.4%, NewBinRatio: 41.4%, ResVar: 0.48
+ MAP-Elites Niches: 16 active (16.0% coverage), QD-Score: 10.508
+ Validation Score : 4124 bins (excess: +120), Efficiency: 97.10%
+ OOD-1 Score      : 10198 bins (excess: +125), Efficiency: 98.77%
+ OOD-2 Score      : 3623 bins (excess: +63), Efficiency: 98.26%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-293
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit bonus
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // 2-step lookahead: reward if next item fits exactly into post_residual
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 500.0;
+        } else if post_residual >= next_item_size {
+            // next item fits, leaving chain potential
+            let chain_left = post_residual - next_item_size;
+            score -= 150.0 - (chain_left as f64) * 0.5;
+        } else {
+            // next item won't fit here; penalize dead space proportional to gap
+            let gap = next_item_size - post_residual;
+            score += (gap as f64) * 0.8;
+        }
+    }
+
+    // Penalize large post_residual relative to mean residual (wasteful fit)
+    score += (post_residual as f64 - mean_residual).max(0.0) * 0.3;
+
+    // Last-chance bin bonus: avoid opening a new bin when this is the only fitting bin
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 200.0;
+    }
+
+    // New-bin candidate: penalize opening a new bin unless current fit is poor
+    if bin_residual == bin_capacity {
+        // baseline penalty; reduced if item is large relative to capacity
+        score += 120.0 - (item_size as f64 * 0.8);
+        // but if next item is large too, opening fresh bin is attractive
+        if next_item_size > 0 && post_residual >= next_item_size {
+            score -= 60.0;
+        }
+    }
+
+    // Slight preference for tighter bins as stream progresses
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score += (post_residual as f64 / bin_capacity as f64) * 20.0 * progress;
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\tirage\run_seed_10068_tirage.json.tmp

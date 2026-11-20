@@ -1,0 +1,264 @@
+2026-11-16T08:15:31.458045Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9736, Pop=8, MaxGens=47
+2026-11-16T09:29:01.612413Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Network Error: Error encountered in the status line: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T09:30:38.514959Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 4s...
+2026-11-16T12:03:27.296001Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-16T13:40:16.959271Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 2e6d4c239b7a3e5b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9736 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4086 bins (excess: +54), Efficiency: 98.68%, Fuel: 133408974
+ Best In-Dist (w/o Lookahead) : 4233 bins (excess: +201), Efficiency: 95.25%
+ Dynamic Trajectory: tLDR = 2.4918
+ Behavior Profile : DeadSpaceRatio: 17.7%, NewBinRatio: 40.9%, ResVar: 0.46
+ MAP-Elites Niches: 13 active (13.0% coverage), QD-Score: 10.708
+ Validation Score : 4094 bins (excess: +58), Efficiency: 98.58%
+ OOD-1 Score      : 10165 bins (excess: +79), Efficiency: 99.22%
+ OOD-2 Score      : 3617 bins (excess: +36), Efficiency: 99.01%
+ Lineage Nodes    : 343, Transitions: 264
+ Best Heuristic   : LLM-Seed-013-mut-g27-mut-g27
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let capacity_f = bin_capacity as f64;
+    let post_f = post_residual as f64;
+    let progress = step_index as f64 / total_items.max(1) as f64;
+
+    // Perfect 2-step lookahead match.
+    if next_item_size > 0 && post_residual == next_item_size {
+        score -= 310.0;
+    }
+    // Near-perfect lookahead match with graded slack handling.
+    else if next_item_size > 0 && post_residual > next_item_size {
+        let slack = (post_residual - next_item_size) as f64;
+        if slack <= 3.0 {
+            score -= 185.0;
+        } else if slack <= 14.0 {
+            score -= (56.0 - slack * 0.7).max(-18.0);
+        } else {
+            score -= (40.0 - slack * 0.35).max(-22.0);
+        }
+        // Chain compaction: slack nearly closes bin after next item.
+        if slack < 22.0 {
+            score -= (22.0 - slack) * 1.8;
+        }
+        // Divisibility: residual divisible by next item keeps the chain tight.
+        let rem = post_residual % next_item_size;
+        if rem <= 3 {
+            score -= 15.0 * (1.0 - progress);
+        }
+        let k = post_residual / next_item_size;
+        if k >= 2 && post_residual - k * next_item_size <= 2 {
+            score -= 21.0;
+        }
+        // Multi-step chain depth.
+        let depth = post_residual / next_item_size.max(1);
+        if depth >= 3 {
+            score -= (depth.min(6) as f64) * 5.5 * (0.5 + progress);
+        }
+        // Dead-space ratio refinement — stronger penalty for large dead fraction.
+        let next_waste = capacity_f - next_item_size as f64;
+        if slack > next_waste * 0.55 {
+            score += (slack - next_waste * 0.55) * 1.05 * (0.5 + progress);
+        }
+        // Extendable chain reward.
+        if slack >= next_item_size as f64 {
+            score -= 12.0 + 10.0 * progress;
+        }
+        // Near-multiple slack promises a longer chain.
+        let mult = slack as u32 / next_item_size;
+        let mrem = slack as u32 % next_item_size;
+        if mult >= 1 && mrem <= 1 {
+            score -= (mult.min(4) as f64) * 8.5 * (0.6 + progress);
+        }
+        // Exact 2x-next residual is a golden two-step chain.
+        if post_residual == 2 * next_item_size {
+            score -= 27.0 * (0.5 + progress);
+        }
+        // Spread lookahead rewards only on the tightest candidates.
+        if fitting_bins_count > 2 && slack > 10.0 {
+            score += (fitting_bins_count as f64 - 2.0).min(4.0) * 3.2;
+        }
+        // Tiny tail is near-perfect.
+        if slack <= 2 {
+            score -= 23.0 * (0.6 + progress);
+        }
+    }
+    // Post-residual too small for the next item.
+    if next_item_size > 0 && post_residual < next_item_size {
+        let gap = (next_item_size - post_residual) as f64;
+        score += gap * (0.5 + 0.24 * gap / capacity_f);
+        if gap <= 4.0 && post_f > 0.0 {
+            score -= 17.0 * (1.0 - progress);
+        }
+        if gap <= 2.0 {
+            score -= 13.0;
+        }
+        let rel = gap / (next_item_size as f64).max(1.0);
+        score += rel * 27.0 * (0.6 + 0.4 * progress);
+        if gap <= 12.0 && progress < 0.6 {
+            score -= 7.5 * (1.0 - progress);
+        }
+        if gap > post_f * 0.6 {
+            score += gap * 0.35 * progress;
+        }
+    }
+
+    // Above-average residual left behind is good.
+    score -= (post_f - mean_residual) * 0.58;
+
+    // Exact closure reward.
+    if post_residual == 0 {
+        score -= 950.0;
+    } else if bin_residual == item_size && bin_residual < bin_capacity {
+        score -= 35.0 + 25.0 * progress;
+    }
+
+    // Last-chance bin before opening a new one.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 118.0;
+    }
+
+    // New-bin candidate handling.
+    if bin_residual == bin_capacity {
+        score += 52.0;
+        score -= 30.0 * (1.0 - progress);
+        let fresh_res = bin_capacity - item_size;
+        let fresh_f = fresh_res as f64;
+        if next_item_size > 0 && fresh_res >= next_item_size && fresh_res - next_item_size <= 8 {
+            score -= 39.0;
+        }
+        if next_item_size > 0 && (next_item_size as i32 - fresh_res as i32).abs() < 6 {
+            score += 15.0 * (1.0 - progress);
+        }
+        if item_size >= 60 && fresh_res <= 10 {
+            score -= 42.0;
+        }
+        if item_size == bin_capacity {
+            score -= 950.0;
+        }
+        if fitting_bins_count >= 1 && post_residual > 35 {
+            score -= 33.0;
+        }
+        if open_bins_count > 2 && item_size as f64 > capacity_f * 0.8 {
+            score += 27.0;
+        }
+        if fresh_f > 0.0 {
+            score += (fresh_f / capacity_f) * 15.0 * progress;
+        }
+        if fresh_f > 18.0 && fresh_f < capacity_f * 0.45 {
+            score += 9.5 * (1.0 - progress);
+        }
+        // Refuse a fresh bin when an existing bin yields a tight fit.
+        if fitting_bins_count >= 1 {
+            if post_residual as f64 <= 5.0 {
+                score += 78.0;
+            } else if post_f > capacity_f * 0.5 {
+                score -= 31.0;
+            } else if post_f <= capacity_f * 0.25 {
+                score += 23.0 * (0.4 + 0.6 * progress);
+            }
+        }
+        if progress < 0.2 && item_size as f64 > capacity_f * 0.65 {
+            score -= 21.0;
+        }
+        // Fresh-bin residual quality — reusable residuals are cheap to open.
+        if next_item_size > 0 {
+            let ratio = fresh_f / (next_item_size.max(1) as f64);
+            if ratio >= 1.0 && ratio < 2.0 {
+                score -= 15.0;
+            } else if fresh_f < 8.0 {
+                score += 15.0;
+            }
+            if fresh_res == next_item_size {
+                score -= 27.0 * (1.0 - progress);
+            }
+            let fmult = fresh_res / next_item_size;
+            let frem = fresh_res % next_item_size;
+            if fmult >= 2 && frem <= 2 {
+                score -= (fmult.min(5) as f64) * 5.5;
+            }
+            // Awkward fractional multiples seed fragmentation.
+            let frac = ratio - ratio.floor();
+            if ratio >= 1.0 && frac > 0.05 && frac < 0.4 {
+                score += 11.0 * (0.5 + progress);
+            }
+        }
+        // Never open a fresh bin when the item nearly fills an existing bin exactly.
+        if fitting_bins_count >= 1 && bin_capacity - item_size <= 2 {
+            score += 50.0;
+        }
+        // Late-stream fresh bins must be nearly self-closing.
+        if progress > 0.7 && fresh_f > 0.0 && fresh_f < next_item_size.max(1) as f64 {
+            score += 31.0 * progress;
+        }
+        if progress > 0.75 && fresh_f >= 12.0 {
+            score += 19.0 * (progress - 0.75) * 4.0;
+        }
+        if progress > 0.8 && open_bins_count > 6 && fresh_f > 4.0 {
+            score += 21.0 * progress;
+        }
+    }
+
+    // Waste-proportional penalty scaled by progress.
+    if post_f > 0.0 {
+        score += (post_f / capacity_f) * (1.0 + progress) * (1.0 + 0.55 * progress);
+    }
+    // Tightness term.
+    score += (post_f / capacity_f) * (1.0 + progress);
+
+    // Prefer consolidating into fewer open bins.
+    if bin_residual < bin_capacity {
+        score -= (open_bins_count as f64).min(20.0) * 0.6;
+    }
+
+    // Nearly-dead bins are cheap to use up.
+    if (bin_residual as f64) < mean_residual * 0.3 && bin_residual < bin_capacity {
+        score -= 19.0;
+    }
+
+    // Half-capacity dead zones seed fragmentation.
+    let half = capacity_f * 0.5;
+    if post_f > half - 6.0 && post_f < half + 6.0 {
+        score += 10.5 * (1.0 - progress);
+    }
+    if post_f > half && post_f < half + 12.0 {
+        score += 6.5 * progress;
+    }
+    if post_f > half - 12.0 && post_f <= half - 6.0 && open_bins_count > 4 {
+        score += 4.0 * (1.0 - progress);
+    }
+
+    // Tiny residuals are premium targets.
+    if post_f > 0.0 && post_f <= 6.0 {
+        score -= (7.0 - post_f) * 3.2 * (0.4 + progress);
+    }
+    if post_f > 6.0 && post_f <= 15.0 && progress > 0.4 {
+        score += (post_f - 6.0) * 0.42 * progress;
+    }
+
+    // Quarter/three-quarter awkward anchors.
+    let quarter = capacity_f * 0.25;
+    let three_quarter = capacity_f * 0.75;
+    if post_f > quarter && post_f < quarter + 5.0 {
+        score += 5.5 * (1.0 - progress);
+    }
+    if post_f > three_quarter && post_f < three_quarter + 5.0 {
+        score += 5.5 * (1.0 - progress);
+    }
+
+    // Late-stream zero-tolerance.
+    if progress > 0.72 && post_f > 0.0 {
+        score += post_f * 0.48 * (progress - 0.72) * 4.0;
+    }
+
+    // Late-stream tightening.
+    score *= 1.0 + 0.29 * progress;
+
+    // Deterministic tie-breaker.
+    score += (post_residual % 10) as f64 * 0.05;
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_local\temoin\run_seed_9736_temoin.json.tmp

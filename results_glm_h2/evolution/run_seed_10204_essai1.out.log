@@ -1,0 +1,24 @@
+2026-11-16T19:29:51.902225Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10204, Pop=8, MaxGens=47
+2026-11-16T22:26:45.240584Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Ollama HTTP 429: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"z-ai/glm-5.3-flash is temporarily rate-limited upstream. Please retry shortly, or add your own provider key to use your own limits: https://openrouter.ai/workspaces/default/byok","provider_name":"Relace","is_byok":false,"limit_source":"upstream_provider_shared_pool","remedy_hint":"Retry shortly, add your own provider key to use your own limits (https://openrouter.ai/workspaces/default/byok), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing."}},"user_id":"user_2vtv0iBBQd5MJ0Hs5J7UufjL2GG"}). Retrying in 4s...
+2026-11-16T23:53:38.278455Z  INFO nomad_orchestrator::engine: Evaluating winning capsule f9786de227d80a4b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10204 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4157 bins (excess: +126), Efficiency: 96.97%, Fuel: 29671646
+ Best In-Dist (w/o Lookahead) : 4192 bins (excess: +161), Efficiency: 96.16%
+ Dynamic Trajectory: tLDR = 0.2464
+ Behavior Profile : DeadSpaceRatio: 75.7%, NewBinRatio: 41.6%, ResVar: 0.16
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 8.362
+ Validation Score : 4163 bins (excess: +128), Efficiency: 96.93%
+ OOD-1 Score      : 10363 bins (excess: +283), Efficiency: 97.27%
+ OOD-2 Score      : 3658 bins (excess: +92), Efficiency: 97.49%
+ Lineage Nodes    : 344, Transitions: 277
+ Best Heuristic   : Pruned-G45-78f9d56a-mut-g46
+ Logic Code       : pub fn score_bin (item_size : u32 , bin_residual : u32 , bin_capacity : u32 , step_index : usize , total_items : usize , open_bins_count : usize , mean_residual : f64 , next_item_size : u32 , post_residual : u32 , fitting_bins_count : usize) -> f64 { let mut score = post_residual as f64 ; let pr = post_residual ; let cap = bin_capacity as f64 ; if pr < 8 { score -= 40.0 ; } else if pr <= 12 { score += 28.0 ; } else if pr <= 25 { score += 8.0 ; } else if pr <= 40 { score -= 6.0 ; } else { score -= 3.0 ; } let fit_ratio = item_size as f64 / bin_residual . max (1) as f64 ; if next_item_size > 0 { if next_item_size <= pr { let chain_waste = (pr - next_item_size) as f64 ; score -= 22.0 - 0.20 * chain_waste ; if pr == next_item_size { score -= 30.0 ; } if chain_waste <= 5.0 && pr <= 30 { score -= 4.0 ; } } else { let gap = (next_item_size - pr) as f64 ; let gap_penalty = if fitting_bins_count <= 2 { 0.40 } else if fitting_bins_count <= 4 { 0.34 } else { 0.28 } ; score += gap_penalty * gap . min (60.0) ; } } score += (mean_residual - pr as f64) * 0.25 ; if fitting_bins_count == 1 && pr >= item_size { score -= 6.0 * fit_ratio ; if pr - item_size < 4 { score -= 5.0 ; } } if pr >= item_size && pr - item_size <= 2 && item_size >= 20 { score -= 6.0 ; } if pr >= item_size && (pr - item_size) as f64 > 0.35 * cap && fitting_bins_count > 1 { score += 3.0 ; } // lookahead: prefer bins whose post-residual can chain with the next item exactly
+ if next_item_size > 0 && pr >= next_item_size && pr - next_item_size <= 3 { score -= 5.0 ; } // penalize leaving mid-range dead space that neither current nor next item can use
+ if pr >= item_size && pr - item_size > 15 && (next_item_size == 0 || next_item_size > pr) { score += 0.08 * ((pr - item_size) as f64 - 15.0) ; } // slight preference for compacting when many bins are open
+ if open_bins_count > 6 && pr >= item_size && pr - item_size <= 8 { score -= 2.0 ; } score }
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\evolution\run_seed_10204_evolution.json.tmp

@@ -1,0 +1,76 @@
+2026-11-15T16:59:00.572755Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9306, Pop=344, MaxGens=1
+2026-11-15T17:37:52.439513Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: Connect error: connection timed out). Retrying in 4s...
+2026-11-15T17:44:39.375871Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T18:02:17.045186Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T18:24:58.144310Z  INFO nomad_orchestrator::engine: Evaluating winning capsule fa2d1361ace56735 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9306 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4171 bins (excess: +141), Efficiency: 96.63%, Fuel: 41568321
+ Best In-Dist (w/o Lookahead) : 4226 bins (excess: +196), Efficiency: 95.36%
+ Dynamic Trajectory: tLDR = 1.1229
+ Behavior Profile : DeadSpaceRatio: 35.1%, NewBinRatio: 41.7%, ResVar: 0.42
+ MAP-Elites Niches: 15 active (15.0% coverage), QD-Score: 10.531
+ Validation Score : 4169 bins (excess: +123), Efficiency: 97.06%
+ OOD-1 Score      : 10204 bins (excess: +149), Efficiency: 98.54%
+ OOD-2 Score      : 3620 bins (excess: +78), Efficiency: 97.85%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-108
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit: residual fully consumed -> strongly reward.
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // 2-step lookahead: if the next item exactly fills the post-residual,
+    // this is a perfect chain -> big reward.
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 500.0;
+        } else if post_residual >= next_item_size {
+            // Next item fits here too: good chaining.
+            let slack_after_next = post_residual - next_item_size;
+            score -= 100.0 * (1.0 - slack_after_next as f64 / bin_capacity as f64);
+        } else {
+            // Dead space: next item cannot use the leftover.
+            let waste = next_item_size - post_residual;
+            score += 30.0 + waste as f64;
+        }
+    } else {
+        // Last item: prefer minimal leftover.
+        score += 0.0;
+    }
+
+    // Compare post_residual against mean residual across open bins:
+    // leaving less than average behind is efficient packing.
+    score -= 2.0 * (mean_residual - post_residual as f64);
+
+    // Last-chance bin: if this is the only bin that fits, avoid opening a new bin.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 80.0;
+    }
+
+    // New empty bin candidate: only attractive when the item is large
+    // relative to residual space available elsewhere, or many bins already open.
+    if bin_residual == bin_capacity {
+        let large_item = item_size as f64 > 0.6 * bin_capacity as f64;
+        let crowded = open_bins_count as f64 > 8.0;
+        if large_item || crowded {
+            score -= 60.0;
+        } else {
+            score += 120.0; // prefer filling existing bins
+        }
+    }
+
+    // Slight progression bias: later in the stream, consolidation matters more.
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score += 10.0 * progress * (post_residual as f64 / bin_capacity as f64);
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9306_tirage.json.tmp

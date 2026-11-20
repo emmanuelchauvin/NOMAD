@@ -1,0 +1,69 @@
+2026-11-16T22:18:17.052290Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10170, Pop=344, MaxGens=1
+2026-11-16T22:18:57.154175Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: timed out reading response). Retrying in 4s...
+2026-11-17T00:22:30.486442Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 0bf6452ecaf93aa7 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10170 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4175 bins (excess: +152), Efficiency: 96.37%, Fuel: 38626696
+ Best In-Dist (w/o Lookahead) : 4212 bins (excess: +189), Efficiency: 95.52%
+ Dynamic Trajectory: tLDR = 0.9958
+ Behavior Profile : DeadSpaceRatio: 11.6%, NewBinRatio: 41.8%, ResVar: 0.68
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 7.333
+ Validation Score : 4178 bins (excess: +144), Efficiency: 96.56%
+ OOD-1 Score      : 10198 bins (excess: +152), Efficiency: 98.51%
+ OOD-2 Score      : 3629 bins (excess: +71), Efficiency: 98.05%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-112
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit bonus: strongly reward zero waste.
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // Dead-space penalty: residuals too small to hold even the smallest
+    // plausible item are pure waste. Penalize them quadratically.
+    let min_item = 1u32;
+    if post_residual > 0 && post_residual < min_item {
+        score += 200.0 * (min_item - post_residual) as f64;
+    }
+
+    // Unusable gap heuristic: small but nonzero gaps that cannot fit the
+    // lookahead item are risky; penalize if next item could have used them.
+    if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+        score += 3.0 * (next_item_size - post_residual) as f64;
+    }
+
+    // Reward placements that leave room for the next item (flexibility).
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 2.0;
+    }
+
+    // Last-chance bin: if this is the only bin that fits, strongly prefer it
+    // over opening a new bin.
+    if fitting_bins_count == 1 && bin_residual >= item_size {
+        score -= 50.0;
+    }
+
+    // Open-bin pressure: with many open bins, prefer consolidating into
+    // existing bins over opening new ones.
+    score += 0.5 * open_bins_count as f64;
+
+    // Mean residual coupling: if this bin is tighter than average, prefer it
+    // (fills nearly-full bins first, keeps slack concentrated elsewhere).
+    score -= (mean_residual - post_residual as f64) * 0.3;
+
+    // Slight preference for using existing bins vs. the fresh empty-bin
+    // candidate: an empty bin has full residual, so its raw score is high;
+    // nudge it further up unless the fit is genuinely poor elsewhere.
+    if bin_residual == bin_capacity {
+        score += 10.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\tirage\run_seed_10170_tirage.json.tmp

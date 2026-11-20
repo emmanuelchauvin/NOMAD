@@ -1,0 +1,78 @@
+2026-11-16T22:19:28.774465Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10017, Pop=344, MaxGens=1
+2026-11-16T22:20:08.932894Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: timed out reading response). Retrying in 4s...
+2026-11-17T00:27:04.005674Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 84f637cd13ca19fe on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10017 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4170 bins (excess: +145), Efficiency: 96.53%, Fuel: 38349015
+ Best In-Dist (w/o Lookahead) : 5432 bins (excess: +1407), Efficiency: 74.11%
+ Dynamic Trajectory: tLDR = 0.3697
+ Behavior Profile : DeadSpaceRatio: 68.7%, NewBinRatio: 41.7%, ResVar: 0.31
+ MAP-Elites Niches: 15 active (15.0% coverage), QD-Score: 11.039
+ Validation Score : 4173 bins (excess: +149), Efficiency: 96.43%
+ OOD-1 Score      : 10329 bins (excess: +275), Efficiency: 97.34%
+ OOD-2 Score      : 3644 bins (excess: +112), Efficiency: 96.93%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-038
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Strong base preference for tight fits.
+    let fit_ratio = post_residual as f64 / bin_capacity as f64;
+    score += 30.0 * fit_ratio * fit_ratio;
+
+    // --- 2-step lookahead: reward bins whose post-residual matches the next item ---
+    if next_item_size > 0 {
+        let next = next_item_size as f64;
+        if (post_residual as f64) >= next {
+            // Next item fits here afterwards -> big reward proportional to match quality.
+            let match_gap = (post_residual as f64 - next) / bin_capacity as f64;
+            score -= 45.0 * (1.0 - match_gap);
+        } else {
+            // Next item cannot follow in this bin -> penalize, worse if residual is dead space.
+            let dead = post_residual as f64 / bin_capacity as f64;
+            score += 20.0 * dead;
+        }
+    }
+
+    // Compare against mean residual: bins with residual near item_size are ideal targets.
+    let mean_gap = (bin_residual as f64 - item_size as f64).abs();
+    score += 0.25 * mean_gap;
+    if (bin_residual as f64) < mean_residual - 5.0 {
+        score -= 8.0; // tighter-than-average bin: use it before it becomes dead space
+    }
+
+    // Last-chance bonus: if this is the only fitting bin, avoid opening a new bin.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 25.0;
+    }
+
+    // New-bin candidate handling: only attractive when open bins fit poorly.
+    let is_new_bin = bin_residual == bin_capacity;
+    if is_new_bin {
+        let best_alt = if next_item_size > 0 {
+            (post_residual as f64).min(bin_capacity as f64)
+        } else {
+            bin_capacity as f64
+        };
+        // Penalize new bin mildly; big items prefer fresh bins though.
+        let mut nb = 15.0;
+        if item_size >= 50 {
+            nb -= 18.0;
+        }
+        if next_item_size > 0 && item_size as f64 + next_item_size as f64 <= bin_capacity as f64 {
+            nb -= 10.0; // new bin can host a clean pair
+        }
+        score = nb + best_alt * 0.1;
+    }
+
+    // Slight late-stream tightening: consolidate into fewer bins as stream ends.
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score += 5.0 * (1.0 - progress) * (open_bins_count as f64 / (open_bins_count as f64 + 5.0));
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\tirage\run_seed_10017_tirage.json.tmp

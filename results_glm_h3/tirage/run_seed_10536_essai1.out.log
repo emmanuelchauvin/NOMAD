@@ -1,0 +1,60 @@
+[2m2026-11-17T08:01:43.970475Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=10536, Pop=1359, MaxGens=1
+[2m2026-11-17T09:56:15.682550Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T14:15:26.758455Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 3dbcb934a89907be on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10536 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4124 bins (excess: +102), Efficiency: 97.53%, Fuel: 41507444
+ Best In-Dist (w/o Lookahead) : 4231 bins (excess: +209), Efficiency: 95.06%
+ Dynamic Trajectory: tLDR = 1.9953
+ Behavior Profile : DeadSpaceRatio: 17.9%, NewBinRatio: 41.2%, ResVar: 0.61
+ MAP-Elites Niches: 32 active (32.0% coverage), QD-Score: 22.010
+ Validation Score : 4135 bins (excess: +106), Efficiency: 97.44%
+ OOD-1 Score      : 10416 bins (excess: +365), Efficiency: 96.50%
+ OOD-2 Score      : 3591 bins (excess: +52), Efficiency: 98.56%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-288
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit reward
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // 2-step lookahead: reward if next item fits exactly into post_residual
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 800.0;
+        } else if post_residual >= next_item_size {
+            // next item fits, but penalize leftover after that hypothetical placement
+            score -= 200.0 - (post_residual - next_item_size) as f64;
+        } else {
+            // next item won't fit: penalize leaving dead space
+            score += 50.0;
+        }
+    }
+
+    // Compare residual against mean residual across open bins
+    score -= 2.0 * (bin_residual as f64 - mean_residual);
+
+    // Last-chance bin bonus: only bin that fits, avoid opening a new bin
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 300.0;
+    }
+
+    // Penalize opening new bins when open bins fit well
+    if bin_residual == bin_capacity {
+        score += 100.0 + 0.5 * open_bins_count as f64;
+    }
+
+    // Slight preference to fill tighter bins early in the stream
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score += 0.1 * post_residual as f64 * (1.0 - progress);
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h3\tirage\run_seed_10536_tirage.json.tmp

@@ -1,0 +1,74 @@
+2026-11-15T19:37:30.870639Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9085, Pop=344, MaxGens=1
+2026-11-15T19:42:46.312700Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T19:50:26.228618Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T21:12:57.546522Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T21:20:22.116900Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T21:21:10.585575Z  INFO nomad_orchestrator::engine: Evaluating winning capsule e22c1ab238519f0e on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9085 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4187 bins (excess: +144), Efficiency: 96.56%, Fuel: 27625526
+ Best In-Dist (w/o Lookahead) : 4234 bins (excess: +191), Efficiency: 95.49%
+ Dynamic Trajectory: tLDR = 0.3193
+ Behavior Profile : DeadSpaceRatio: 65.8%, NewBinRatio: 41.9%, ResVar: 0.40
+ MAP-Elites Niches: 20 active (20.0% coverage), QD-Score: 14.066
+ Validation Score : 4147 bins (excess: +129), Efficiency: 96.89%
+ OOD-1 Score      : 10308 bins (excess: +285), Efficiency: 97.23%
+ OOD-2 Score      : 3636 bins (excess: +74), Efficiency: 97.97%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-323
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Reward exact/near-exact fills strongly.
+    if post_residual == 0 {
+        score -= 1000.0;
+    } else if post_residual <= 5 {
+        score -= 200.0;
+    }
+
+    // Aggressive 2-step lookahead: if the next item fits the post-residual,
+    // this placement is excellent (chains a second fill).
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 150.0 + 0.5 * (post_residual - next_item_size) as f64;
+        // Perfect chain: post residual exactly equals next item size.
+        if post_residual == next_item_size {
+            score -= 250.0;
+        }
+    } else if next_item_size > 0 && next_item_size > post_residual {
+        // Dead space that the next item cannot use: penalize proportionally
+        // to how big the leftover gap is relative to the next item.
+        let gap = (next_item_size - post_residual) as f64;
+        score += 0.8 * gap;
+    }
+
+    // Relative to mean residual: bins tighter than average are good targets.
+    score -= 0.6 * (mean_residual - post_residual as f64);
+
+    // Last-chance bin: strongly prefer using it to avoid opening a new bin.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 120.0;
+    }
+
+    // Penalize new-bin candidate unless it enables a clean lookahead chain.
+    if bin_residual == bin_capacity {
+        score += 90.0;
+        if next_item_size > 0 && (bin_capacity - item_size) >= next_item_size {
+            score -= 100.0;
+        }
+        // Early in stream, opening bins is cheaper; late in stream, consolidate.
+        let progress = step_index as f64 / total_items.max(1) as f64;
+        score += 60.0 * (1.0 - progress);
+    }
+
+    // Slight preference for bins with fewer competitors (spread load when many fit).
+    if fitting_bins_count > 1 {
+        score += 2.0 * (fitting_bins_count as f64 - 1.0);
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9085_tirage.json.tmp

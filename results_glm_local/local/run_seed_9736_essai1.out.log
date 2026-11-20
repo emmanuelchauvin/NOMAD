@@ -1,0 +1,110 @@
+2026-11-16T08:15:32.031940Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9736, Pop=8, MaxGens=47
+2026-11-16T09:27:57.582338Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Network Error: Error encountered in the status line: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 4s...
+2026-11-16T09:28:19.561847Z  WARN nomad_operator::http_llm: Ollama request attempt 2/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Network Error: Error encountered in the status line: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 15s...
+2026-11-16T09:28:45.401427Z  WARN nomad_operator::http_llm: Ollama request attempt 3/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Dns Failed: resolve dns name 'openrouter.ai:443': Le nom demandé est valide, mais aucune donnée du type requise n’a été trouvée. (os error 11004)). Retrying in 45s...
+2026-11-16T09:29:52.923540Z  WARN nomad_operator::http_llm: Ollama request attempt 4/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: Connect error: connection timed out). Retrying in 90s...
+2026-11-16T13:27:44.873655Z  INFO nomad_orchestrator::engine: Evaluating winning capsule c6bc7e3defefa95d on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9736 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4101 bins (excess: +69), Efficiency: 98.32%, Fuel: 89421820
+ Best In-Dist (w/o Lookahead) : 4224 bins (excess: +192), Efficiency: 95.46%
+ Dynamic Trajectory: tLDR = 1.5108
+ Behavior Profile : DeadSpaceRatio: 26.7%, NewBinRatio: 41.0%, ResVar: 0.42
+ MAP-Elites Niches: 12 active (12.0% coverage), QD-Score: 9.727
+ Validation Score : 4111 bins (excess: +75), Efficiency: 98.18%
+ OOD-1 Score      : 10193 bins (excess: +107), Efficiency: 98.95%
+ OOD-2 Score      : 3622 bins (excess: +41), Efficiency: 98.87%
+ Lineage Nodes    : 483, Transitions: 506
+ Best Heuristic   : Pruned-G26-d1dad1d0-mut-g28
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    if post_residual == 0 { score -= 1000.0; }
+    if next_item_size > 0 && post_residual == next_item_size {
+        score -= 560.0;
+    } else if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 50.0 + (post_residual - next_item_size) as f64 * 0.6;
+    } else if next_item_size > 0 && post_residual > 0 {
+        let gap = (next_item_size - post_residual) as f64;
+        score += gap * 0.3 + if gap > 25.0 { gap * 0.18 } else { 0.0 };
+    }
+    score += (bin_capacity - bin_residual) as f64 * 0.05;
+    if next_item_size > 0 && post_residual >= next_item_size && post_residual > 0 {
+        score -= 12.0 * (1.0 - post_residual as f64 / bin_capacity as f64);
+    }
+    if bin_residual == bin_capacity && open_bins_count > 0 {
+        let pressure = item_size as f64 / bin_capacity as f64;
+        let tight = (mean_residual / bin_capacity as f64).clamp(0.0, 1.0);
+        let frag = (fitting_bins_count as f64 / open_bins_count.max(1) as f64).clamp(0.0, 1.0);
+        let hard = 1.0 - frag;
+        score += 40.0 + 65.0 * (1.0 - pressure) * tight - 30.0 * hard * pressure;
+        if fitting_bins_count > 0 {
+            let best_waste = post_residual.min(item_size) as f64;
+            if best_waste < bin_capacity as f64 * 0.06 { score += 30.0; }
+        }
+        let progress = step_index as f64 / total_items.max(1) as f64;
+        if progress > 0.55 && fitting_bins_count > 0 {
+            score += 20.0 * (progress - 0.55) * 2.0;
+        }
+    }
+    if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size && post_residual < item_size {
+        score += 14.0;
+    }
+    let dead = post_residual as f64 / bin_capacity as f64;
+    if post_residual > 0 {
+        if dead < 0.1 {
+            score -= 6.0 * (0.1 - dead) * 10.0;
+        } else if dead > 0.5 && next_item_size > 0 && post_residual < next_item_size {
+            score += 18.0 * (dead - 0.5);
+        } else if dead > 0.35 {
+            let progress = step_index as f64 / total_items.max(1) as f64;
+            score += 10.0 * (dead - 0.35) * (0.5 + progress);
+        }
+    }
+    if fitting_bins_count == 1 && bin_residual != bin_capacity { score -= 25.0; }
+    if post_residual > 0 && post_residual == item_size.min(bin_residual) && bin_residual >= item_size {
+        score -= 8.0;
+    }
+    if next_item_size > 0 && bin_residual >= item_size {
+        let r1 = bin_residual - item_size;
+        if r1 > next_item_size {
+            let tail = r1 - next_item_size;
+            if tail <= 10 { score -= 14.0 - tail as f64; }
+        }
+    }
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    if progress > 0.6 {
+        score += post_residual as f64 * 0.15 * (progress - 0.6) * 2.5;
+    }
+    if post_residual > 0 {
+        let diff = (post_residual as f64 - mean_residual).abs();
+        score -= 4.0 * (1.0 - (diff / bin_capacity as f64).min(1.0));
+    }
+    if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+        let regret = (next_item_size - post_residual) as f64;
+        if regret <= 12 { score += 12.0 - regret * 0.5; }
+    }
+    // refined dead-space coupling: penalize residuals that are useless for the near future
+    if post_residual > 0 && next_item_size > 0 {
+        let useless = (post_residual as f64 / next_item_size as f64).min(1.0);
+        if post_residual < next_item_size {
+            score += (1.0 - useless) * 6.0 * (0.5 + progress);
+        }
+    }
+    // two-item lookahead: reward bins that could hold item + next item exactly
+    if next_item_size > 0 && bin_residual >= item_size + next_item_size {
+        let r2 = bin_residual - item_size - next_item_size;
+        if r2 <= 6 { score -= 10.0 - r2 as f64; }
+    }
+    // late-stage compaction: prefer filling nearly-full bins more aggressively
+    if progress > 0.7 && post_residual > 0 && post_residual <= item_size.max(next_item_size) {
+        score -= 8.0 * (progress - 0.7) * 3.0;
+    }
+    let dev = mean_residual - bin_residual as f64;
+    score += 0.2 * dev;
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_local\local\run_seed_9736_local.json.tmp

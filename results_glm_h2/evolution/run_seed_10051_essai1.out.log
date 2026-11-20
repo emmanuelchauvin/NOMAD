@@ -1,0 +1,20 @@
+2026-11-16T19:29:51.639164Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10051, Pop=8, MaxGens=47
+2026-11-16T23:35:28.557490Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 7e5ac6fea7e74a86 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10051 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4098 bins (excess: +72), Efficiency: 98.25%, Fuel: 54538817
+ Best In-Dist (w/o Lookahead) : 4218 bins (excess: +192), Efficiency: 95.45%
+ Dynamic Trajectory: tLDR = 1.7063
+ Behavior Profile : DeadSpaceRatio: 28.6%, NewBinRatio: 41.0%, ResVar: 0.42
+ MAP-Elites Niches: 11 active (11.0% coverage), QD-Score: 9.780
+ Validation Score : 4107 bins (excess: +88), Efficiency: 97.86%
+ OOD-1 Score      : 10431 bins (excess: +355), Efficiency: 96.60%
+ OOD-2 Score      : 3568 bins (excess: +39), Efficiency: 98.91%
+ Lineage Nodes    : 353, Transitions: 262
+ Best Heuristic   : Pruned-G25-9c58cb2d
+ Logic Code       : pub fn score_bin (item_size : u32 , bin_residual : u32 , bin_capacity : u32 , step_index : usize , total_items : usize , open_bins_count : usize , mean_residual : f64 , next_item_size : u32 , post_residual : u32 , fitting_bins_count : usize) -> f64 { let cap_f = bin_capacity as f64 ; let mut score = post_residual as f64 ; if post_residual == 0 { score -= 1000.0 ; } if next_item_size > 0 && next_item_size <= post_residual { let gap = (post_residual - next_item_size) as f64 ; score -= 300.0 * (1.0 - gap / cap_f) ; if gap == 0.0 { score -= 7.0 ; } if gap > 0.0 && (gap as u32) < mean_residual as u32 { score -= 2.0 ; } if gap > 0.0 && gap >= next_item_size as f64 { score -= 2.5 ; if fitting_bins_count <= 2 { score -= 1.5 ; } } if gap > 0.0 && gap < 8.0 { score -= 2.2 * (1.0 - gap / 8.0) ; } if gap > 0.0 && gap < 4.0 { score -= 1.0 * (1.0 - gap / 4.0) ; } if (gap as u32) >= 2 * next_item_size { score -= 1.8 ; } if (gap as u32) >= 3 * next_item_size { score += 1.0 ; } if gap > 0.0 && gap < next_item_size as f64 && gap > (bin_capacity / 20) as f64 { score += 1.2 ; } if gap > 0.0 && gap < (next_item_size as f64) * 0.5 { score -= 0.8 ; } } else if next_item_size > 0 { let dead = post_residual as f64 ; score += 3.2 + 0.02 * dead ; if dead > 0.0 { score += 42.0 * (1.0 - dead / cap_f) ; } if post_residual < next_item_size / 2 { score += 2.5 ; } if post_residual >= next_item_size / 2 && post_residual < next_item_size && next_item_size > bin_capacity / 3 { score += 1.0 ; } if post_residual > 0 && post_residual < bin_capacity / 12 { score += 2.2 ; } if post_residual > 0 && (post_residual as f64) < mean_residual * 0.6 { score += 1.0 ; } } score -= 80.0 * (1.0 - post_residual as f64 / cap_f) ; if fitting_bins_count == 1 && bin_residual != bin_capacity { score -= 120.0 ; } if bin_residual == bin_capacity { let fragmentation = (mean_residual - post_residual as f64) . abs () ; score += 200.0 ; score -= 60.0 * (fragmentation / cap_f) ; if open_bins_count > 4 && mean_residual < item_size as f64 * 1.2 { score -= 250.0 ; } if next_item_size > 0 && next_item_size <= item_size && fitting_bins_count <= 1 { score -= 1.0 ; } if next_item_size > 0 && item_size as f64 >= 0.6 * cap_f && fitting_bins_count >= 2 { score += 0.8 ; } if fitting_bins_count > 0 { let slack = (post_residual as f64) / cap_f ; if slack > 0.5 { score += 40.0 ; } } if fitting_bins_count > 0 && item_size <= bin_capacity / 2 { score += 2.0 ; } let waste_risk = if next_item_size > 0 && next_item_size <= bin_capacity { 0.0 } else { 6.0 } ; score += waste_risk + 0.5 * open_bins_count as f64 ; if fitting_bins_count <= 1 && next_item_size > 0 && next_item_size > bin_capacity / 2 { score -= 1.5 ; } } score += 0.3 * (post_residual as f64 - mean_residual) . abs () ; score }
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\evolution\run_seed_10051_evolution.json.tmp

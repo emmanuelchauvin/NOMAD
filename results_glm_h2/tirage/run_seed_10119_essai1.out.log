@@ -1,0 +1,79 @@
+2026-11-16T22:13:22.046748Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10119, Pop=344, MaxGens=1
+2026-11-16T22:14:02.326773Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: timed out reading response). Retrying in 4s...
+2026-11-16T23:59:41.489450Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 16b058248129ab33 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10119 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4151 bins (excess: +140), Efficiency: 96.63%, Fuel: 32491566
+ Best In-Dist (w/o Lookahead) : 4189 bins (excess: +178), Efficiency: 95.75%
+ Dynamic Trajectory: tLDR = 0.7850
+ Behavior Profile : DeadSpaceRatio: 38.7%, NewBinRatio: 41.5%, ResVar: 0.54
+ MAP-Elites Niches: 16 active (16.0% coverage), QD-Score: 11.302
+ Validation Score : 4162 bins (excess: +140), Efficiency: 96.64%
+ OOD-1 Score      : 10306 bins (excess: +254), Efficiency: 97.54%
+ OOD-2 Score      : 3596 bins (excess: +66), Efficiency: 98.17%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-188
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Core: reward tight fits (small post_residual is already the base).
+
+    // Perfect-fill bonus: waste nothing.
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // 2-step lookahead matching: if the next item fits exactly into this
+    // bin's post_residual, this is a chain of two perfect placements.
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 500.0;
+        } else if post_residual > next_item_size {
+            // Next item still fits here: mildly good, scaled by how much
+            // slack remains after the hypothetical second placement.
+            let second_residual = (post_residual - next_item_size) as f64;
+            score -= 120.0 * (1.0 - second_residual / bin_capacity as f64);
+        } else {
+            // Next item cannot fit here: penalize leaving a dead gap that
+            // is smaller than the next item but too small to be useful.
+            let gap = post_residual as f64;
+            if gap < next_item_size as f64 {
+                score += 60.0 * (1.0 - gap / bin_capacity as f64);
+            }
+        }
+    }
+
+    // Relative-to-mean coupling: bins with residual far below the mean are
+    // already "used up"; finishing them off is good. Bins far above the
+    // mean are fresh; wasting them on a loose fit is bad.
+    let mean_gap = (bin_residual as f64 - mean_residual) / bin_capacity as f64;
+    score += 40.0 * mean_gap;
+
+    // Last-chance logic: if this is the only bin that fits, prefer using it
+    // over opening a new bin unless the fit is terrible.
+    if fitting_bins_count == 1 {
+        score -= 150.0;
+    }
+
+    // Penalize new-bin candidates unless the current fit is very loose
+    // (large post_residual) — a fresh empty bin should only win when the
+    // item would leave big unusable slack in an existing bin.
+    if bin_residual == bin_capacity {
+        score += 200.0;
+        if post_residual as f64 > 0.6 * bin_capacity as f64 {
+            score -= 250.0;
+        }
+    }
+
+    // Late-stream tightening: as the stream progresses, be greedier about
+    // closing bins with small residuals.
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    score -= 30.0 * progress * (1.0 - post_residual as f64 / bin_capacity as f64);
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\tirage\run_seed_10119_tirage.json.tmp

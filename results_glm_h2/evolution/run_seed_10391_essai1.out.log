@@ -1,0 +1,198 @@
+2026-11-16T19:29:52.170822Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10391, Pop=8, MaxGens=47
+2026-11-16T22:29:19.888019Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Ollama HTTP 429: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"z-ai/glm-5.3-flash is temporarily rate-limited upstream. Please retry shortly, or add your own provider key to use your own limits: https://openrouter.ai/workspaces/default/byok","provider_name":"Relace","is_byok":false,"limit_source":"upstream_provider_shared_pool","remedy_hint":"Retry shortly, add your own provider key to use your own limits (https://openrouter.ai/workspaces/default/byok), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing."}},"user_id":"user_2vtv0iBBQd5MJ0Hs5J7UufjL2GG"}). Retrying in 4s...
+2026-11-16T22:29:24.141534Z  WARN nomad_operator::http_llm: Ollama request attempt 2/6 failed (Ollama HTTP 429: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"z-ai/glm-5.3-flash is temporarily rate-limited upstream. Please retry shortly, or add your own provider key to use your own limits: https://openrouter.ai/workspaces/default/byok","provider_name":"Relace","is_byok":false,"limit_source":"upstream_provider_shared_pool","remedy_hint":"Retry shortly, add your own provider key to use your own limits (https://openrouter.ai/workspaces/default/byok), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing."}},"user_id":"user_2vtv0iBBQd5MJ0Hs5J7UufjL2GG"}). Retrying in 15s...
+2026-11-16T22:29:39.634096Z  WARN nomad_operator::http_llm: Ollama request attempt 3/6 failed (Ollama HTTP 429: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"z-ai/glm-5.3-flash is temporarily rate-limited upstream. Please retry shortly, or add your own provider key to use your own limits: https://openrouter.ai/workspaces/default/byok","provider_name":"Relace","is_byok":false,"limit_source":"upstream_provider_shared_pool","remedy_hint":"Retry shortly, add your own provider key to use your own limits (https://openrouter.ai/workspaces/default/byok), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing."}},"user_id":"user_2vtv0iBBQd5MJ0Hs5J7UufjL2GG"}). Retrying in 45s...
+2026-11-17T01:03:13.113128Z  INFO nomad_orchestrator::engine: Evaluating winning capsule cb9f8aed2a684ebf on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10391 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4055 bins (excess: +30), Efficiency: 99.26%, Fuel: 180664552
+ Best In-Dist (w/o Lookahead) : 6319 bins (excess: +2294), Efficiency: 63.72%
+ Dynamic Trajectory: tLDR = 3.5021
+ Behavior Profile : DeadSpaceRatio: 14.0%, NewBinRatio: 40.6%, ResVar: 0.51
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.473
+ Validation Score : 4063 bins (excess: +39), Efficiency: 99.04%
+ OOD-1 Score      : 10111 bins (excess: +75), Efficiency: 99.26%
+ OOD-2 Score      : 3652 bins (excess: +98), Efficiency: 97.33%
+ Lineage Nodes    : 346, Transitions: 273
+ Best Heuristic   : LLM-Seed-007-mut-g16-mut-g19-mut-g21-mut-g23-mut-g26
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let cap = bin_capacity as f64;
+    let mut score = post_residual as f64;
+
+    // Perfect fit: overwhelmingly rewarded.
+    if post_residual == 0 {
+        score -= 900.0;
+    }
+
+    // Dead-space avoidance: unusable small gaps are penalized.
+    if post_residual > 0 && post_residual <= 5 {
+        score -= 50.0 - 4.0 * post_residual as f64;
+    } else if post_residual > 5 && post_residual < 12 {
+        score += 55.0 * (12.0 - post_residual as f64) / 12.0;
+    }
+    if post_residual >= 12 {
+        score -= 9.0;
+    }
+
+    // Lookahead chain scoring: reward residuals that can host the next item
+    // and still leave useful space afterwards.
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 300.0;
+        } else if post_residual > next_item_size {
+            let after_next = post_residual - next_item_size;
+            let mut chain_bonus = 40.0 * (1.0 - after_next as f64 / cap);
+            if after_next <= 5 {
+                chain_bonus += 55.0;
+            }
+            if after_next >= next_item_size.min(50) {
+                chain_bonus += 15.0;
+            }
+            if fitting_bins_count <= 2 {
+                chain_bonus += 10.0 * (3.0 - fitting_bins_count as f64);
+            }
+            if after_next >= next_item_size {
+                chain_bonus += 20.0;
+            }
+            if after_next > 0 && after_next <= 8 {
+                chain_bonus += 16.0 * (1.0 - after_next as f64 / 8.0);
+            }
+            // Deeper lookahead: if the next item also chains a third item
+            // exactly, this is an ideal 3-item fill.
+            if after_next >= next_item_size {
+                let after_third = after_next - next_item_size;
+                if after_third <= 2 {
+                    chain_bonus += 12.0;
+                }
+                // NEW: reward residuals that can chain the next item twice,
+                // signaling a fully packed multi-item fill trajectory.
+                if after_third >= next_item_size {
+                    chain_bonus += 10.0 * (1.0 - (after_third - next_item_size) as f64 / cap);
+                }
+            }
+            // NEW: scale chain bonus by global scarcity of fitting bins —
+            // when choices are scarce, chaining matters more.
+            if fitting_bins_count <= 4 {
+                chain_bonus *= 1.0 + 0.08 * (4 - fitting_bins_count) as f64;
+            }
+            score -= chain_bonus;
+        } else {
+            // Post-residual too small for the next item: penalize by waste.
+            let waste = next_item_size as f64 - post_residual as f64;
+            let soft = 1.0 / (1.0 + fitting_bins_count as f64);
+            score += 0.5 * waste * (0.5 + 0.5 * soft);
+        }
+        if post_residual > 0 && post_residual < next_item_size && next_item_size - post_residual <= 4 {
+            score += 16.0;
+        }
+    }
+
+    // Tightness preference.
+    let tightness = mean_residual - bin_residual as f64;
+    score += tightness * 0.3;
+
+    let progress = if total_items > 0 { step_index as f64 / total_items.max(1) as f64 } else { 0.0 };
+
+    // New-bin candidate logic.
+    if bin_residual == bin_capacity {
+        let large_item = item_size as f64 > mean_residual * 0.8;
+        let dead_ratio = post_residual as f64 / cap;
+        let poor_fit = dead_ratio > 0.24;
+        if (poor_fit || large_item) && progress < 0.84 {
+            // Opening a fresh bin is attractive for big items or bad fits.
+            score -= 90.0 + 30.0 * (1.0 - progress) + 28.0 * dead_ratio;
+            if next_item_size > 0 && post_residual as f64 >= next_item_size as f64 * 1.3 {
+                score -= 20.0;
+            }
+            if dead_ratio > 0.5 {
+                score -= 22.0 * (dead_ratio - 0.5);
+            }
+            // Reward when a fresh bin can chain the next item almost
+            // perfectly, encouraging exact two-item packing.
+            if next_item_size > 0 && (post_residual as f64 - next_item_size as f64).abs() <= 2.0 {
+                score -= 26.0;
+            }
+            // Extra reward when the fresh bin's dead space is small enough
+            // that the next item still fits tightly afterward.
+            if next_item_size > 0 && post_residual >= next_item_size && post_residual - next_item_size <= 3 {
+                score -= 18.0;
+            }
+            // Avoid opening a fresh bin whose dead space sits in the awkward
+            // mid-band that rarely fits anything — keep existing bins preferred.
+            if dead_ratio > 0.3 && dead_ratio < 0.45 {
+                score += 14.0 * (dead_ratio - 0.3);
+            }
+            // NEW: reward opening a fresh bin whose leftover exactly equals a
+            // plausible near-half split, enabling clean two-item fills.
+            if next_item_size > 0 && (post_residual as f64 - next_item_size as f64).abs() as u32 <= 4 && post_residual >= next_item_size {
+                score -= 8.0;
+            }
+        } else {
+            // Late stream or good fits available: discourage new bins.
+            score += 60.0 + 40.0 * progress;
+        }
+        if item_size <= 50 && open_bins_count > 0 {
+            score += 30.0;
+        }
+        if next_item_size > 0 && post_residual == next_item_size {
+            score += 220.0;
+        }
+        if progress > 0.8 && open_bins_count > 3 {
+            score += 45.0;
+        }
+        if post_residual == 0 {
+            score += 1500.0;
+        }
+    } else {
+        let fill_frac = (bin_capacity - bin_residual) as f64 / cap;
+        if fill_frac > 0.7 && post_residual > 0 && (post_residual as f64) < next_item_size as f64 {
+            score += 6.0 * (1.0 - progress);
+        }
+        if fill_frac > 0.85 && post_residual > 0 {
+            score -= 5.0;
+        }
+        if next_item_size > 0 && post_residual > 0 && post_residual >= next_item_size && (post_residual as f64) < mean_residual * 0.45 {
+            score -= 9.0 * (1.0 - progress);
+        }
+        if next_item_size > 0 && post_residual >= next_item_size && (post_residual as f64 - next_item_size as f64) <= 2.0 {
+            score -= 7.0;
+        }
+        // Penalize residuals in the awkward mid-range that rarely fits
+        // typical items, pushing packing toward tighter fills.
+        if post_residual > 12 && post_residual < 25 && next_item_size > 0 && next_item_size > post_residual {
+            score += 5.0 * (1.0 - progress);
+        }
+        // Strong reward for near-exact fills, scaled by how full the bin
+        // already is — reinforces the compaction direction.
+        if post_residual > 0 && post_residual <= 2 && fill_frac > 0.6 {
+            score -= 12.0 * fill_frac;
+        }
+        // Mid-large leftovers on half-full bins indicate fragmentation.
+        if post_residual > 25 && fill_frac < 0.5 {
+            score += 4.0 * (0.5 - fill_frac);
+        }
+        // When few bins can host the item, strongly prefer the tightest
+        // fit to avoid scattering items across many partially-filled bins.
+        if fitting_bins_count <= 3 && post_residual > 0 {
+            score -= 6.0 * (1.0 - post_residual as f64 / cap);
+        }
+        // NEW: when the next item cannot fit anywhere in this bin's leftover
+        // but the current item nearly empties it, add a small compaction nudge
+        // proportional to fill level to consolidate near-closed bins first.
+        if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size && fill_frac > 0.9 {
+            score -= 10.0 * (fill_frac - 0.9);
+        }
+    }
+
+    // General small-gap penalty.
+    if post_residual > 0 && (post_residual as f64) < cap * 0.25 {
+        score += 8.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\evolution\run_seed_10391_evolution.json.tmp

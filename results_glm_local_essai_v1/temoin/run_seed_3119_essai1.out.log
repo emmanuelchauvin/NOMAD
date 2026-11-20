@@ -1,0 +1,97 @@
+2026-11-16T07:18:39.154326Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=3119, Pop=8, MaxGens=2
+2026-11-16T07:21:40.647782Z  INFO nomad_orchestrator::engine: Evaluating winning capsule b9848b8c0d36c9f3 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3119 | Generations: 2
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4215 bins (excess: +186), Efficiency: 95.59%, Fuel: 30000984
+ Best In-Dist (w/o Lookahead) : 4233 bins (excess: +204), Efficiency: 95.18%
+ Dynamic Trajectory: tLDR = 0.2624
+ Behavior Profile : DeadSpaceRatio: 58.2%, NewBinRatio: 42.1%, ResVar: 0.55
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 3.517
+ Validation Score : 4209 bins (excess: +188), Efficiency: 95.54%
+ OOD-1 Score      : 10430 bins (excess: +389), Efficiency: 96.27%
+ OOD-2 Score      : 3604 bins (excess: +75), Efficiency: 97.93%
+ Lineage Nodes    : 29, Transitions: 7
+ Best Heuristic   : LLM-Seed-001-mut-g1
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let cap = bin_capacity as f64;
+    let frac = post_residual as f64 / cap;
+    let progress = step_index as f64 / (total_items.max(1) as f64);
+
+    // Dead-space classification: reward tight fits, penalize awkward gaps
+    if post_residual == 0 {
+        score -= 70.0 - 10.0 * progress; // perfect fit, stronger late in stream
+    } else if post_residual < 15 {
+        score += 25.0; // near-dead space
+    } else if post_residual < 25 {
+        score += 10.0;
+    }
+
+    // Harmonic class of post_residual: multiples of 50 reuse well
+    let class = post_residual % 50;
+    if post_residual >= 15 {
+        if class == 0 {
+            score -= 25.0;
+        } else if class <= 20 {
+            score -= 10.0;
+        } else if class >= 40 {
+            score += 12.0;
+        }
+    }
+
+    // Nonlinear waste penalty
+    score += 15.0 * frac * frac;
+
+    // Lookahead coupling
+    if next_item_size > 0 {
+        if next_item_size == post_residual {
+            score -= 50.0;
+        } else if next_item_size <= post_residual {
+            let next_post = post_residual - next_item_size;
+            if next_post == 0 || next_post % 50 == 0 {
+                score -= 20.0;
+            } else if next_post < 10 {
+                score += 15.0;
+            } else {
+                score -= 8.0; // next item still fits reasonably: mild reward
+            }
+        } else {
+            let gap = (next_item_size - post_residual) % 50;
+            score += 5.0 + gap as f64 * 0.3;
+        }
+    } else {
+        score += post_residual as f64 * 0.5;
+    }
+
+    // Last-chance bin: strongly prefer using the only fitting bin
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 35.0;
+    }
+
+    // New-bin candidate handling
+    if bin_residual == bin_capacity {
+        // Base cost grows with number of open bins (pressure to consolidate)
+        score = 55.0 - 20.0 * progress + 3.0 * open_bins_count as f64;
+        if post_residual == 0 {
+            score -= 60.0;
+        }
+        // Fresh bin is attractive when item is large relative to typical residual
+        if item_size as f64 > mean_residual {
+            score -= 15.0;
+        }
+        // Fresh bin is fine if next item is big
+        if next_item_size > 0 && next_item_size >= item_size {
+            score -= 10.0;
+        }
+    } else {
+        // Mild reward for consolidating among many open bins
+        score -= 2.0 * (open_bins_count as f64).sqrt();
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_local_essai\temoin\run_seed_3119_temoin.json.tmp

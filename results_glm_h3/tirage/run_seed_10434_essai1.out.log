@@ -1,0 +1,76 @@
+[2m2026-11-17T08:01:43.841102Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=10434, Pop=1359, MaxGens=1
+[2m2026-11-17T08:20:26.320938Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T13:10:47.732112Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-17T14:46:08.424198Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule d16751702aea52f6 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10434 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4116 bins (excess: +120), Efficiency: 97.09%, Fuel: 42652960
+ Best In-Dist (w/o Lookahead) : 4207 bins (excess: +211), Efficiency: 94.99%
+ Dynamic Trajectory: tLDR = 1.8873
+ Behavior Profile : DeadSpaceRatio: 20.8%, NewBinRatio: 41.2%, ResVar: 0.64
+ MAP-Elites Niches: 32 active (32.0% coverage), QD-Score: 21.855
+ Validation Score : 4157 bins (excess: +134), Efficiency: 96.78%
+ OOD-1 Score      : 10232 bins (excess: +207), Efficiency: 97.98%
+ OOD-2 Score      : 3612 bins (excess: +74), Efficiency: 97.95%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-823
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit bonus: strongly reward leaving zero residual.
+    if post_residual == 0 {
+        score -= 1000.0;
+    }
+
+    // 2-step lookahead: reward when next item exactly fills post_residual.
+    if next_item_size > 0 {
+        if next_item_size == post_residual {
+            score -= 900.0;
+        } else if next_item_size <= post_residual {
+            // Next item fits: reward proportional to how much of the remaining
+            // space it consumes (tight chain packing).
+            let fill = next_item_size as f64 / post_residual as f64;
+            score -= 250.0 * fill;
+        } else {
+            // Next item does NOT fit here: penalize, but less if post_residual
+            // is small (dead space unlikely to be usable anyway).
+            let waste = next_item_size as f64 - post_residual as f64;
+            let dead = post_residual as f64 / bin_capacity as f64;
+            score += 120.0 * waste / (next_item_size as f64) * (1.0 - dead);
+        }
+    }
+
+    // Compare against mean residual: bins with residual far below mean are
+    // already tight; prefer placing into them (waste little extra capacity).
+    let diff = post_residual as f64 - mean_residual;
+    score += 0.15 * diff;
+
+    // Last-chance bin: if this is the only bin that fits, strongly prefer it
+    // to avoid opening a new bin.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 300.0;
+    }
+
+    // New-bin candidate: penalize opening a new bin unless the item is large
+    // relative to capacity and current bins are fragmented (high mean residual).
+    if bin_residual == bin_capacity {
+        let fragmentation = (mean_residual / bin_capacity as f64).clamp(0.0, 1.0);
+        let large_item = item_size as f64 / bin_capacity as f64;
+        score += 200.0 - 180.0 * fragmentation - 100.0 * large_item;
+        // Early in the stream, opening bins is cheap (future items can fill them).
+        let progress = step_index as f64 / total_items.max(1) as f64;
+        score -= 80.0 * (1.0 - progress);
+    }
+
+    // Mild penalty for very small leftover slivers that few items can use.
+    if post_residual > 0 && post_residual < 10 {
+        score += 40.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h3\tirage\run_seed_10434_tirage.json.tmp

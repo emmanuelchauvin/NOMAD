@@ -1,0 +1,20 @@
+2026-11-16T19:29:51.695880Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10102, Pop=8, MaxGens=47
+2026-11-16T23:06:53.724342Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4cd20ba62facbd94 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10102 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4155 bins (excess: +138), Efficiency: 96.68%, Fuel: 30001274
+ Best In-Dist (w/o Lookahead) : 4186 bins (excess: +169), Efficiency: 95.96%
+ Dynamic Trajectory: tLDR = 0.3009
+ Behavior Profile : DeadSpaceRatio: 70.4%, NewBinRatio: 41.5%, ResVar: 0.34
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 6.612
+ Validation Score : 4200 bins (excess: +148), Efficiency: 96.48%
+ OOD-1 Score      : 10385 bins (excess: +316), Efficiency: 96.96%
+ OOD-2 Score      : 3631 bins (excess: +91), Efficiency: 97.49%
+ Lineage Nodes    : 348, Transitions: 251
+ Best Heuristic   : Pruned-G29-4e9e1e55
+ Logic Code       : pub fn score_bin (item_size : u32 , bin_residual : u32 , bin_capacity : u32 , step_index : usize , total_items : usize , open_bins_count : usize , mean_residual : f64 , next_item_size : u32 , post_residual : u32 , fitting_bins_count : usize) -> f64 { let mut score = post_residual as f64 ; let c = bin_capacity as f64 ; let pr = post_residual as f64 ; let frac = pr / c ; let progress = if total_items > 0 { step_index as f64 / total_items . max (1) as f64 } else { 0.0 } ; if post_residual == 0 { score -= 1200.0 ; } else if post_residual <= 3 { score -= 220.0 ; } else if post_residual <= 5 { score -= 150.0 ; } else if post_residual <= 10 { score -= 70.0 ; } else if post_residual <= bin_capacity / 5 { score += 30.0 * (1.0 - frac * 5.0) ; } else if post_residual <= bin_capacity / 2 { if frac >= 0.4 && frac <= 0.6 { score -= 16.0 ; } else { score -= 6.0 ; } } else { score -= 15.0 + 10.0 * frac ; } if post_residual % 10 == 0 && post_residual > 0 { score -= 6.0 ; } else if post_residual % 5 == 0 { score -= 3.0 ; } if next_item_size > 0 { if next_item_size == post_residual { score -= 450.0 ; } else if next_item_size <= post_residual { let gap = (post_residual - next_item_size) as f64 ; if gap <= 10.0 { score -= 120.0 ; } else if gap <= 25.0 { score -= 45.0 * (1.0 - gap / 25.0) ; } else { score -= 25.0 * (1.0 - gap / pr . max (1.0)) ; } if post_residual % next_item_size == 0 { score -= 14.0 ; } if pr >= 2.0 * next_item_size as f64 && pr - 2.0 * next_item_size as f64 <= 8.0 { score -= 24.0 ; } } else { let over = (next_item_size - post_residual) as f64 ; score += (0.4 * over) . min (18.0) ; if pr < over * 0.5 { score += 10.0 ; } } } let tightness = item_size as f64 / bin_residual . max (1) as f64 ; score -= 10.0 * tightness ; if bin_residual == bin_capacity { score += 25.0 - 20.0 * progress ; if mean_residual > c * 0.5 { score += 18.0 ; } if item_size > bin_capacity / 2 { score -= 6.0 ; } } else { score -= 5.0 * progress ; } if open_bins_count > 3 && post_residual < bin_capacity / 4 { score += 6.0 ; } score }
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\evolution\run_seed_10102_evolution.json.tmp

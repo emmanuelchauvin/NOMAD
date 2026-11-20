@@ -1,0 +1,67 @@
+2026-11-16T07:18:39.077618Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=3119, Pop=8, MaxGens=2
+2026-11-16T07:21:38.832370Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 65105cf512f26cca on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3119 | Generations: 2
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4199 bins (excess: +170), Efficiency: 95.95%, Fuel: 29842490
+ Best In-Dist (w/o Lookahead) : 4220 bins (excess: +191), Efficiency: 95.47%
+ Dynamic Trajectory: tLDR = 0.2681
+ Behavior Profile : DeadSpaceRatio: 68.3%, NewBinRatio: 42.0%, ResVar: 0.51
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 5.344
+ Validation Score : 4195 bins (excess: +174), Efficiency: 95.86%
+ OOD-1 Score      : 10417 bins (excess: +376), Efficiency: 96.39%
+ OOD-2 Score      : 3605 bins (excess: +76), Efficiency: 97.90%
+ Lineage Nodes    : 33, Transitions: 14
+ Best Heuristic   : LLM-Seed-020-mut-g1
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    let pr = post_residual as f64;
+    let cap = bin_capacity as f64;
+    let mut score = pr;
+
+    // Non-linear coupling: residual waste penalized more as stream progresses
+    let poly = 1.0 + 0.8 * progress * progress + 0.4 * progress;
+    score *= poly;
+
+    // Reward tight fits with smooth saturation
+    let tight = (1.0 - pr / cap).powi(3);
+    score -= 10.0 * tight * (1.0 + 0.5 * progress);
+
+    // Lookahead chaining / dead-space logic
+    if next_item_size > 0 && (next_item_size as u32) <= post_residual {
+        let chain = 1.0 - ((post_residual - next_item_size as u32) as f64) / cap;
+        score -= 10.0 * chain * chain;
+    } else if next_item_size > 0 {
+        // Dead space: gap can't fit the next item — penalize harder, scaled by gap size
+        let dead = (next_item_size - post_residual) as f64;
+        score += 20.0 + dead * 2.0;
+    }
+
+    // Very small unusable gaps are nearly perfect fits
+    if post_residual < 5 {
+        score -= 40.0 - pr * 4.0;
+    }
+
+    // Last-chance bin: strongly favor using it before opening a new one
+    if fitting_bins_count == 1 && bin_residual >= item_size && bin_residual != bin_capacity {
+        score -= 40.0;
+    }
+
+    // New-bin candidate: penalize strongly, more early in the stream and when good fits exist
+    if bin_residual == bin_capacity {
+        let base = 30.0 * (1.0 - progress) + 0.05 * open_bins_count as f64;
+        score += base + if fitting_bins_count > 0 { 50.0 } else { 0.0 };
+    } else {
+        // Open-bin pressure: prefer reusing existing bins when many are open
+        score -= 0.5 * open_bins_count as f64;
+    }
+
+    // Slight preference for bins whose residual deviates from mean
+    score += 0.02 * (pr - mean_residual).abs();
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_local_essai\local\run_seed_3119_local.json.tmp

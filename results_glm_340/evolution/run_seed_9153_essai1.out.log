@@ -1,0 +1,397 @@
+2026-11-15T16:59:00.296626Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9153, Pop=8, MaxGens=47
+2026-11-15T21:37:53.589622Z  INFO nomad_orchestrator::engine: Evaluating winning capsule a235d50a65a0a06c on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9153 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4056 bins (excess: +35), Efficiency: 99.14%, Fuel: 216555508
+ Best In-Dist (w/o Lookahead) : 4208 bins (excess: +187), Efficiency: 95.56%
+ Dynamic Trajectory: tLDR = 2.9118
+ Behavior Profile : DeadSpaceRatio: 16.2%, NewBinRatio: 40.6%, ResVar: 0.44
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 9.616
+ Validation Score : 4081 bins (excess: +43), Efficiency: 98.95%
+ OOD-1 Score      : 10112 bins (excess: +67), Efficiency: 99.34%
+ OOD-2 Score      : 3616 bins (excess: +35), Efficiency: 99.04%
+ Lineage Nodes    : 342, Transitions: 305
+ Best Heuristic   : LLM-Seed-013-mut-g1-mut-g2-mut-g5-mut-g9-mut-g10-mut-g45
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    let post_frac = post_residual as f64 / bin_capacity as f64;
+
+    if post_residual == 0 {
+        score -= 1000.0 + 60.0 * progress;
+    } else {
+        // Global tightness pull: reward bins that end up nearly full.
+        let tightness = 1.0 - post_frac;
+        score -= 30.0 * tightness * tightness;
+
+        if next_item_size > 0 && next_item_size <= post_residual {
+            let lookahead_waste = (post_residual - next_item_size) as f64;
+            let next_tightness = 1.0 - lookahead_waste / post_residual as f64;
+            let next_scarcity = if fitting_bins_count <= 2 { 1.5 } else { 1.0 };
+            score -= next_scarcity * (55.0 + 0.4 * next_item_size as f64 - 0.3 * lookahead_waste
+                     + 22.0 * next_tightness * next_tightness) * (1.0 + 0.3 * (1.0 - progress));
+            if lookahead_waste == 0.0 {
+                score -= 22.0;
+            } else if lookahead_waste <= 3.0 {
+                score -= 15.0 * (1.0 + 0.5 * (1.0 - progress));
+            }
+            // Chain lookahead: leftover after next item can host a third item?
+            if (lookahead_waste as u32) >= next_item_size {
+                score -= 8.0 * (1.0 - progress);
+                let after = lookahead_waste - next_item_size as f64;
+                if after < next_item_size as f64 {
+                    score -= 10.0 * (1.0 - after / next_item_size.max(1) as f64);
+                }
+                if after >= 2.0 * next_item_size as f64 {
+                    score -= 5.0 * (1.0 - progress);
+                }
+                let rem = (post_residual as u32) % next_item_size.max(1);
+                if rem == 0 {
+                    score -= 7.0 * (1.0 - progress);
+                } else if rem <= 2 {
+                    score -= 3.0 * (1.0 - rem as f64 / 3.0) * (1.0 - progress);
+                }
+            }
+            // Alignment with fleet mean residual is a good sign.
+            let res_gap = ((post_residual as f64) - mean_residual).abs();
+            if res_gap < 4.0 {
+                score -= 4.0 * (1.0 - res_gap / 4.0) * (1.0 - progress);
+            }
+            if (post_residual as f64) >= 0.9 * mean_residual
+                && (post_residual as f64) <= 1.3 * mean_residual {
+                score -= 5.0 * (1.0 - progress)
+                    * (1.0 - res_gap / (0.4 * mean_residual).max(1.0)).max(0.0);
+            }
+        } else if next_item_size > 0 {
+            let gap = (next_item_size - post_residual) as f64;
+            score += 0.4 * gap.min(50.0);
+            if post_frac < 0.25 {
+                let awkward = 1.0 - (post_frac.max(0.05)) / 0.25;
+                score += 4.0 * awkward;
+            }
+            if gap <= 5.0 {
+                score += 3.0 * (1.0 - gap / 5.0);
+            }
+            if gap > 10.0 && gap <= 25.0 && (next_item_size as f64) < 1.5 * mean_residual {
+                score += 1.5 * (1.0 - (gap - 10.0) / 15.0) * (1.0 - progress);
+            }
+            if gap > 25.0 && (post_residual as f64) > 0.6 * mean_residual {
+                score += 2.0 * ((gap - 25.0) / 20.0).min(1.5) * (1.0 - progress);
+            }
+        }
+
+        if post_residual < 10 {
+            let small_hope = if next_item_size > 0 && next_item_size <= post_residual { 0.0 } else { 1.0 };
+            score += 22.0 * (1.0 - progress) * (0.6 + 0.4 * small_hope);
+        } else if post_residual < 20 {
+            score += 10.0 - 6.0 * progress;
+        }
+
+        if next_item_size > post_residual && post_residual < item_size {
+            score += 12.0 * (1.0 - progress);
+            if post_residual < 5 {
+                score += 8.0 * (1.0 - progress);
+            }
+        }
+
+        // Dead-space guard with stream-length and mean-gap scaling.
+        if next_item_size > 0 && post_residual < next_item_size {
+            let mean_gap = (mean_residual - post_residual as f64).max(0.0);
+            score += 0.15 * mean_gap.min(30.0);
+            if (post_residual as f64) < 0.5 * next_item_size as f64 {
+                score += 8.0 * (1.0 - progress);
+            }
+            score += 10.0 * (1.0 - progress) * (1.0 - post_frac);
+            let unusable = (next_item_size - post_residual) as f64;
+            let dead_frac = unusable / bin_capacity as f64;
+            if dead_frac > 0.02 {
+                score += 25.0 * dead_frac * (0.4 + 0.6 * (1.0 - progress));
+            }
+            // Escalate when the stranded pattern is duplicated fleet-wide.
+            if fitting_bins_count == 0 && dead_frac > 0.01 {
+                score += 14.0 * dead_frac * bin_capacity as f64 / 10.0 * (0.5 + 0.5 * progress);
+            }
+        }
+
+        // Near-full compaction rewards.
+        if post_frac < 0.05 && post_residual > 0 {
+            score -= 22.0 * (1.0 - post_frac / 0.05);
+        } else if post_frac < 0.10 {
+            score -= 6.0 * (1.0 - (post_frac - 0.05) / 0.05);
+        }
+
+        // Mid-band awkwardness: residuals unlikely to host anything.
+        if post_frac >= 0.10 && post_frac < 0.25 {
+            let awkward = 1.0 - (post_frac - 0.10) / 0.15;
+            let unhostable = next_item_size > 0 && next_item_size > post_residual;
+            score += 4.0 * awkward * if unhostable { 1.0 } else { 0.3 };
+        }
+
+        // Perfect second-fit rewards with scarcity scaling.
+        if next_item_size > 0 && post_residual >= next_item_size {
+            let slack = (post_residual - next_item_size) as f64;
+            if slack <= 2.0 {
+                let scarcity = if fitting_bins_count <= 2 { 1.6 } else { 1.0 };
+                score -= 14.0 * scarcity * (1.0 - slack / 2.0) * (1.0 + 0.4 * (1.0 - progress));
+            }
+            if slack == 0.0 && fitting_bins_count <= 4 {
+                score -= 9.0 * (1.0 + 0.3 * (1.0 - progress));
+            }
+            if slack > 2.0 && slack <= 12.0 && (slack as f64) <= mean_residual {
+                score -= 3.0 * (1.0 - slack / 12.0) * (1.0 - progress);
+            }
+            if fitting_bins_count <= 3 && slack <= 6.0 {
+                score -= 4.0 * (1.0 - slack / 6.0) * (1.0 - progress)
+                    * (1.0 + (3usize.saturating_sub(fitting_bins_count)) as f64 * 0.25);
+            }
+        }
+
+        if (post_residual as f64) < 0.5 * mean_residual && post_residual > 0 {
+            score -= 3.0 * (1.0 - post_residual as f64 / mean_residual.max(1.0)).min(1.0);
+        }
+
+        // Self-tiling: post residual divisible by next item size.
+        if next_item_size > 0 && post_residual > next_item_size {
+            let q = post_residual / next_item_size;
+            if post_residual % next_item_size == 0 && q >= 2 {
+                score -= 5.0 * (1.0 - progress) * (q as f64).min(4.0) / 4.0;
+            }
+        }
+
+        // Mean-relative residual shaping.
+        let mr = mean_residual.max(1.0);
+        if post_residual > 0 {
+            let rel = post_residual as f64 / mr;
+            if rel >= 1.0 && rel <= 1.6 {
+                score -= 4.0 * (1.0 - progress) * (1.6 - rel) / 0.6;
+            } else if rel > 0.55 && rel < 1.0 {
+                score += 5.0 * (1.0 - progress) * (1.0 - (1.0 - rel) / 0.45).max(0.0);
+            } else if rel > 1.6 {
+                let near_mult = ((rel - (rel / 2.0).round() * 2.0).abs() * mr) < 3.0;
+                if near_mult {
+                    score -= 3.0 * (1.0 - progress);
+                } else {
+                    score += 1.5 * (1.0 - progress) * ((rel - 1.6) / 2.0).min(1.5);
+                }
+            }
+        }
+
+        // Under-filled bins when many bins are open: penalize fragmentation.
+        let fill_ratio = (bin_capacity - post_residual) as f64 / bin_capacity as f64;
+        if fill_ratio < 0.5 && open_bins_count > 3 {
+            let crowd = ((open_bins_count - 3) as f64 / 8.0).min(1.0);
+            score += 10.0 * (0.5 - fill_ratio) * (1.0 + crowd);
+        }
+        if fill_ratio < 0.65 && open_bins_count > 5
+            && next_item_size > 0 && next_item_size > post_residual {
+            score += 6.0 * (0.65 - fill_ratio) / 0.65 * (0.5 + 0.5 * progress);
+        }
+        if fill_ratio < 0.8 && next_item_size > 0 && next_item_size > post_residual {
+            let stranded = (next_item_size - post_residual).min(post_residual) as f64;
+            score += 0.08 * stranded * (0.5 + 0.5 * progress);
+        }
+        // Round-number residuals are easier to fill later.
+        if post_residual > 0 {
+            let pr = post_residual;
+            if pr % 10 == 0 {
+                score -= 5.0 * (1.0 - progress);
+            } else if pr % 5 == 0 {
+                score -= 2.5 * (1.0 - progress);
+            }
+        }
+        if post_residual > 0 && post_residual <= 2 && next_item_size > post_residual {
+            score += 6.0 * (1.0 - progress);
+        }
+        if open_bins_count > 4 && post_residual > 0 {
+            let below = mean_residual - post_residual as f64;
+            if below > 0.0 && below < 0.5 * mean_residual {
+                score += 3.0 * (1.0 - below / (0.5 * mean_residual)) * (0.3 + 0.7 * progress);
+            }
+        }
+        if fill_ratio >= 0.75 && next_item_size > 0 && next_item_size <= post_residual {
+            score -= 6.0 * (fill_ratio - 0.75) / 0.25 * (1.0 - post_frac / (1.0 - fill_ratio + 0.01)).min(1.0);
+        }
+        if post_residual == item_size {
+            score -= 18.0 * (1.0 + 0.5 * (1.0 - progress));
+        }
+        if post_residual > 0 && (post_residual as f64) >= 0.8 * mean_residual
+            && (post_residual as f64) <= 1.2 * mean_residual {
+            score -= 3.0 * (1.0 - progress);
+        }
+        // Dual-chain compaction: after-next remainder can host a mean item.
+        if next_item_size > 0 && post_residual >= next_item_size {
+            let after_next = post_residual - next_item_size;
+            if (after_next as f64) >= 0.5 * mean_residual {
+                score -= 5.0 * (1.0 - progress)
+                    * (((after_next as f64) / mean_residual.max(1.0)).min(2.0) / 2.0);
+            }
+        }
+        // Penalize consuming a scarce fit leaving a tiny stranded residual.
+        if post_residual > 0 && post_residual <= 3 && fitting_bins_count <= 2
+            && next_item_size > post_residual {
+            score += 10.0 * (1.0 - progress);
+        }
+    }
+
+    let mean_weight = if progress > 0.75 { 0.35 } else { 0.55 };
+    score += mean_weight * (mean_residual - post_residual as f64);
+
+    // Open-bin pressure: discourage proliferation of bins.
+    let pressure = (open_bins_count as f64).ln().max(0.0);
+    score += pressure * (2.0 + 8.0 * progress);
+
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 40.0 + 20.0 * (1.0 - progress);
+    }
+
+    // NEW-BIN CANDIDATE evaluation.
+    if bin_residual == bin_capacity {
+        let next_fits_new = next_item_size > 0 && next_item_size <= bin_capacity - item_size;
+        let scarcity = if next_item_size > 0 && next_item_size > post_residual { 1.0 } else { 0.0 };
+        let mut new_score = 30.0 - 15.0 * scarcity - (open_bins_count as f64).min(10.0)
+                            - 6.0 * (fitting_bins_count as f64).min(4.0);
+        // No existing bin can host the item: fresh bin is essential.
+        if fitting_bins_count == 0 {
+            new_score -= 100.0;
+        }
+        if next_fits_new && scarcity > 0.0 {
+            new_score -= 18.0 * (1.0 - progress);
+        }
+        if next_fits_new {
+            let pair_waste = (bin_capacity - item_size - next_item_size) as f64;
+            if pair_waste < 10.0 {
+                new_score -= 12.0 * (1.0 - pair_waste / 10.0);
+                if pair_waste == 0.0 {
+                    new_score -= 25.0;
+                }
+            } else if pair_waste > 30.0 {
+                new_score += 0.15 * (pair_waste - 30.0).min(40.0);
+            }
+            if fitting_bins_count <= 3 && pair_waste <= 4.0 {
+                new_score -= 20.0 * (1.0 - pair_waste / 4.0) * (1.0 + 0.5 * (1.0 - progress));
+            }
+            if pair_waste as f64 > mean_residual * 1.2 {
+                new_score += 5.0 * ((pair_waste - mean_residual) / 10.0).min(2.0);
+            }
+            if item_size + next_item_size < bin_capacity / 2 {
+                new_score += 8.0 * (1.0 - progress);
+            }
+            if pair_waste >= next_item_size as f64 {
+                new_score -= 10.0 * (1.0 - progress);
+            }
+            if pair_waste > 0.0 && (pair_waste as u32) % next_item_size == 0 {
+                new_score -= 6.0 * (1.0 - progress);
+            }
+            if pair_waste > 0.0 && (pair_waste as f64) - mean_residual > 20.0 {
+                new_score += 3.0 * (((pair_waste as f64) - mean_residual - 20.0) / 15.0).min(2.0);
+            }
+            if pair_waste > 0.0 && (pair_waste as f64) < 0.85 * mean_residual {
+                new_score += 4.0 * (1.0 - progress) * (1.0 - pair_waste / (0.85 * mean_residual));
+            }
+            if pair_waste > 0.0 && pair_waste as u32 % 10 == 0 {
+                new_score -= 4.0 * (1.0 - progress);
+            } else if pair_waste > 0.0 && pair_waste as u32 % 5 == 0 {
+                new_score -= 2.0 * (1.0 - progress);
+            }
+            if pair_waste > post_residual as f64 {
+                new_score += 5.0 * ((pair_waste - post_residual as f64) / 8.0).min(2.0);
+            }
+        } else if progress > 0.8 {
+            new_score += 15.0;
+        }
+        if item_size as f64 > 0.6 * bin_capacity as f64 && fitting_bins_count <= 2 {
+            new_score -= 12.0;
+        }
+        if progress > 0.85 {
+            new_score += 10.0;
+        }
+        // Existing bins already nearly full: fresh bin preserves them.
+        if post_frac <= 0.10 {
+            new_score += 20.0 * (1.0 - post_frac / 0.10);
+        }
+        if next_item_size > 0 && post_residual >= next_item_size {
+            new_score += 14.0;
+        }
+        if (post_residual as f64) < mean_residual {
+            new_score += 3.0 * (mean_residual - post_residual as f64).min(20.0) / 4.0;
+        }
+        if item_size as f64 > 0.4 * bin_capacity as f64 && mean_residual > 1.5 * item_size as f64 {
+            new_score -= 6.0;
+        }
+        if progress > 0.9 && mean_residual < 0.15 * bin_capacity as f64 {
+            new_score += 6.0 * (progress - 0.9) / 0.1;
+        }
+        if post_residual > 0 && (post_residual as f64) < 0.6 * mean_residual && progress < 0.9 {
+            new_score += 4.0 * (1.0 - post_residual as f64 / mean_residual.max(1.0));
+        }
+        if open_bins_count > 6 && next_fits_new {
+            new_score += 0.8 * ((open_bins_count - 6) as f64).min(8.0);
+        }
+        if progress < 0.3 && fitting_bins_count <= 2 && open_bins_count > 3 {
+            new_score -= 6.0;
+        }
+        if progress > 0.8 && next_fits_new {
+            let pair_fill = (item_size + next_item_size) as f64 / bin_capacity as f64;
+            if pair_fill < 0.85 {
+                new_score += 10.0 * (0.85 - pair_fill) / 0.85;
+            }
+        }
+        if fitting_bins_count <= 1 && item_size as f64 > 0.5 * bin_capacity as f64 && progress < 0.5 {
+            new_score -= 8.0 * (1.0 - progress);
+        }
+        // Fresh bin better than stranding next item in an existing bin.
+        if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+            let existing_strand = (next_item_size - post_residual) as f64;
+            if next_fits_new {
+                let pair_waste = (bin_capacity - item_size - next_item_size) as f64;
+                if existing_strand > pair_waste + 4.0 {
+                    new_score -= 3.0 * ((existing_strand - pair_waste) / 10.0).min(2.5);
+                }
+            }
+        }
+        if next_item_size > 0 && post_residual > 0 && post_residual % next_item_size == 0 {
+            new_score += 9.0 * (1.0 - progress);
+        }
+        if next_item_size > 0 && post_residual >= next_item_size
+            && (post_residual - next_item_size) <= 4 {
+            new_score += 6.0 * (1.0 - (post_residual - next_item_size) as f64 / 4.0);
+        }
+        if next_item_size > 0 && post_residual > 0 && post_residual >= next_item_size {
+            let mr2 = mean_residual.max(1.0);
+            let rel = post_residual as f64 / mr2;
+            let near_mean_mult = ((rel - rel.round()).abs() * mr2) <= 2.0;
+            if near_mean_mult && rel.round() >= 1.0 {
+                new_score += 7.0 * (1.0 - progress);
+            }
+        }
+        if post_residual == item_size {
+            new_score += 25.0 * (1.0 + 0.3 * (1.0 - progress));
+        }
+        if next_item_size > 0 && post_residual >= 2 * next_item_size {
+            new_score += 8.0 * (1.0 - progress);
+        }
+        if next_fits_new && item_size as f64 > 0.5 * bin_capacity as f64
+            && post_residual > 0 && post_residual < next_item_size
+            && (next_item_size - post_residual) as f64 > 0.15 * bin_capacity as f64 {
+            new_score -= 10.0 * (1.0 - progress);
+        }
+        // Refuse fresh bins when existing fit leaves self-tiling residual.
+        if post_residual > 0 && item_size > 0 && post_residual % item_size == 0 {
+            new_score += 6.0 * (1.0 - progress);
+        }
+        // Late-stream consolidation: prefer existing fits over expansion.
+        if progress > 0.7 && fitting_bins_count >= 1 && open_bins_count <= 4 {
+            new_score += 5.0 * (progress - 0.7) / 0.3;
+        }
+        score += new_score;
+    }
+
+    score += (open_bins_count as f64).sqrt() * 2.0;
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\evolution\run_seed_9153_evolution.json.tmp

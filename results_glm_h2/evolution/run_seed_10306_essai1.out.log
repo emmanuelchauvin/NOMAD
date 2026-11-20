@@ -1,0 +1,189 @@
+2026-11-16T19:29:51.962263Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10306, Pop=8, MaxGens=47
+2026-11-16T23:53:58.389283Z  INFO nomad_orchestrator::engine: Evaluating winning capsule a8bdf8b952afdf08 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10306 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4077 bins (excess: +61), Efficiency: 98.51%, Fuel: 95299500
+ Best In-Dist (w/o Lookahead) : 4140 bins (excess: +124), Efficiency: 97.01%
+ Dynamic Trajectory: tLDR = 1.9865
+ Behavior Profile : DeadSpaceRatio: 25.8%, NewBinRatio: 40.8%, ResVar: 0.39
+ MAP-Elites Niches: 11 active (11.0% coverage), QD-Score: 9.130
+ Validation Score : 4121 bins (excess: +68), Efficiency: 98.35%
+ OOD-1 Score      : 10133 bins (excess: +103), Efficiency: 98.98%
+ OOD-2 Score      : 3627 bins (excess: +46), Efficiency: 98.73%
+ Lineage Nodes    : 346, Transitions: 234
+ Best Heuristic   : LLM-Seed-047-mut-g21-mut-g26-mut-g26-mut-g27-mut-g27-mut-g29
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let gap = post_residual as f64;
+    let progress = step_index as f64 / total_items.max(1) as f64;
+
+    // Perfect fill reward
+    if post_residual == 0 {
+        score -= 220.0;
+    } else if gap < 5.0 {
+        score -= 100.0;
+    } else if gap < 24.0 {
+        score += 54.0 - gap * 1.35;
+    } else if gap < 42.0 {
+        score += (42.0 - gap) * 0.36;
+    } else if gap < 70.0 {
+        score += (gap - 42.0) * 0.06;
+    } else {
+        score += (gap - 70.0) * 0.12;
+    }
+
+    // Small leftover shaping (borrowed from best, tuned)
+    if post_residual > 0 && post_residual < 8 {
+        score += 70.0 + (8 - post_residual) as f64 * 9.0;
+    } else if post_residual >= 8 && post_residual < 18 {
+        if next_item_size > 0 && next_item_size <= post_residual {
+            score -= 32.0;
+        } else {
+            score += 18.0;
+        }
+    } else if post_residual >= 18 {
+        if next_item_size > 0 && next_item_size <= post_residual {
+            score -= 30.0;
+        }
+        if post_residual > 55 && next_item_size > post_residual {
+            score += 6.0;
+        }
+    }
+
+    // Lookahead: exact-fit chains for the next item
+    if next_item_size > 0 {
+        let nxt = next_item_size as f64;
+        if (gap - nxt).abs() < 0.5 {
+            score -= 52.0;
+        } else if gap >= nxt && gap - nxt < 14.0 {
+            score -= 20.0;
+        } else if gap > 0.0 && gap < nxt {
+            if gap < 24.0 {
+                score += 24.0;
+            } else {
+                score += 7.0;
+            }
+            if fitting_bins_count <= 1 {
+                score += 6.0;
+            }
+        }
+        if gap >= nxt * 1.5 && gap < 60.0 {
+            score -= 6.0;
+        }
+        if gap >= nxt && fitting_bins_count <= 2 {
+            score -= 10.0;
+        }
+        let chain = item_size as f64 + nxt;
+        if bin_residual as f64 >= chain && (bin_residual as f64 - chain) < 4.0 {
+            score -= 22.0;
+        }
+        if gap >= nxt && gap - nxt < 7.0 && fitting_bins_count > 1 {
+            score -= 7.0;
+        }
+        if gap >= nxt {
+            let after = gap - nxt;
+            if after > 0.0 && after <= 6.0 {
+                score -= 16.0;
+            } else if after >= 10.0 && after <= 20.0 {
+                score -= 8.0;
+            } else if after > 50.0 {
+                score += 5.0;
+            } else if after > 34.0 && after < 50.0 {
+                score += 2.5;
+            }
+        }
+        if gap >= nxt + nxt && (gap - nxt - nxt) < 6.0 {
+            score -= 11.0;
+        }
+        if gap > 0.0 && gap < nxt && fitting_bins_count <= 1 {
+            score += 10.0;
+        }
+    }
+
+    // Open-bins pressure
+    let pressure = open_bins_count as f64 * (0.4 + 0.85 * progress);
+
+    // Only-bin reward
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 90.0;
+    }
+
+    // New-bin candidate: open fresh bin only when the fit would be terrible
+    if bin_residual == bin_capacity {
+        let slack = bin_capacity as f64 - item_size as f64;
+        let poor_fit = slack > 0.56 * bin_capacity as f64;
+        let gate = 12.0 - 4.0 * progress;
+        let leftover_hosts_next = next_item_size > 0 && gap >= next_item_size as f64;
+        if poor_fit && pressure < gate && !leftover_hosts_next {
+            score -= 46.0;
+        } else if poor_fit {
+            score -= 3.0;
+        } else {
+            score += 38.0;
+        }
+        if open_bins_count > 14 && poor_fit {
+            score -= 8.0;
+        }
+        if progress > 0.8 && slack > 0.45 * bin_capacity as f64 {
+            score += 14.0;
+        }
+        if progress > 0.85 && slack > 0.3 * bin_capacity as f64 {
+            score += 20.0;
+        }
+        if progress > 0.25 && progress < 0.7 && mean_residual > 30.0 && slack > 0.4 * bin_capacity as f64 {
+            score += 8.0;
+        }
+    }
+
+    // Mean residual coupling
+    score += (mean_residual - post_residual as f64) * 0.2;
+
+    // Late-stream tightening
+    if progress > 0.72 && bin_residual != bin_capacity {
+        score -= 14.0 * progress;
+    }
+
+    // Residual deviation shaping for open bins
+    let res = bin_residual as f64;
+    if res != bin_capacity as f64 {
+        let dev = ((res - mean_residual).abs()) / bin_capacity as f64;
+        score += dev * 6.0;
+        if open_bins_count > 8 {
+            score += dev * dev * 38.0;
+        }
+        if res < item_size as f64 + 4.0 {
+            score -= 4.0;
+        }
+        if res < 12.0 && next_item_size as f64 > res {
+            score -= 7.0;
+        }
+        if progress > 0.4 && progress < 0.75 && res >= 20.0 && res <= 34.0 {
+            score -= 4.0;
+        }
+        if res > 70.0 && next_item_size as f64 > res {
+            score += 6.0;
+        }
+        if res > 45.0 && res < 70.0 && next_item_size as f64 > res && progress > 0.3 {
+            score += 3.0;
+        }
+        // Zero-waste handoff
+        if next_item_size > 0 && (res - next_item_size as f64).abs() < 1.0 {
+            score -= 7.0 + 4.0 * progress;
+        }
+        // Near-miss residual: next item barely misses this bin
+        if next_item_size > 0 && res < next_item_size as f64 && next_item_size as f64 - res <= 5.0 {
+            score += 4.0;
+        }
+        // Mean-aligned reusable residual
+        if progress > 0.3 && (res - mean_residual).abs() < 8.0 && res >= next_item_size as f64 {
+            score -= 3.0;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\evolution\run_seed_10306_evolution.json.tmp

@@ -1,0 +1,63 @@
+2026-11-15T16:59:00.591212Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9357, Pop=344, MaxGens=1
+2026-11-15T17:03:22.481143Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Failed to read JSON: cannot decrypt peer's message). Retrying in 4s...
+2026-11-15T17:22:26.574988Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+2026-11-15T17:37:23.156287Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: tls connection init failed: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 4s...
+2026-11-15T17:38:07.940759Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: Connect error: connection timed out). Retrying in 4s...
+2026-11-15T18:22:11.659647Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4e3014e04e08f289 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9357 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4168 bins (excess: +136), Efficiency: 96.74%, Fuel: 37404472
+ Best In-Dist (w/o Lookahead) : 4221 bins (excess: +189), Efficiency: 95.53%
+ Dynamic Trajectory: tLDR = 1.3546
+ Behavior Profile : DeadSpaceRatio: 26.3%, NewBinRatio: 41.7%, ResVar: 0.47
+ MAP-Elites Niches: 14 active (14.0% coverage), QD-Score: 9.778
+ Validation Score : 4193 bins (excess: +140), Efficiency: 96.67%
+ OOD-1 Score      : 10183 bins (excess: +130), Efficiency: 98.72%
+ OOD-2 Score      : 3620 bins (excess: +75), Efficiency: 97.93%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-018
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit: strong reward.
+    if post_residual == 0 {
+        score -= 500.0;
+    }
+
+    // 2-step lookahead: does the next item fit into the post residual?
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Next item fits: reward, scaled by how snug the chain is.
+            let snug = 1.0 - (post_residual - next_item_size) as f64 / bin_capacity as f64;
+            score -= 150.0 + 100.0 * snug;
+        } else if post_residual > 0 {
+            // Dead space the next item can't use: penalize proportionally.
+            let waste = post_residual as f64 / bin_capacity as f64;
+            score += 120.0 * waste;
+        }
+    }
+
+    // Compare residual against mean residual of open bins.
+    let dev = post_residual as f64 - mean_residual;
+    score += 0.5 * dev;
+
+    // Last-chance bin: strongly favor using it to avoid opening a new bin.
+    if fitting_bins_count == 1 && bin_residual < bin_capacity {
+        score -= 200.0;
+    }
+
+    // Mild preference to fill existing bins over opening new ones.
+    if bin_residual < bin_capacity {
+        score -= 30.0;
+    } else {
+        // Brand-new bin candidate: penalize slightly unless item is huge.
+        score += 60.0 + 0.3 * (item_size as f64);
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9357_tirage.json.tmp

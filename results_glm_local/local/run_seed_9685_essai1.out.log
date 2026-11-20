@@ -1,0 +1,23 @@
+2026-11-16T08:15:31.768469Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9685, Pop=8, MaxGens=47
+2026-11-16T09:28:16.048265Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Network Error: Error encountered in the status line: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 4s...
+2026-11-16T09:28:45.337655Z  WARN nomad_operator::http_llm: Ollama request attempt 2/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Connection Failed: Connect error: connection timed out). Retrying in 15s...
+2026-11-16T09:29:24.648837Z  WARN nomad_operator::http_llm: Ollama request attempt 3/6 failed (HTTP request failed: https://openrouter.ai/api/v1/chat/completions: Network Error: Network Error: Error encountered in the status line: Une connexion existante a dû être fermée par l’hôte distant. (os error 10054)). Retrying in 45s...
+2026-11-16T12:01:17.221318Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 47c5ab8522bdd595 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9685 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4100 bins (excess: +55), Efficiency: 98.66%, Fuel: 52357482
+ Best In-Dist (w/o Lookahead) : 4228 bins (excess: +183), Efficiency: 95.68%
+ Dynamic Trajectory: tLDR = 2.5516
+ Behavior Profile : DeadSpaceRatio: 32.0%, NewBinRatio: 41.0%, ResVar: 0.32
+ MAP-Elites Niches: 19 active (19.0% coverage), QD-Score: 15.262
+ Validation Score : 4084 bins (excess: +54), Efficiency: 98.68%
+ OOD-1 Score      : 10116 bins (excess: +91), Efficiency: 99.10%
+ OOD-2 Score      : 3621 bins (excess: +45), Efficiency: 98.76%
+ Lineage Nodes    : 487, Transitions: 513
+ Best Heuristic   : Hybrid-G28-graft-1fce
+ Logic Code       : pub fn score_bin (item_size : u32 , bin_residual : u32 , bin_capacity : u32 , step_index : usize , total_items : usize , open_bins_count : usize , mean_residual : f64 , next_item_size : u32 , post_residual : u32 , fitting_bins_count : usize) -> f64 { let mut score = post_residual as f64 ; if bin_residual == bin_capacity { let decent_fit_exists = fitting_bins_count > 0 && (bin_residual as f64 - item_size as f64) > 0.0 ; if decent_fit_exists && fitting_bins_count > 1 { score += 30.0 ; } if post_residual as f64 > mean_residual { score -= 5.0 ; } let progress = step_index as f64 / total_items . max (1) as f64 ; score += progress * 10.0 ; } let cap = bin_capacity as f64 ; let pr = post_residual as f64 ; score += 0.3 * pr * pr / cap ; if post_residual == 0 { score -= 1000.0 ; } else if post_residual <= 6 { score -= 50.0 + (6 - post_residual) as f64 * 10.0 ; } else if post_residual <= 12 && (post_residual as f64) < mean_residual * 0.6 { score -= 20.0 ; } if next_item_size > 0 { if post_residual == next_item_size { score -= 220.0 ; } else if post_residual > next_item_size { let slack = (post_residual - next_item_size) as f64 ; let chain_bonus = if slack <= 7.0 { 18.0 } else { 0.0 } ; let stranded = if slack > 10.0 && slack < 22.0 { 12.0 } else { 0.0 } ; let scarcity = if fitting_bins_count <= 1 { 8.0 } else { 0.0 } ; score -= 40.0 - slack . min (40.0) + chain_bonus + stranded + scarcity ; } else { let waste = (next_item_size - post_residual) as f64 ; let progress = step_index as f64 / total_items . max (1) as f64 ; score += waste * (1.5 + (1.0 - progress) * 1.5) ; } } if next_item_size > 0 { if post_residual == next_item_size { score -= 220.0 ; } else if post_residual > next_item_size { let slack = (post_residual - next_item_size) as f64 ; let chain_bonus = if slack <= 7.0 { 18.0 } else { 0.0 } ; let stranded = if slack > 10.0 && slack < 22.0 { 12.0 } else { 0.0 } ; score -= 40.0 - slack . min (40.0) + chain_bonus + stranded ; } else { let waste = (next_item_size - post_residual) as f64 ; let progress = step_index as f64 / total_items . max (1) as f64 ; score += waste * (1.5 + (1.0 - progress) * 1.5) ; } } if next_item_size > 0 && post_residual >= next_item_size { let gap = post_residual - next_item_size ; if gap == 0 { score -= 40.0 ; } else if gap <= 12 { score += (13 - gap as i32) as f64 * 4.0 ; } else { score -= 5.0 ; } } let score = score * 0.70 + ((post_residual as f64) as f64) * 0.30 ; score }
+============================================================
+Report written to C:\Devs\nomad\results_glm_local\local\run_seed_9685_local.json.tmp

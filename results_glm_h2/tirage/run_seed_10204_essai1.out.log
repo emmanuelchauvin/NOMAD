@@ -1,0 +1,73 @@
+2026-11-16T19:29:52.186773Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=10204, Pop=344, MaxGens=1
+2026-11-16T19:39:44.891727Z  WARN nomad_operator::http_llm: Ollama request attempt 1/6 failed (Failed to parse JSON response: Failed to read JSON: Une connexion établie a été abandonnée par un logiciel de votre ordinateur hôte. (os error 10053)). Retrying in 4s...
+2026-11-16T22:03:43.397388Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 98dc1f8e532c6c8b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 10204 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4145 bins (excess: +114), Efficiency: 97.25%, Fuel: 54180874
+ Best In-Dist (w/o Lookahead) : 4212 bins (excess: +181), Efficiency: 95.71%
+ Dynamic Trajectory: tLDR = 1.8273
+ Behavior Profile : DeadSpaceRatio: 5.1%, NewBinRatio: 41.5%, ResVar: 0.61
+ MAP-Elites Niches: 13 active (13.0% coverage), QD-Score: 8.977
+ Validation Score : 4150 bins (excess: +115), Efficiency: 97.23%
+ OOD-1 Score      : 10387 bins (excess: +307), Efficiency: 97.04%
+ OOD-2 Score      : 3631 bins (excess: +65), Efficiency: 98.21%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-162
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Strict dead-space avoidance: residuals too small for the minimum item (1) are fine,
+    // but residuals in the "awkward" band (just above item sizes likely to arrive) are dead space.
+    // Penalize small non-zero post_residuals that can't fit the next item.
+    if post_residual > 0 {
+        if next_item_size > 0 && post_residual < next_item_size {
+            score += 12.0 * (next_item_size - post_residual) as f64;
+        }
+        // General dead-space curve: worst for residuals in [1..20] band
+        if post_residual < 20 {
+            score += (20 - post_residual) as f64 * 0.8;
+        }
+    } else {
+        // Perfect fit: strong reward
+        score -= 25.0;
+    }
+
+    // Reward filling a bin nearly completely
+    let fill_ratio = item_size as f64 / bin_residual.max(1) as f64;
+    score -= 10.0 * fill_ratio;
+
+    // Last-chance bin: strongly favor using it to avoid opening a new bin
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 8.0;
+    }
+
+    // Open-bin pressure: with many open bins, prefer consolidation into existing bins
+    let open_pressure = open_bins_count as f64 / 10.0;
+    if bin_residual != bin_capacity {
+        score -= open_pressure * 2.0;
+    } else {
+        // New-bin candidate: penalize proportionally to open bins, plus base cost
+        score += 6.0 + open_pressure * 3.0;
+    }
+
+    // Prefer bins tighter than the mean residual (good packing)
+    score += 0.3 * (bin_residual as f64 - mean_residual);
+
+    // Lookahead: if next item fits in post_residual, reward this placement
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 5.0;
+    }
+
+    // Late in stream: consolidate harder, discourage new bins
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    if bin_residual == bin_capacity {
+        score += 10.0 * progress;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_h2\tirage\run_seed_10204_tirage.json.tmp

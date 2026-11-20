@@ -1,0 +1,83 @@
+2026-11-15T18:20:04.102581Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9170, Pop=344, MaxGens=1
+2026-11-15T19:40:01.864704Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 60931759c3a92715 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9170 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4096 bins (excess: +97), Efficiency: 97.64%, Fuel: 34993740
+ Best In-Dist (w/o Lookahead) : 4185 bins (excess: +186), Efficiency: 95.56%
+ Dynamic Trajectory: tLDR = 0.7549
+ Behavior Profile : DeadSpaceRatio: 49.5%, NewBinRatio: 41.0%, ResVar: 0.33
+ MAP-Elites Niches: 15 active (15.0% coverage), QD-Score: 10.814
+ Validation Score : 4123 bins (excess: +89), Efficiency: 97.85%
+ OOD-1 Score      : 10134 bins (excess: +103), Efficiency: 98.98%
+ OOD-2 Score      : 3625 bins (excess: +53), Efficiency: 98.54%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-013
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Perfect fit reward: nearly zero waste is excellent.
+    if post_residual == 0 {
+        score -= 500.0;
+    } else if post_residual <= 2 {
+        score -= 200.0;
+    }
+
+    // 2-step lookahead: reward post_residual that exactly (or nearly) matches next item.
+    if next_item_size > 0 {
+        let nxt = next_item_size as f64;
+        let post = post_residual as f64;
+        let gap = (post - nxt).abs();
+        if post >= nxt {
+            // next item fits: reward tightness of the match
+            score -= 120.0 - gap.min(120.0);
+            if gap == 0.0 {
+                score -= 150.0; // perfect chain fit
+            }
+        } else {
+            // next item will NOT fit here: penalize dead space below next item size,
+            // worse when the dead space is small (unusable fragment).
+            let dead = nxt - post;
+            score += dead * 0.8 + 20.0;
+            // extra penalty if this fragment is too small for even the smallest item
+            if post < 10 {
+                score += 60.0;
+            }
+        }
+    }
+
+    // Compare post_residual against mean residual: leaving more than average
+    // remaining space is relatively good (bin stays flexible).
+    let post_f = post_residual as f64;
+    if post_f >= mean_residual {
+        score -= (post_f - mean_residual) * 0.5;
+    } else {
+        score += (mean_residual - post_f) * 0.3;
+    }
+
+    // Last-chance bonus: if this is the only fitting bin, strongly prefer using it
+    // over opening a new bin.
+    if fitting_bins_count == 1 {
+        score -= 90.0;
+    }
+
+    // Mild pressure to consolidate into fewer bins as the stream grows.
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    score -= progress * 25.0;
+
+    // Penalize new-bin candidate slightly so it is only chosen when open bins
+    // would create truly bad fits.
+    if bin_residual == bin_capacity {
+        score += 70.0;
+        // but allow new bin if existing fits would strand tiny fragments
+        if next_item_size > 0 && post_residual == bin_capacity && item_size >= next_item_size {
+            score -= 40.0;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9170_tirage.json.tmp

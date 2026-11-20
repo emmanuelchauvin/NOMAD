@@ -1,0 +1,566 @@
+2026-11-15T19:56:37.784437Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9272, Pop=8, MaxGens=47
+2026-11-15T23:41:42.249613Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 22e01762d3c4b675 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9272 | Generations: 47
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4053 bins (excess: +61), Efficiency: 98.50%, Fuel: 254232252
+ Best In-Dist (w/o Lookahead) : 4168 bins (excess: +176), Efficiency: 95.78%
+ Dynamic Trajectory: tLDR = 2.0532
+ Behavior Profile : DeadSpaceRatio: 34.3%, NewBinRatio: 40.5%, ResVar: 0.30
+ MAP-Elites Niches: 17 active (17.0% coverage), QD-Score: 14.387
+ Validation Score : 4108 bins (excess: +64), Efficiency: 98.44%
+ OOD-1 Score      : 10131 bins (excess: +88), Efficiency: 99.13%
+ OOD-2 Score      : 3610 bins (excess: +44), Efficiency: 98.78%
+ Lineage Nodes    : 344, Transitions: 253
+ Best Heuristic   : LLM-Seed-001-mut-g1-mut-g2-mut-g5-mut-g5-mut-g5-mut-g20-mut-g45
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    let item_class = item_size / 10;
+    let post_class = post_residual / 10;
+
+    // Reward near-perfect fits (refined tiering, sharpened top tier).
+    if post_residual == 0 {
+        score -= 1250.0;
+    } else if post_residual <= 3 {
+        score -= 382.0;
+    } else if post_residual <= 5 {
+        score -= 332.0;
+    } else if post_residual <= 15 {
+        score -= 95.0;
+    } else if post_residual <= 25 {
+        score -= 32.0;
+    }
+
+    // Penalize dead space that no plausible item can fill (smooth version).
+    if post_residual > 0 && post_residual < 4 {
+        score += 70.0;
+    } else if post_residual > 0 && post_residual < 10 {
+        score += 135.0;
+    }
+
+    // Lookahead coupling with next_item_size.
+    if next_item_size > 0 {
+        if next_item_size == post_residual {
+            score -= 592.0;
+        } else if post_residual >= next_item_size {
+            let slack = post_residual - next_item_size;
+            if slack <= 10 {
+                score -= 186.0;
+            } else {
+                score -= 150.0 - (slack as f64).min(150.0);
+            }
+        } else {
+            score += (next_item_size - post_residual) as f64 * 2.3;
+        }
+        let next_class = ((next_item_size / 10) as f64).max(1.0);
+        if post_residual > 0 && (post_residual as f64) % next_class == 0.0 {
+            score -= 27.0;
+        }
+    }
+
+    // Triple lookahead: current + next-item chain via residual divisibility.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let after_next = post_residual - next_item_size;
+        if after_next >= 1 && after_next <= 12 {
+            score -= 55.0;
+        }
+    }
+
+    // Last-chance bonus: only this bin fits -> strongly prefer using it.
+    if fitting_bins_count == 1 && bin_residual >= item_size {
+        score -= 450.0;
+    }
+
+    // Class-matching reward.
+    let complement = (bin_capacity - item_size) / 10;
+    if post_class == complement {
+        score -= 42.0;
+    }
+
+    // Prefer filling fuller bins (tight packing).
+    let residual_frac = bin_residual as f64 / bin_capacity as f64;
+    score += (1.0 - residual_frac) * 60.0;
+
+    // Two-item lookahead.
+    let pair = item_size.saturating_add(next_item_size);
+    if pair > 0 && bin_residual >= pair {
+        let pair_slack = bin_residual - pair;
+        if pair_slack <= 8 {
+            score -= 105.0;
+        } else {
+            score -= 32.0;
+        }
+    }
+
+    // Pair exactness — residual exactly equals current+next is a jackpot.
+    if pair > 0 && bin_residual == pair {
+        score -= 266.0;
+    }
+
+    // Multi-fill potential.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let multi = post_residual / next_item_size;
+        if multi >= 2 {
+            score -= 22.0 * (multi.min(4) as f64);
+        }
+    }
+
+    // Reusability shaping.
+    if post_residual > 0 {
+        let reusability = post_residual as f64 / bin_capacity as f64;
+        if reusability >= 0.15 && reusability <= 0.45 {
+            score -= 30.0;
+        } else if reusability > 0.45 && reusability < 0.60 {
+            score += 13.0;
+        }
+    }
+
+    // Exact-complement chain.
+    if next_item_size > 0 && post_residual > next_item_size {
+        let rem = post_residual % next_item_size;
+        if rem == 0 {
+            score -= 68.0;
+        }
+    }
+
+    // Avoid leaving residuals just below the next item size (dead pocket).
+    if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+        let gap = next_item_size - post_residual;
+        if gap <= 6 {
+            score += 50.0;
+        }
+    }
+
+    // Dead-pocket depth tax.
+    if post_residual > 0 && post_residual <= 9 {
+        score += 18.0 * (10 - post_residual as i32) as f64;
+    }
+
+    // Harmonic-fit bonus.
+    if post_residual > 0 && (post_residual % 50 == 0 || post_residual % 25 == 0) {
+        score -= 35.0;
+    }
+
+    // Mid-band residual shaping — reward exactly-fillable remainders,
+    // punish near-miss remainders just above the next item size.
+    if next_item_size > 0 && post_residual > next_item_size {
+        let rem = post_residual - next_item_size;
+        if rem <= 2 {
+            score -= 95.0;
+        } else if rem <= 9 {
+            score += 62.0;
+        }
+    }
+
+    // Fit-quality gradient among competing bins.
+    if fitting_bins_count > 1 && post_residual > 0 {
+        let waste_ratio = post_residual as f64 / (item_size as f64).max(1.0);
+        if waste_ratio < 0.15 {
+            score -= 58.0;
+        } else if waste_ratio > 0.8 {
+            score += 30.0;
+        }
+    }
+
+    // Three-item chain check — current + next + a small filler (1..=10)
+    // exactly fills this bin's residual.
+    if next_item_size > 0 && bin_residual >= item_size + next_item_size {
+        let chain = bin_residual - item_size - next_item_size;
+        if chain >= 1 && chain <= 10 {
+            score -= 88.0;
+        }
+    }
+
+    // Two-step exactness.
+    if next_item_size > 0 && post_residual > next_item_size {
+        let after_next = post_residual - next_item_size;
+        if after_next >= 15 && after_next <= 45 && after_next % 5 == 0 {
+            score -= 36.0;
+        }
+        if after_next > 0 && after_next < 10 {
+            score += 26.0;
+        }
+    }
+
+    // Residual-fragmentation tax.
+    if open_bins_count > 4 && post_residual > 12 && post_residual < bin_capacity / 3 {
+        score += 14.0;
+    }
+
+    // New-bin candidate logic.
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    if bin_residual == bin_capacity {
+        if item_size > bin_capacity / 2 {
+            score -= 70.0 * (1.0 - progress);
+        }
+        if fitting_bins_count == 0 {
+            score -= 135.0;
+        }
+        if fitting_bins_count > 0 && item_size > bin_capacity / 3 {
+            let avg_fit_slack: f64 = mean_residual - item_size as f64;
+            if avg_fit_slack < 8.0 {
+                score -= 45.0 * (1.0 - progress);
+            }
+        }
+        if fitting_bins_count > 0 && progress > 0.4 && item_size <= bin_capacity / 3 {
+            if mean_residual < item_size as f64 * 1.5 {
+                score -= 27.0 * progress;
+            }
+        }
+        if next_item_size > 0 && next_item_size > bin_capacity / 2 {
+            if post_residual < next_item_size {
+                score -= 34.0 * (1.0 - progress);
+            }
+        }
+        if progress > 0.6 && item_size <= bin_capacity / 4 && fitting_bins_count > 0 {
+            score += 55.0 * progress;
+        }
+        if progress > 0.25 && progress <= 0.6 && item_size <= bin_capacity / 3 && fitting_bins_count > 0 {
+            score += 38.0;
+        }
+        if progress > 0.85 && item_size < bin_capacity / 5 && fitting_bins_count > 0 {
+            score += 78.0;
+        }
+        // Pair-fit gate.
+        if pair > 0 && bin_residual >= pair {
+            let pair_slack = bin_residual - pair;
+            if pair_slack <= 4 {
+                score -= 98.0;
+            }
+        }
+        // Dead-pocket escape.
+        if fitting_bins_count > 0 && post_residual > 0 && post_residual <= 9 {
+            score -= 90.0 * (1.0 - progress).max(0.2);
+        }
+        // Next-item dead-pocket escape.
+        if fitting_bins_count > 0 && next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+            let gap = next_item_size - post_residual;
+            if gap <= 8 {
+                score -= 62.0 * (1.0 - progress).max(0.3);
+            }
+        }
+        // Fresh-bin exact-pair plan.
+        if next_item_size > 0 {
+            let diff = bin_capacity as i64 - (item_size as i64 + next_item_size as i64);
+            if diff >= 0 && diff <= 2 {
+                score -= 112.0;
+            }
+        }
+        // Oversized-item fresh-bin sharpening.
+        if fitting_bins_count > 0 && item_size * 5 > bin_capacity * 3 {
+            if post_residual > 0 && post_residual < 15 {
+                score -= 52.0;
+            }
+        }
+        // Fresh-bin tileability.
+        if next_item_size > 0 && bin_capacity >= item_size + 2 * next_item_size {
+            let after = bin_capacity - item_size;
+            if after % next_item_size == 0 && after / next_item_size >= 2 {
+                score -= 44.0;
+            }
+        }
+        // Fresh-bin fragment-consolidation.
+        if fitting_bins_count > 0 && open_bins_count > 3 && item_size > bin_capacity / 2 {
+            if mean_residual < item_size as f64 * 1.2 {
+                score -= 40.0 * (1.0 - progress).max(0.25);
+            }
+        }
+        // Fresh-bin mid-fit gate.
+        if fitting_bins_count > 0 && next_item_size > 0 && post_residual >= 30 && post_residual <= 45 {
+            let fresh_slack = bin_capacity.saturating_sub(item_size + next_item_size);
+            if fresh_slack <= 10 {
+                score -= 58.0 * (1.0 - progress).max(0.3);
+            }
+        }
+        // Fresh-bin triple-tile plan.
+        if next_item_size > 0 && bin_capacity >= item_size + 2 * next_item_size {
+            let t3 = bin_capacity - (item_size + 2 * next_item_size);
+            if t3 <= 5 {
+                score -= 74.0 * (1.0 - progress).max(0.4);
+            }
+        }
+        // Late-stream fresh-bin gate for medium items.
+        if progress > 0.8 && item_size <= bin_capacity / 2 && fitting_bins_count > 0 && post_residual > 12 {
+            score += 30.0 * progress;
+        }
+        // NEW: fresh-bin waste-floor gate — if every fitting bin would leave
+        // more dead space than opening fresh (item vs mean residual), and the
+        // stream still has room to fill the fresh bin, prefer opening.
+        if fitting_bins_count > 0 && next_item_size > 0 && progress < 0.7 {
+            let best_projected_waste = mean_residual.min(item_size as f64) - item_size as f64;
+            if best_projected_waste > 12.0 && (bin_capacity as f64 - item_size as f64) >= next_item_size as f64 {
+                score -= 36.0 * (1.0 - progress).max(0.3);
+            }
+        }
+        score += 30.0 + 40.0 * progress;
+    }
+
+    // Waste-floor shaping for regular placements.
+    if fitting_bins_count > 1 && post_residual >= 10 && post_residual <= 19 {
+        score += 24.0 + (19 - post_residual as i32) as f64 * 4.0;
+    }
+
+    // Sub-next dead-band sharpening.
+    if fitting_bins_count > 1 && next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+        let gap = next_item_size - post_residual;
+        if gap <= 8 {
+            score += 14.0 + (8 - gap as i32) as f64 * 4.0;
+        }
+    }
+
+    // Congestion: many open bins -> favor consolidation.
+    score += open_bins_count as f64 * 1.5;
+
+    // Mean-residual coupling.
+    if (bin_residual as f64) > mean_residual + 20.0 {
+        score += 25.0;
+    } else if (bin_residual as f64) < mean_residual - 20.0 {
+        score -= 15.0;
+    }
+
+    // Protect large residuals from being consumed by small items late in stream.
+    if bin_residual > bin_capacity * 3 / 4 && item_size < bin_capacity / 4 && progress > 0.5 {
+        score += 36.0;
+    }
+
+    // Late-stream exactness boost.
+    let remaining_frac = 1.0 - progress;
+    if post_residual <= 8 && remaining_frac < 0.25 {
+        score -= 62.0 * (1.0 - remaining_frac * 4.0).max(0.0);
+    }
+
+    // Divisibility-aware waste penalty.
+    if post_residual > 0 && post_residual < bin_capacity {
+        let cls = (post_residual / 10).max(1);
+        if post_residual % (cls * 10) != 0 && post_residual < 50 {
+            score += 11.0;
+        }
+    }
+
+    // Exact-fill lookahead sweep.
+    if next_item_size > 0 && post_residual > 0 && post_residual % next_item_size == 0 {
+        let k = post_residual / next_item_size;
+        if k >= 1 && k <= 4 {
+            score -= 18.0 * k as f64;
+        }
+    }
+
+    // Post-residual reusability vs. mean coupling.
+    if fitting_bins_count > 1 && post_residual > 0 {
+        let dist = ((post_residual as f64) - mean_residual).abs();
+        if dist < 6.0 {
+            score -= 22.0;
+        } else if dist > 40.0 {
+            score += 9.0;
+        }
+    }
+
+    // Dead-zone gradient refinement.
+    if post_residual >= 20 && post_residual <= 34 && next_item_size > 0 && next_item_size <= 10 {
+        score += 16.0;
+    }
+
+    // Two-bin exact-split plan.
+    if fitting_bins_count == 2 && next_item_size > 0 && post_residual == next_item_size {
+        score -= 72.0;
+    }
+
+    // Residual-value discount for large leftovers consumed by small items.
+    if post_residual > 0 && item_size > 0 && bin_residual > item_size {
+        let consumed_frac = item_size as f64 / bin_residual as f64;
+        if consumed_frac < 0.2 && post_residual > 40 {
+            score += 22.0 * (1.0 - consumed_frac * 5.0);
+        }
+    }
+
+    // Dead-space budget coupling.
+    if open_bins_count > 2 && post_residual >= 10 && post_residual <= 29 && (post_residual as f64) > mean_residual {
+        score += 10.0 + 0.25 * (post_residual as f64 - mean_residual).min(20.0);
+    }
+
+    // Near-perfect-fit gradient sharpening.
+    if fitting_bins_count > 1 && post_residual >= 1 && post_residual <= 2 {
+        score -= 42.0;
+    }
+
+    // Dual-lookahead consolidation.
+    if next_item_size > 0 && bin_residual >= item_size + next_item_size {
+        let after_pair = bin_residual - item_size - next_item_size;
+        if after_pair > 10 && after_pair <= 25 {
+            score -= 30.0;
+        }
+    }
+
+    // Waste-gap interpolation.
+    if fitting_bins_count > 1 && post_residual > 0 && post_residual < 60 {
+        let m = post_residual % 10;
+        if m == 0 {
+            score -= 14.0;
+        } else if m >= 7 {
+            score += 6.0 + (m - 7) as f64 * 3.0;
+        }
+    }
+
+    // Triple-chain consolidation.
+    if next_item_size > 0 && bin_residual >= item_size + next_item_size {
+        let after_pair = bin_residual - item_size - next_item_size;
+        if after_pair > 0 && (after_pair == next_item_size || after_pair % 10 == 0) {
+            score -= 46.0;
+        }
+    }
+
+    // Combined fine-grained residual + lookahead.
+    if fitting_bins_count > 2 && next_item_size > 0 && post_residual >= next_item_size {
+        let slack = post_residual - next_item_size;
+        if slack <= 5 {
+            score -= 34.0;
+        }
+    }
+
+    // Class-aware dead-zone tax.
+    if fitting_bins_count > 1 && next_item_size > 0 && post_residual > next_item_size {
+        let overshoot = post_residual - next_item_size;
+        if overshoot > 10 && overshoot <= 20 {
+            score += 8.0 + (overshoot - 10) as f64 * 1.2;
+        }
+    }
+
+    // Late-stream fragment harvesting.
+    if progress > 0.66 && next_item_size > 0 && post_residual == next_item_size {
+        score -= 40.0 * progress;
+    }
+
+    // Fragment-count-aware consolidation.
+    if open_bins_count > 6 && post_residual > 0 {
+        score += (post_residual as f64) * 0.35;
+    }
+
+    // Next-item-size-matched pocket.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let over = post_residual - next_item_size;
+        if over <= 3 {
+            let scarcity = if fitting_bins_count <= 2 { 1.6 } else { 1.0 };
+            score -= 26.0 * scarcity * (4 - over as i32) as f64;
+        }
+    }
+
+    // Late-stream small-item drain.
+    if progress > 0.8 && item_size <= 12 && post_residual > 30 {
+        score += 20.0 * (1.0 - remaining_frac * 5.0).max(0.0);
+    }
+
+    // Exact-capacity sweep.
+    if next_item_size > 0 && post_residual == 0 && bin_residual == item_size + next_item_size {
+        score -= 150.0;
+    }
+
+    // Residual-efficiency gradient — smooth secondary term breaking ties
+    // toward the tightest fit; directly reduces dead space.
+    if fitting_bins_count > 1 && post_residual > 0 && post_residual <= 40 {
+        score += (post_residual as f64) * 1.8;
+    }
+
+    // Next-item dead-space guard.
+    if next_item_size > 0 && next_item_size <= 20 && post_residual > 0 && post_residual < next_item_size {
+        score += (next_item_size - post_residual) as f64 * 3.5;
+    }
+
+    // Crowded-state exact-close emphasis.
+    if post_residual == 0 && open_bins_count > 3 {
+        score -= 30.0 + (open_bins_count.min(12) as f64) * 4.0;
+    }
+
+    // Total-waste budget coupling.
+    if post_residual > 0 && open_bins_count > 1 {
+        let projected = (post_residual as f64 + mean_residual * (open_bins_count as f64 - 1.0)) / open_bins_count as f64;
+        if projected > 12.0 {
+            score += (projected - 12.0).min(25.0) * 0.9;
+        } else if projected < 6.0 {
+            score -= 12.0;
+        }
+    }
+
+    // Complement-tile lookahead.
+    if next_item_size > 0 && next_item_size < bin_capacity && fitting_bins_count > 1 && post_residual > 0 {
+        let next_complement = bin_capacity - next_item_size;
+        let diff = next_complement as i32 - post_residual as i32;
+        if diff >= 0 && diff <= 4 {
+            score -= 48.0 - diff as f64 * 6.0;
+        }
+    }
+
+    // Residual-harvest sequencing.
+    if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size
+        && mean_residual < next_item_size as f64 && fitting_bins_count > 1 {
+        score += (next_item_size - post_residual) as f64 * 1.4;
+    }
+
+    // Dead-space budget coupling (sharpened variant).
+    if open_bins_count > 2 && post_residual >= 10 && post_residual <= 29 && (post_residual as f64) > mean_residual {
+        score += 4.0 + 0.35 * (post_residual as f64 - mean_residual).min(18.0);
+    }
+
+    // Continuous dead-space gradient — smooth quadratic ramp so near-tight
+    // fits are ranked continuously, cutting residual variance.
+    if post_residual > 5 && post_residual <= 30 {
+        score += 0.55 * (post_residual as f64 - 5.0) * (post_residual as f64 - 5.0) / 25.0;
+    }
+
+    // Late-stream exact-close multiplier.
+    if post_residual == 0 && progress > 0.75 {
+        score -= 55.0 * progress;
+    }
+
+    // Fresh-bin last-resort tightening.
+    if bin_residual == bin_capacity && progress > 0.7 && item_size < bin_capacity / 3 && post_residual > 20 && fitting_bins_count > 0 {
+        score += 45.0 * progress;
+    }
+
+    // Dual-chain tileability — when the residual after this placement can be
+    // split into next_item_size plus a small filler (<= 6) with zero waste,
+    // this is a decisive two-step plan; reward strongest when late.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        let after = post_residual - next_item_size;
+        if after > 0 && after <= 6 {
+            let urgency = if progress > 0.5 { 1.5 } else { 1.0 };
+            score -= 46.0 * urgency;
+        }
+    }
+
+    // Crowding-aware tight-fit amplifier — when many bins are open AND
+    // several fit, extra weight on the tightest fit compounds consolidation.
+    if open_bins_count > 5 && fitting_bins_count > 2 && post_residual > 0 && post_residual <= 20 {
+        score += (post_residual as f64) * 0.9;
+    }
+
+    // Next-item large rescue — if the next item is large (> capacity/3) and
+    // this placement leaves a residual that cannot hold it, tax mildly so
+    // bins preserving room for it win, but only when alternatives exist.
+    if next_item_size > 0 && next_item_size > bin_capacity / 3 && post_residual > 0
+        && post_residual < next_item_size && fitting_bins_count > 1 {
+        score += 18.0 * (1.0 - progress).max(0.3);
+    }
+
+    // NEW: mid-residual waste ramp — extend the continuous dead-space
+    // gradient into the 31..60 band with a gentler slope, so mid-size
+    // leftovers are also ranked against each other instead of being
+    // treated as equivalent, further cutting residual variance.
+    if post_residual > 30 && post_residual <= 60 {
+        score += 5.0 + 0.22 * (post_residual as f64 - 30.0);
+    }
+
+    // NEW: perfect-pair-vs-fresh arbitration — when this placement leaves
+    // exactly room for the next item (zero waste two-step plan), it should
+    // dominate even a fresh-bin opening; sharpen the existing exact-match
+    // bonus with a late-stream multiplier.
+    if next_item_size > 0 && post_residual == next_item_size && fitting_bins_count > 0 {
+        score -= 24.0 + 30.0 * progress;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\evolution\run_seed_9272_evolution.json.tmp

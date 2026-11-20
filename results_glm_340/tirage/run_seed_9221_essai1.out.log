@@ -1,0 +1,82 @@
+2026-11-15T18:18:47.590502Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=9221, Pop=344, MaxGens=1
+2026-11-15T19:33:51.920330Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4b0e3a5975389c3d on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 9221 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4187 bins (excess: +160), Efficiency: 96.18%, Fuel: 28130254
+ Best In-Dist (w/o Lookahead) : 4203 bins (excess: +176), Efficiency: 95.82%
+ Dynamic Trajectory: tLDR = 0.1541
+ Behavior Profile : DeadSpaceRatio: 67.0%, NewBinRatio: 41.9%, ResVar: 0.44
+ MAP-Elites Niches: 13 active (13.0% coverage), QD-Score: 9.752
+ Validation Score : 4221 bins (excess: +171), Efficiency: 95.95%
+ OOD-1 Score      : 10421 bins (excess: +364), Efficiency: 96.51%
+ OOD-2 Score      : 3683 bins (excess: +95), Efficiency: 97.42%
+ Lineage Nodes    : 344, Transitions: 0
+ Best Heuristic   : LLM-Seed-302
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Is this the brand-new empty bin candidate?
+    let is_new_bin = bin_residual == bin_capacity;
+
+    // Dead-space penalty: post_residual that cannot fit the next item is wasted space.
+    if !is_new_bin && next_item_size > 0 && post_residual < next_item_size {
+        let dead = next_item_size - post_residual;
+        score += (dead as f64) * 2.5;
+    }
+
+    // Perfect fit reward
+    if post_residual == 0 {
+        score -= 60.0;
+    }
+
+    // Near-perfect fit reward
+    if !is_new_bin && post_residual > 0 && post_residual <= 10 {
+        score -= 25.0;
+    }
+
+    // Tight fit reward: item fills most of the residual
+    let fill_ratio = item_size as f64 / bin_residual as f64;
+    if !is_new_bin {
+        if fill_ratio > 0.8 {
+            score -= 20.0 * (fill_ratio - 0.8) * 5.0;
+        } else if fill_ratio < 0.3 {
+            // poor utilization of a large residual: penalize
+            score += 15.0 * (0.3 - fill_ratio);
+        }
+    }
+
+    // Last-chance bin: strongly prefer using the only bin that fits
+    if !is_new_bin && fitting_bins_count == 1 {
+        score -= 30.0;
+    }
+
+    // Open bins pressure: with many open bins, avoid opening new ones
+    if is_new_bin {
+        let pressure = open_bins_count as f64 * 8.0;
+        score += pressure;
+        // Early in stream, opening bins is cheaper; late, expensive
+        let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+        score += 20.0 * progress;
+    } else {
+        // Using an existing bin reduces pressure slightly when many bins are open
+        score -= (open_bins_count as f64).min(20.0) * 0.5;
+    }
+
+    // Prefer bins below mean residual (consolidate waste into few bins)
+    if !is_new_bin {
+        let diff = bin_residual as f64 - mean_residual;
+        score += diff * 0.3;
+    }
+
+    // Next-item synergy: if post_residual exactly fits next item, big reward
+    if !is_new_bin && next_item_size > 0 && post_residual == next_item_size {
+        score -= 40.0;
+    }
+
+    score
+}
+============================================================
+Report written to C:\Devs\nomad\results_glm_340\tirage\run_seed_9221_tirage.json.tmp
