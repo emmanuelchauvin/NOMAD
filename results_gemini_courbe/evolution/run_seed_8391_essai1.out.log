@@ -1,0 +1,85 @@
+[2m2026-11-15T04:59:42.840040Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8391, Pop=8, MaxGens=192
+[2m2026-11-15T08:25:38.520375Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Ollama HTTP 503: [{
+  "error": {
+    "code": 503,
+    "message": "The service is currently unavailable.",
+    "status": "UNAVAILABLE"
+  }
+}
+]). Retrying in 4s...
+[2m2026-11-15T09:01:21.358672Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule cf6705650348be82 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8391 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4086 bins (excess: +72), Efficiency: 98.24%, Fuel: 74458989
+ Best In-Dist (w/o Lookahead) : 4091 bins (excess: +77), Efficiency: 98.12%
+ Dynamic Trajectory: tLDR = 3.3636
+ Behavior Profile : DeadSpaceRatio: 8.7%, NewBinRatio: 40.9%, ResVar: 0.54
+ MAP-Elites Niches: 27 active (27.0% coverage), QD-Score: 21.415
+ Validation Score : 4129 bins (excess: +80), Efficiency: 98.06%
+ OOD-1 Score      : 10403 bins (excess: +346), Efficiency: 96.68%
+ OOD-2 Score      : 3619 bins (excess: +79), Efficiency: 97.82%
+ Lineage Nodes    : 1359, Transitions: 836
+ Best Heuristic   : LLM-Seed-055-mut-g20-mut-g21-mut-g22-mut-g25-mut-g26-mut-g27-mut-g28-mut-g43
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let post_res = post_residual as f64;
+    let cap = bin_capacity as f64;
+
+    // Core score: Penalize post-residual with non-linear growth to avoid micro-gaps.
+    // Increased exponent to punish larger gaps more severely while maintaining sensitivity.
+    let mut score = post_res + (post_res.powf(1.88) * 0.92);
+
+    // Adaptive Fragmentation: Use a dynamic threshold based on mean residual to identify 'useless' gaps.
+    let avg_item_est = (cap - mean_residual).max(1.0);
+    if post_res > 0.0 && post_res < avg_item_est {
+        score += (avg_item_est - post_res).powf(2.20) * 2.5;
+    }
+
+    // Lookahead Synergy: Fine-tune the reward for accommodating the next item in the stream.
+    if next_item_size > 0 {
+        let next_f = next_item_size as f64;
+        if post_residual >= next_item_size {
+            let remainder = post_res - next_f;
+            // Reward perfect fit (remainder 0) or small remainders that don't strand the bin.
+            score -= (next_f * 2.05) + (3.8 / (remainder + 0.015).powf(1.85));
+        } else {
+            // Penalize blocking the next item; scale penalty by progress to force efficiency early.
+            score += next_f * (3.4 + (progress * 3.5));
+        }
+    }
+
+    // Bin Creation Logic:
+    if bin_residual == bin_capacity {
+        // Higher base_cost and tighter clutter penalty to prevent unnecessary bin proliferation.
+        let base_cost = 70.0;
+        let progress_penalty = (1.0 - progress.powf(0.90)) * 140.0;
+        let clutter_factor = (open_bins_count as f64).powf(1.48) * 8.8;
+        score = base_cost + progress_penalty + clutter_factor;
+    } else {
+        // Utilization Reward: Strongly incentivize filling existing capacity.
+        let utilization = 1.0 - (post_res / cap);
+        score -= utilization * 92.0;
+
+        // "Must-use" logic: Aggressively target the last available fitting bin to consolidate space.
+        if fitting_bins_count == 1 {
+            score -= 190.0;
+        }
+        
+        // Anti-sparsity: Penalize bins that remain under-utilized.
+        if utilization < 0.42 {
+            score += (open_bins_count as f64).powf(1.30) * 5.2;
+        }
+    }
+
+    // Late-stage compaction: Aggressive consolidation in the final 20% of the stream.
+    // Adjusted weighting to prevent excessive fragmentation during final stages.
+    let entropy_weight = if progress > 0.80 { 0.015 } else { 4.8 };
+    score += (open_bins_count as f64).ln() * entropy_weight;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8391_evolution.json.tmp

@@ -1,0 +1,58 @@
+2026-11-13T19:08:19.222433Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6102, Pop=170, MaxGens=1
+2026-11-13T19:23:07.706369Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 325c8dfdb4696c3e on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6102 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4220 bins (excess: +183), Efficiency: 95.66%, Fuel: 24964143
+ Best In-Dist (w/o Lookahead) : 4233 bins (excess: +196), Efficiency: 95.37%
+ Dynamic Trajectory: tLDR = 0.2196
+ Behavior Profile : DeadSpaceRatio: 66.2%, NewBinRatio: 42.2%, ResVar: 0.53
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 3.772
+ Validation Score : 4197 bins (excess: +177), Efficiency: 95.79%
+ OOD-1 Score      : 10434 bins (excess: +385), Efficiency: 96.31%
+ OOD-2 Score      : 3625 bins (excess: +77), Efficiency: 97.88%
+ Lineage Nodes    : 170, Transitions: 0
+ Best Heuristic   : LLM-Seed-128
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Objective: Minimize score.
+    // Strategy: Favor Best-Fit (small post_residual), but apply a penalty to "dead space"
+    // that cannot accommodate the next_item_size.
+    
+    let is_new_bin = bin_residual == bin_capacity;
+    let mut score = post_residual as f64;
+
+    if is_new_bin {
+        // Penalty for opening a new bin: base cost is high to force existing bin usage.
+        // We scale the penalty by the current open_bins_count to encourage consolidation.
+        score = 45.0 + (open_bins_count as f64 * 2.5);
+    } else {
+        // 1. Penalty for creating "dead space": if post_residual is smaller than next_item_size,
+        // it is likely to remain unused for at least one more step.
+        if next_item_size > 0 && post_residual < next_item_size {
+            score += (next_item_size - post_residual) as f64 * 1.2;
+        }
+
+        // 2. Convergence pressure: As we approach the end of the stream, prioritize 
+        // filling bins completely to avoid leaving stragglers.
+        let progress = step_index as f64 / total_items as f64;
+        score += progress * (post_residual as f64 * 0.5);
+
+        // 3. Balance incentive: If this bin's residual is significantly lower than the 
+        // global mean_residual, it is a "tight" bin. We prefer to keep it tight.
+        if (post_residual as f64) < mean_residual {
+            score -= (mean_residual - post_residual as f64) * 0.8;
+        }
+    }
+
+    // 4. Critical threshold: If this is the only fitting bin, heavily discount the score
+    // to prevent opening a new bin unnecessarily (Best-Fit policy).
+    if fitting_bins_count == 1 && !is_new_bin {
+        score -= 20.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage170\run_seed_6102_tirage170.json.tmp

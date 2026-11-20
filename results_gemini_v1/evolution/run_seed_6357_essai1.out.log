@@ -1,0 +1,53 @@
+2026-11-13T20:32:56.156295Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6357, Pop=8, MaxGens=10
+2026-11-13T20:40:16.514954Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 09d6e8de5ebfa3df on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6357 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4206 bins (excess: +184), Efficiency: 95.63%, Fuel: 25653062
+ Best In-Dist (w/o Lookahead) : 4200 bins (excess: +178), Efficiency: 95.76%
+ Dynamic Trajectory: tLDR = 0.1906
+ Behavior Profile : DeadSpaceRatio: 69.5%, NewBinRatio: 42.1%, ResVar: 0.50
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.475
+ Validation Score : 4218 bins (excess: +183), Efficiency: 95.66%
+ OOD-1 Score      : 10448 bins (excess: +418), Efficiency: 96.00%
+ OOD-2 Score      : 3653 bins (excess: +104), Efficiency: 97.15%
+ Lineage Nodes    : 85, Transitions: 57
+ Best Heuristic   : LLM-Seed-026
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Harmonic Penalty: Heavily penalize residual space that cannot accommodate common item sizes.
+    // We prioritize bins that leave a residual which is a multiple of typical item sizes (e.g., 20, 25, 33).
+    let harmonic_penalty = (post_residual % 20) as f64 * 1.5 + (post_residual % 25) as f64 * 1.2;
+    score += harmonic_penalty;
+
+    // 2. Lookahead Synergy: If the next item fits into the current post_residual, apply a massive discount.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 60.0;
+        // Reward deeper packing if the next item is large (minimizing dead space).
+        score -= (next_item_size as f64) * 0.5;
+    }
+
+    // 3. Density Balancing: Penalize creating a new bin (bin_residual == bin_capacity) unless 
+    // the current mean_residual is very low, implying we are wasting space in existing bins.
+    if bin_residual == bin_capacity {
+        score += 45.0 + (mean_residual * 0.8);
+    }
+
+    // 4. Scarcity Logic: If this is the only bin that fits the current item, prioritize it 
+    // heavily to avoid opening a new bin unnecessarily.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 50.0;
+    }
+
+    // 5. Progression Scaling: As the stream nears the end, become more conservative 
+    // about leaving small gaps (dead space).
+    let progress = step_index as f64 / total_items as f64;
+    score += (progress * post_residual as f64) * 0.2;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6357_evolution.json.tmp

@@ -1,0 +1,77 @@
+[2m2026-11-15T11:34:14.947603Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=3034, Pop=680, MaxGens=1
+[2m2026-11-15T12:26:42.479073Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-15T12:54:56.772809Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-15T14:09:38.923408Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 8228309adcf7118e on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3034 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4183 bins (excess: +152), Efficiency: 96.37%, Fuel: 47096851
+ Best In-Dist (w/o Lookahead) : 4271 bins (excess: +240), Efficiency: 94.39%
+ Dynamic Trajectory: tLDR = 1.0141
+ Behavior Profile : DeadSpaceRatio: 8.9%, NewBinRatio: 41.8%, ResVar: 0.75
+ MAP-Elites Niches: 19 active (19.0% coverage), QD-Score: 13.518
+ Validation Score : 4199 bins (excess: +168), Efficiency: 96.01%
+ OOD-1 Score      : 10235 bins (excess: +153), Efficiency: 98.51%
+ OOD-2 Score      : 3637 bins (excess: +88), Efficiency: 97.58%
+ Lineage Nodes    : 680, Transitions: 0
+ Best Heuristic   : LLM-Seed-322
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Strict dead-space avoidance: residuals that are too small to ever
+    // hold another item (min item size 1..100 unknown, but tiny gaps are
+    // almost always waste) are heavily penalized.
+    if post_residual > 0 && post_residual < 12 {
+        score += (12.0 - post_residual as f64) * 6.0;
+    }
+
+    // Perfect fit is gold.
+    if post_residual == 0 {
+        score -= 40.0;
+    } else {
+        // Reward tight fits relative to bin capacity.
+        let tightness = 1.0 - (post_residual as f64 / bin_capacity as f64);
+        score -= tightness * 8.0;
+    }
+
+    // Dead space is worse if the next item cannot use it.
+    if next_item_size > 0 && post_residual > 0 && post_residual < next_item_size {
+        score += (next_item_size - post_residual) as f64 * 2.0;
+    }
+    // Reward when the residual can host the lookahead item.
+    if next_item_size > 0 && post_residual >= next_item_size && post_residual < next_item_size * 2 {
+        score -= 6.0;
+    }
+
+    // Last chance bin: strongly prefer using it before opening a new bin.
+    if fitting_bins_count == 1 && bin_residual >= item_size {
+        score -= 25.0;
+    }
+
+    // Open-bin pressure: with many bins open, avoid spreading residual
+    // capacity; favor filling existing bins.
+    let progress = if total_items > 0 { step_index as f64 / total_items as f64 } else { 0.0 };
+    score += open_bins_count as f64 * 0.4 * (0.5 + progress);
+
+    // Prefer bins below the mean residual (fill the emptier-tail bins less,
+    // keep tight bins tight) — actually favor bins whose residual is BELOW
+    // mean (they are already tight): penalize placing into very loose bins.
+    if (bin_residual as f64) > mean_residual * 1.25 && bin_residual != bin_capacity {
+        score += 5.0;
+    }
+
+    // New empty bin candidate: neutral baseline with a mild penalty so it is
+    // only chosen when existing bins fit poorly (large dead space or none fit).
+    if bin_residual == bin_capacity {
+        score += 18.0;
+        // Late in the stream, opening a new bin is less costly than wrecking
+        // a usable residual — soften the penalty as progress increases.
+        score -= progress * 10.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_glm_courbe_pilote\tirage\run_seed_3034_tirage.json.tmp

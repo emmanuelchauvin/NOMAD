@@ -1,0 +1,1174 @@
+{
+  "group": "GroupD",
+  "rng_seed": 1085,
+  "total_generations": 5,
+  "best_in_distribution_score": {
+    "is_valid": true,
+    "total_bins": 396,
+    "total_theoretical_min_bins": 380,
+    "total_excess_bins": 16,
+    "mean_efficiency": 0.9604761904761905,
+    "total_fuel": 291126,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 12.571800595238095,
+      "new_bin_ratio": 0.1584,
+      "mean_fullness": 0.9604761904761905,
+      "dead_space_ratio": 0.17182539682539683
+    },
+    "tldr_score": -0.12571800595238095,
+    "trajectory_metrics": null
+  },
+  "best_score_without_lookahead": {
+    "is_valid": true,
+    "total_bins": 396,
+    "total_theoretical_min_bins": 380,
+    "total_excess_bins": 16,
+    "mean_efficiency": 0.9604761904761905,
+    "total_fuel": 291126,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 12.571800595238095,
+      "new_bin_ratio": 0.1584,
+      "mean_fullness": 0.9604761904761905,
+      "dead_space_ratio": 0.17182539682539683
+    },
+    "tldr_score": -0.12571800595238095,
+    "trajectory_metrics": null
+  },
+  "best_validation_score": {
+    "is_valid": true,
+    "total_bins": 395,
+    "total_theoretical_min_bins": 378,
+    "total_excess_bins": 17,
+    "mean_efficiency": 0.9576984126984126,
+    "total_fuel": 298559,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 13.293495783730158,
+      "new_bin_ratio": 0.158,
+      "mean_fullness": 0.9576984126984126,
+      "dead_space_ratio": 0.14773809523809522
+    },
+    "tldr_score": -0.13293495783730158,
+    "trajectory_metrics": null
+  },
+  "best_ood1_score": {
+    "is_valid": true,
+    "total_bins": 2212,
+    "total_theoretical_min_bins": 2135,
+    "total_excess_bins": 77,
+    "mean_efficiency": 0.9652120354385478,
+    "total_fuel": 4676060,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 11.747380462827623,
+      "new_bin_ratio": 0.8848,
+      "mean_fullness": 0.9652120354385478,
+      "dead_space_ratio": 0.30922716219639834
+    },
+    "tldr_score": -0.11747380462827622,
+    "trajectory_metrics": null
+  },
+  "best_ood2_score": {
+    "is_valid": true,
+    "total_bins": 1761,
+    "total_theoretical_min_bins": 1526,
+    "total_excess_bins": 235,
+    "mean_efficiency": 0.8675326575428994,
+    "total_fuel": 1649440,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 18.966794459363197,
+      "new_bin_ratio": 0.7044,
+      "mean_fullness": 0.8675326575428994,
+      "dead_space_ratio": 0.06338730658465487
+    },
+    "tldr_score": -0.18966794459363195,
+    "trajectory_metrics": null
+  },
+  "best_capsule": {
+    "id": "8899fcbb67809c9e",
+    "name": "Seed-Heuristic-000-mut-g1-mut-g1",
+    "semantic_interface": "Mutated from parent 371fb218d3580268 with targeted parameter or condition tuning",
+    "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let mut score = (cpu_norm + ram_norm) + imbalance * 4.3;\n    score\n}",
+    "parent_ids": [
+      "371fb218d3580268"
+    ],
+    "generation": 1,
+    "content_hash": "8899fcbb67809c9e8bd338b4eb7ad13637231a7f47f0f93c6db86154657b0119",
+    "created_at": "2026-11-10T20:01:45.282085800Z",
+    "metadata": {
+      "parent_hash": "371fb218d358026859f6e1e0c3e1bcc0ecaecdffa3351745bb6c2c4972d1bd18",
+      "mutation_seed": "15005601783990959276"
+    },
+    "interface_version": "ScorePolicyV1",
+    "policy_kind": "ScorePolicy",
+    "ast_fingerprint": {
+      "max_depth": 4,
+      "branch_count": 0,
+      "op_count": 6,
+      "statement_count": 5,
+      "ast_hash": "67c8d7208b21c75322bdd15f3d809d805a7fb2066a105f3a17686724b6838032"
+    },
+    "dependencies": [],
+    "validation": "PassedLevel2Computational",
+    "graft_manifest": null
+  },
+  "generations_history": [
+    {
+      "generation": 1,
+      "best_bins": 398,
+      "best_efficiency": 0.9554761904761905,
+      "best_fuel": 159142,
+      "best_capsule_id": "c670d27f7d99e0ec",
+      "best_capsule_name": "Seed-Heuristic-000",
+      "llm_calls_consumed": 10,
+      "executions_consumed": 500,
+      "qd_score": 1.910952380952381,
+      "archive_coverage": 0.02,
+      "occupied_niches": 2,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    },
+    {
+      "generation": 2,
+      "best_bins": 396,
+      "best_efficiency": 0.9604761904761905,
+      "best_fuel": 291126,
+      "best_capsule_id": "8899fcbb67809c9e",
+      "best_capsule_name": "Seed-Heuristic-000-mut-g1-mut-g1",
+      "llm_calls_consumed": 19,
+      "executions_consumed": 950,
+      "qd_score": 2.8764285714285713,
+      "archive_coverage": 0.03,
+      "occupied_niches": 3,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    },
+    {
+      "generation": 3,
+      "best_bins": 396,
+      "best_efficiency": 0.9604761904761905,
+      "best_fuel": 291126,
+      "best_capsule_id": "8899fcbb67809c9e",
+      "best_capsule_name": "Seed-Heuristic-000-mut-g1-mut-g1",
+      "llm_calls_consumed": 28,
+      "executions_consumed": 1400,
+      "qd_score": 2.8764285714285713,
+      "archive_coverage": 0.03,
+      "occupied_niches": 3,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    },
+    {
+      "generation": 4,
+      "best_bins": 396,
+      "best_efficiency": 0.9604761904761905,
+      "best_fuel": 291126,
+      "best_capsule_id": "8899fcbb67809c9e",
+      "best_capsule_name": "Seed-Heuristic-000-mut-g1-mut-g1",
+      "llm_calls_consumed": 37,
+      "executions_consumed": 1850,
+      "qd_score": 2.8764285714285713,
+      "archive_coverage": 0.03,
+      "occupied_niches": 3,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    },
+    {
+      "generation": 5,
+      "best_bins": 396,
+      "best_efficiency": 0.9604761904761905,
+      "best_fuel": 291126,
+      "best_capsule_id": "8899fcbb67809c9e",
+      "best_capsule_name": "Seed-Heuristic-000-mut-g1-mut-g1",
+      "llm_calls_consumed": 46,
+      "executions_consumed": 2300,
+      "qd_score": 2.8764285714285713,
+      "archive_coverage": 0.03,
+      "occupied_niches": 3,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    }
+  ],
+  "budget_consumed": {
+    "llm_calls_consumed": 46,
+    "executions_consumed": 2300
+  },
+  "total_lineage_nodes": 46,
+  "total_lineage_edges": 36,
+  "phylogeny": {
+    "graph": {
+      "nodes": [
+        {
+          "id": "c670d27f7d99e0ec",
+          "name": "Seed-Heuristic-000",
+          "generation": 0,
+          "content_hash": "c670d27f7d99e0ec0d5d930e5c35524487fbdde1ae53e32db83431bf0276317e",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:44.494850800Z"
+        },
+        {
+          "id": "a08769e6b82023db",
+          "name": "Seed-Heuristic-001",
+          "generation": 0,
+          "content_hash": "a08769e6b82023dbee5980b05313c127a1b4857e1de591baec351b344336fb04",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:44.545631900Z"
+        },
+        {
+          "id": "7d9f46a8ae71fc9e",
+          "name": "Seed-Heuristic-002",
+          "generation": 0,
+          "content_hash": "7d9f46a8ae71fc9ef45e1885feca120658f1a3394d948e6c3f0243c98b712eb8",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:44.614826900Z"
+        },
+        {
+          "id": "f25b21a9b1ba09f1",
+          "name": "Seed-Heuristic-003",
+          "generation": 0,
+          "content_hash": "f25b21a9b1ba09f16cf2e9909dd8ffe7e484194f9c71fba2746ada8b2c163916",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:44.666788200Z"
+        },
+        {
+          "id": "2c6fa5a94fd2c367",
+          "name": "Seed-Heuristic-004",
+          "generation": 0,
+          "content_hash": "2c6fa5a94fd2c367e5de8d530fa5c50ac5be730c50d3a7e342481f0e01ad2f30",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:44.715426800Z"
+        },
+        {
+          "id": "ea4669004eaf7f2a",
+          "name": "Seed-Heuristic-005",
+          "generation": 0,
+          "content_hash": "ea4669004eaf7f2ad86d14ea2cf90e496f2352afecdc445599aa6626a740ca97",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:44.791907300Z"
+        },
+        {
+          "id": "b3405be9951ae8d1",
+          "name": "Seed-Heuristic-006",
+          "generation": 0,
+          "content_hash": "b3405be9951ae8d1ff25f581e0737005491cd964a509c4c93334ed4fb8579628",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:44.841270900Z"
+        },
+        {
+          "id": "319ea0887a09bfec",
+          "name": "Seed-Heuristic-007",
+          "generation": 0,
+          "content_hash": "319ea0887a09bfec16e2de0628bc3ec75b1ab135798584f426181d8951d62600",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:44.928136200Z"
+        },
+        {
+          "id": "9954157aa59f0676",
+          "name": "Seed-Heuristic-008",
+          "generation": 0,
+          "content_hash": "9954157aa59f067671679e9f33ceff6138cdbc8ae77093168f5e2e21ec7ea431",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.004281900Z"
+        },
+        {
+          "id": "cd979496555f07b4",
+          "name": "Seed-Heuristic-009",
+          "generation": 0,
+          "content_hash": "cd979496555f07b4ce840868eca740262b7ced4e6bc80cb4f45c7e1a14f7e17d",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.080912800Z"
+        },
+        {
+          "id": "371fb218d3580268",
+          "name": "Seed-Heuristic-000-mut-g1",
+          "generation": 1,
+          "content_hash": "371fb218d358026859f6e1e0c3e1bcc0ecaecdffa3351745bb6c2c4972d1bd18",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.159723600Z"
+        },
+        {
+          "id": "8899fcbb67809c9e",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1",
+          "generation": 1,
+          "content_hash": "8899fcbb67809c9e8bd338b4eb7ad13637231a7f47f0f93c6db86154657b0119",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.282085800Z"
+        },
+        {
+          "id": "67f6f9cc80a4737e",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g1",
+          "generation": 1,
+          "content_hash": "67f6f9cc80a4737eac9044d043bd8bccf09ac68a855d38a03d78d7e0b9baa169",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.379094100Z"
+        },
+        {
+          "id": "016b72b5e65c134d",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1",
+          "generation": 1,
+          "content_hash": "016b72b5e65c134d95cc1a24d048e494891d18f86a6dfcbd824064a1ed3b9559",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.464495100Z"
+        },
+        {
+          "id": "0aa9eaae17e7287d",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g1",
+          "generation": 1,
+          "content_hash": "0aa9eaae17e7287d61ff6f64b7d56048faf7faed9ae96b7fef2ecb6d9dcf8841",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.557194400Z"
+        },
+        {
+          "id": "d0286f70b51abd5e",
+          "name": "Seed-Heuristic-000-mut-g1",
+          "generation": 1,
+          "content_hash": "d0286f70b51abd5e625522965c33ff943e76675a2da3df4b6cf9bedadcd41909",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.650593800Z"
+        },
+        {
+          "id": "bfbbcf30975946d5",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1",
+          "generation": 1,
+          "content_hash": "bfbbcf30975946d5adf63638e17daa0d827c0b6e8c01d8f1ab2d9c8a29905381",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.744975800Z"
+        },
+        {
+          "id": "7b39448c68a736f0",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g1",
+          "generation": 1,
+          "content_hash": "7b39448c68a736f02815d9890cb2a533bd9f12e2b2de1236fbc3f8e9f62abf18",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.844129700Z"
+        },
+        {
+          "id": "3ab01bea54781adc",
+          "name": "Seed-Heuristic-000-mut-g1",
+          "generation": 1,
+          "content_hash": "3ab01bea54781adcc52601a3a3dbc8f50bcbde2d958590979ac57b1d020eef57",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:45.940180Z"
+        },
+        {
+          "id": "8126f0462f767e28",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g2",
+          "generation": 2,
+          "content_hash": "8126f0462f767e284292c2e6e56dc1ac082ae95189648a46e53d24b11f8df445",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.042754700Z"
+        },
+        {
+          "id": "12362f3abbc2d2b8",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g2",
+          "generation": 2,
+          "content_hash": "12362f3abbc2d2b8a84292894140ea47a29b2a2eafee3fbaea31f4892f3de69e",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.130179900Z"
+        },
+        {
+          "id": "0d30663bf4661d94",
+          "name": "Seed-Heuristic-000-mut-g2",
+          "generation": 2,
+          "content_hash": "0d30663bf4661d944e0335967baa125b2ef8ee0882758315703f2eaecff1f90b",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.220948700Z"
+        },
+        {
+          "id": "8ffbe0757b3b2eea",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g2",
+          "generation": 2,
+          "content_hash": "8ffbe0757b3b2eead97f25f9f20648022a45dd9c8c6117b78464ff1449870b23",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.305188300Z"
+        },
+        {
+          "id": "1cf035ed6f2044cd",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g2",
+          "generation": 2,
+          "content_hash": "1cf035ed6f2044cd4cf17677f54b9c22f450b35c9a3868199ef96ad0887b824a",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.397178800Z"
+        },
+        {
+          "id": "47c2234163c12d50",
+          "name": "Seed-Heuristic-000-mut-g2",
+          "generation": 2,
+          "content_hash": "47c2234163c12d50d449992609398822b4919d6a3b825b84d15f86bd073d3d1f",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.486335700Z"
+        },
+        {
+          "id": "198ed78e88e77cfc",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g2",
+          "generation": 2,
+          "content_hash": "198ed78e88e77cfcfe1e08e225cf54bf23810dbce0da2a55ab94b0d1762938d7",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.574960600Z"
+        },
+        {
+          "id": "e7268bbaa5578b8b",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g2",
+          "generation": 2,
+          "content_hash": "e7268bbaa5578b8b75bb6337827222256f466cc795b177e286dcc317bf616a26",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.660019200Z"
+        },
+        {
+          "id": "9ca8487bad5b0e98",
+          "name": "Seed-Heuristic-000-mut-g2",
+          "generation": 2,
+          "content_hash": "9ca8487bad5b0e9867ec4d7be809fc9e39788a5044b147dce8c44f05a6164479",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.745918200Z"
+        },
+        {
+          "id": "1938183d501d8b44",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3",
+          "generation": 3,
+          "content_hash": "1938183d501d8b44d23c0ce87ac62e6b7e3034ad0199172959fb3fb9406a4065",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.828689300Z"
+        },
+        {
+          "id": "b85733ea5a5cf389",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g3",
+          "generation": 3,
+          "content_hash": "b85733ea5a5cf38959f2b4b7952750697032916c2978712d6319bbf6868a1a0d",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:46.914488200Z"
+        },
+        {
+          "id": "1803577208b96ac5",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "1803577208b96ac5d358719cdf52bf5dc6800012dbd4437c547b4ddc01693b4d",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.000686400Z"
+        },
+        {
+          "id": "7361220af0058c4d",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g3",
+          "generation": 3,
+          "content_hash": "7361220af0058c4d915e93f4a348ac427fb268448a36c40ec7c5d129e0550835",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.085532200Z"
+        },
+        {
+          "id": "c39136ddbdafd57d",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3",
+          "generation": 3,
+          "content_hash": "c39136ddbdafd57d600d00ed19b4b80b62b188d6af1152d6b77a4c8bee2b4be3",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.170039100Z"
+        },
+        {
+          "id": "9eee57bb7ccecfb7",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "9eee57bb7ccecfb755b1b85f316b55adf78ac5f5308840fa3c948cf246bb20ae",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.261714400Z"
+        },
+        {
+          "id": "4c3df73a3e61fea1",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g3",
+          "generation": 3,
+          "content_hash": "4c3df73a3e61fea12c4a2369dd0a95a4da551907f0a7df5007ae1b66fd2b838c",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.347029600Z"
+        },
+        {
+          "id": "9b33148f696ef76f",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3",
+          "generation": 3,
+          "content_hash": "9b33148f696ef76fa95a9129de79d5852f9481b586d25415b09d695a831f3ee7",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.448428Z"
+        },
+        {
+          "id": "cbf32f7186c988e4",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "cbf32f7186c988e41ed9308e9963a37d4a3505261c777e680e6414b0fdbef4c6",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.538243Z"
+        },
+        {
+          "id": "9ae8fc974dd08104",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g4",
+          "generation": 4,
+          "content_hash": "9ae8fc974dd08104665e77677e386cabcf6eb88fe66bf2341cd8290882c8c58e",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.626463900Z"
+        },
+        {
+          "id": "0003c4da333ff0d9",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g4",
+          "generation": 4,
+          "content_hash": "0003c4da333ff0d96f055b04af06a0408471ddefd925ff528c37a380065c8cfe",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.713421400Z"
+        },
+        {
+          "id": "dac3747e01878ea5",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "dac3747e01878ea56a193bbc7392b0cbde7d98b7ded4fff2a19658343a7adbb7",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.802561600Z"
+        },
+        {
+          "id": "def9555523954fa8",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g4",
+          "generation": 4,
+          "content_hash": "def9555523954fa8222cbde12467bc26b1a942129d469860848c96cf9920f070",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.889100Z"
+        },
+        {
+          "id": "3cf315a9ff50ebc7",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g4",
+          "generation": 4,
+          "content_hash": "3cf315a9ff50ebc706b1d636922e0c0485c42eb2132319c69da7ee77c1f8fc56",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:47.978869100Z"
+        },
+        {
+          "id": "8162664866054e8b",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "8162664866054e8bcdf826faee2b9aa63013a6b559a91777507fcb24f2a6376b",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:48.071756300Z"
+        },
+        {
+          "id": "b5907eb666779488",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g4",
+          "generation": 4,
+          "content_hash": "b5907eb666779488c78b5fa0a58b2c712ffe052d7f2d89c8671b932d865cb684",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:48.156441700Z"
+        },
+        {
+          "id": "f35774fd60423d02",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g4",
+          "generation": 4,
+          "content_hash": "f35774fd60423d0259c24c4ccf5ca13e7616c608c647c19da8126e1708b3a02e",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:48.248247600Z"
+        },
+        {
+          "id": "26881c8f7ae8c4b1",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "26881c8f7ae8c4b131c70b78ce79cb2b7663e3426b9784b35d2a4d309f4fd235",
+          "is_crossover": false,
+          "created_at": "2026-11-10T20:01:48.349118400Z"
+        }
+      ],
+      "node_holes": [],
+      "edge_property": "directed",
+      "edges": [
+        [
+          0,
+          10,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          11,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          12,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          13,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          14,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          0,
+          15,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          16,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          17,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          0,
+          18,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          19,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          20,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          0,
+          21,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          22,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          23,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          0,
+          24,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          25,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          26,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          0,
+          27,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          28,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          29,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          30,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          31,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          32,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          33,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          34,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          35,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          36,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          37,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          38,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          39,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          40,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          41,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          42,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          11,
+          43,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          10,
+          44,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          45,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ]
+      ]
+    },
+    "node_indices": {
+      "319ea0887a09bfec": 7,
+      "1cf035ed6f2044cd": 23,
+      "2c6fa5a94fd2c367": 4,
+      "b85733ea5a5cf389": 29,
+      "3ab01bea54781adc": 18,
+      "67f6f9cc80a4737e": 12,
+      "8899fcbb67809c9e": 11,
+      "371fb218d3580268": 10,
+      "8ffbe0757b3b2eea": 22,
+      "c39136ddbdafd57d": 32,
+      "f35774fd60423d02": 44,
+      "26881c8f7ae8c4b1": 45,
+      "9ae8fc974dd08104": 37,
+      "016b72b5e65c134d": 13,
+      "7361220af0058c4d": 31,
+      "cbf32f7186c988e4": 36,
+      "12362f3abbc2d2b8": 20,
+      "0aa9eaae17e7287d": 14,
+      "b5907eb666779488": 43,
+      "c670d27f7d99e0ec": 0,
+      "ea4669004eaf7f2a": 5,
+      "e7268bbaa5578b8b": 26,
+      "9ca8487bad5b0e98": 27,
+      "47c2234163c12d50": 24,
+      "8162664866054e8b": 42,
+      "0003c4da333ff0d9": 38,
+      "4c3df73a3e61fea1": 34,
+      "9b33148f696ef76f": 35,
+      "7d9f46a8ae71fc9e": 2,
+      "a08769e6b82023db": 1,
+      "3cf315a9ff50ebc7": 41,
+      "bfbbcf30975946d5": 16,
+      "f25b21a9b1ba09f1": 3,
+      "1938183d501d8b44": 28,
+      "d0286f70b51abd5e": 15,
+      "dac3747e01878ea5": 39,
+      "9954157aa59f0676": 8,
+      "cd979496555f07b4": 9,
+      "7b39448c68a736f0": 17,
+      "def9555523954fa8": 40,
+      "0d30663bf4661d94": 21,
+      "b3405be9951ae8d1": 6,
+      "9eee57bb7ccecfb7": 33,
+      "1803577208b96ac5": 30,
+      "198ed78e88e77cfc": 25,
+      "8126f0462f767e28": 19
+    }
+  },
+  "archive": {
+    "dim_x": 10,
+    "dim_y": 10,
+    "grid": {
+      "7,5": {
+        "capsule": {
+          "id": "371fb218d3580268",
+          "name": "Seed-Heuristic-000-mut-g1",
+          "semantic_interface": "Mutated from parent c670d27f7d99e0ec with targeted parameter or condition tuning",
+          "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let mut score = (cpu_norm + ram_norm) + imbalance * 3.8;\n    score\n}",
+          "parent_ids": [
+            "c670d27f7d99e0ec"
+          ],
+          "generation": 1,
+          "content_hash": "371fb218d358026859f6e1e0c3e1bcc0ecaecdffa3351745bb6c2c4972d1bd18",
+          "created_at": "2026-11-10T20:01:45.159723600Z",
+          "metadata": {
+            "mutation_seed": "1171895245824017987",
+            "parent_hash": "c670d27f7d99e0ec0d5d930e5c35524487fbdde1ae53e32db83431bf0276317e"
+          },
+          "interface_version": "ScorePolicyV1",
+          "policy_kind": "ScorePolicy",
+          "ast_fingerprint": {
+            "max_depth": 4,
+            "branch_count": 0,
+            "op_count": 6,
+            "statement_count": 5,
+            "ast_hash": "023fe57b622d5a9734bc2a69b7155e74d552be8a57cd9f743a9f3db05c8b8960"
+          },
+          "dependencies": [],
+          "validation": "PassedLevel2Computational",
+          "graft_manifest": null
+        },
+        "niche_coord": [
+          7,
+          5
+        ],
+        "behavior": {
+          "residual_variance": 12.310081845238095,
+          "new_bin_ratio": 0.1584,
+          "mean_fullness": 0.9604761904761905,
+          "dead_space_ratio": 0.17432539682539683
+        },
+        "fitness": {
+          "is_valid": true,
+          "total_bins": 396,
+          "total_theoretical_min_bins": 380,
+          "total_excess_bins": 16,
+          "mean_efficiency": 0.9604761904761905,
+          "total_fuel": 291408,
+          "solved_instances": 50,
+          "total_instances": 50,
+          "behavior": {
+            "residual_variance": 12.310081845238095,
+            "new_bin_ratio": 0.1584,
+            "mean_fullness": 0.9604761904761905,
+            "dead_space_ratio": 0.17432539682539683
+          },
+          "tldr_score": -0.12310081845238095,
+          "trajectory_metrics": null
+        },
+        "structural_fingerprint": {
+          "max_depth": 4,
+          "branch_count": 0,
+          "op_count": 6,
+          "statement_count": 5,
+          "ast_hash": "023fe57b622d5a9734bc2a69b7155e74d552be8a57cd9f743a9f3db05c8b8960"
+        },
+        "times_sampled": 12,
+        "times_replaced": 0
+      },
+      "6,5": {
+        "capsule": {
+          "id": "8899fcbb67809c9e",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1",
+          "semantic_interface": "Mutated from parent 371fb218d3580268 with targeted parameter or condition tuning",
+          "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let mut score = (cpu_norm + ram_norm) + imbalance * 4.3;\n    score\n}",
+          "parent_ids": [
+            "371fb218d3580268"
+          ],
+          "generation": 1,
+          "content_hash": "8899fcbb67809c9e8bd338b4eb7ad13637231a7f47f0f93c6db86154657b0119",
+          "created_at": "2026-11-10T20:01:45.282085800Z",
+          "metadata": {
+            "parent_hash": "371fb218d358026859f6e1e0c3e1bcc0ecaecdffa3351745bb6c2c4972d1bd18",
+            "mutation_seed": "15005601783990959276"
+          },
+          "interface_version": "ScorePolicyV1",
+          "policy_kind": "ScorePolicy",
+          "ast_fingerprint": {
+            "max_depth": 4,
+            "branch_count": 0,
+            "op_count": 6,
+            "statement_count": 5,
+            "ast_hash": "67c8d7208b21c75322bdd15f3d809d805a7fb2066a105f3a17686724b6838032"
+          },
+          "dependencies": [],
+          "validation": "PassedLevel2Computational",
+          "graft_manifest": null
+        },
+        "niche_coord": [
+          6,
+          5
+        ],
+        "behavior": {
+          "residual_variance": 12.571800595238095,
+          "new_bin_ratio": 0.1584,
+          "mean_fullness": 0.9604761904761905,
+          "dead_space_ratio": 0.17182539682539683
+        },
+        "fitness": {
+          "is_valid": true,
+          "total_bins": 396,
+          "total_theoretical_min_bins": 380,
+          "total_excess_bins": 16,
+          "mean_efficiency": 0.9604761904761905,
+          "total_fuel": 291126,
+          "solved_instances": 50,
+          "total_instances": 50,
+          "behavior": {
+            "residual_variance": 12.571800595238095,
+            "new_bin_ratio": 0.1584,
+            "mean_fullness": 0.9604761904761905,
+            "dead_space_ratio": 0.17182539682539683
+          },
+          "tldr_score": -0.12571800595238095,
+          "trajectory_metrics": null
+        },
+        "structural_fingerprint": {
+          "max_depth": 4,
+          "branch_count": 0,
+          "op_count": 6,
+          "statement_count": 5,
+          "ast_hash": "67c8d7208b21c75322bdd15f3d809d805a7fb2066a105f3a17686724b6838032"
+        },
+        "times_sampled": 12,
+        "times_replaced": 1
+      },
+      "6,6": {
+        "capsule": {
+          "id": "1938183d501d8b44",
+          "name": "Seed-Heuristic-000-mut-g1-mut-g1-mut-g3",
+          "semantic_interface": "Mutated from parent 8899fcbb67809c9e with targeted parameter or condition tuning",
+          "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let mut score = (cpu_norm + ram_norm) + imbalance * 1.9;\n    score\n}",
+          "parent_ids": [
+            "8899fcbb67809c9e"
+          ],
+          "generation": 3,
+          "content_hash": "1938183d501d8b44d23c0ce87ac62e6b7e3034ad0199172959fb3fb9406a4065",
+          "created_at": "2026-11-10T20:01:46.828689300Z",
+          "metadata": {
+            "mutation_seed": "17177222150186799206",
+            "parent_hash": "8899fcbb67809c9e8bd338b4eb7ad13637231a7f47f0f93c6db86154657b0119"
+          },
+          "interface_version": "ScorePolicyV1",
+          "policy_kind": "ScorePolicy",
+          "ast_fingerprint": {
+            "max_depth": 4,
+            "branch_count": 0,
+            "op_count": 6,
+            "statement_count": 5,
+            "ast_hash": "500705144b56a0730ad04b5279ff8b5b0a40f8262253d2f19e5e0e623fa0ca3e"
+          },
+          "dependencies": [],
+          "validation": "PassedLevel2Computational",
+          "graft_manifest": null
+        },
+        "niche_coord": [
+          6,
+          6
+        ],
+        "behavior": {
+          "residual_variance": 12.888144841269842,
+          "new_bin_ratio": 0.1592,
+          "mean_fullness": 0.9554761904761905,
+          "dead_space_ratio": 0.15031746031746032
+        },
+        "fitness": {
+          "is_valid": true,
+          "total_bins": 398,
+          "total_theoretical_min_bins": 380,
+          "total_excess_bins": 18,
+          "mean_efficiency": 0.9554761904761905,
+          "total_fuel": 288960,
+          "solved_instances": 50,
+          "total_instances": 50,
+          "behavior": {
+            "residual_variance": 12.888144841269842,
+            "new_bin_ratio": 0.1592,
+            "mean_fullness": 0.9554761904761905,
+            "dead_space_ratio": 0.15031746031746032
+          },
+          "tldr_score": -0.1288814484126984,
+          "trajectory_metrics": null
+        },
+        "structural_fingerprint": {
+          "max_depth": 4,
+          "branch_count": 0,
+          "op_count": 6,
+          "statement_count": 5,
+          "ast_hash": "500705144b56a0730ad04b5279ff8b5b0a40f8262253d2f19e5e0e623fa0ca3e"
+        },
+        "times_sampled": 12,
+        "times_replaced": 1
+      }
+    },
+    "total_samples": 36,
+    "ucb_exploration_factor": 1.414,
+    "domain": "MultiResourceScheduling"
+  },
+  "crossover_attempts": 0,
+  "crossover_not_evaluable_count": 0,
+  "crossover_rejected_count": 0
+}

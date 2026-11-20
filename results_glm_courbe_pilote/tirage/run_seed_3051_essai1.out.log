@@ -1,0 +1,78 @@
+[2m2026-11-15T11:34:15.119904Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=3051, Pop=680, MaxGens=1
+[2m2026-11-15T13:40:32.836984Z[0m [33m WARN[0m [2mnomad_operator::http_llm[0m[2m:[0m Ollama request attempt 1/6 failed (Failed to parse JSON response: Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu. (os error 10060)). Retrying in 4s...
+[2m2026-11-15T13:57:40.431463Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 6302e3acd38a4333 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 3051 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4145 bins (excess: +116), Efficiency: 97.21%, Fuel: 66854144
+ Best In-Dist (w/o Lookahead) : 4247 bins (excess: +218), Efficiency: 94.87%
+ Dynamic Trajectory: tLDR = 1.7552
+ Behavior Profile : DeadSpaceRatio: 2.5%, NewBinRatio: 41.5%, ResVar: 0.60
+ MAP-Elites Niches: 12 active (12.0% coverage), QD-Score: 9.538
+ Validation Score : 4173 bins (excess: +127), Efficiency: 96.96%
+ OOD-1 Score      : 10308 bins (excess: +263), Efficiency: 97.45%
+ OOD-2 Score      : 3607 bins (excess: +65), Efficiency: 98.20%
+ Lineage Nodes    : 680, Transitions: 0
+ Best Heuristic   : LLM-Seed-617
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Strict dead-space avoidance: gaps too small to ever host a realistic item are poison.
+    let min_item = 1u32;
+    let dead_threshold = if next_item_size > min_item { next_item_size } else { min_item };
+    if post_residual > 0 && post_residual < dead_threshold {
+        score += 60.0 * (dead_threshold - post_residual) as f64;
+    }
+
+    // Perfect fit: strongly reward zero post residual.
+    if post_residual == 0 {
+        score -= 150.0;
+    }
+
+    // Tightness reward: the closer the fill, the better (non-linear coupling).
+    let fill = item_size as f64 / bin_residual.max(1) as f64;
+    score -= 40.0 * fill * fill;
+
+    // Penalize leaving large-but-awkward gaps: post residual in (0, 10) is near-dead.
+    if post_residual > 0 && post_residual < 10 {
+        score += 25.0;
+    }
+
+    // Last-chance bin: if this is the only fitting bin, avoid opening a new one.
+    if fitting_bins_count == 1 && bin_residual >= item_size {
+        score -= 55.0;
+    }
+
+    // Open-bin pressure: when many bins are open, discourage opening new bins;
+    // when few bins are open, mild encouragement of consolidation.
+    let progress = step_index as f64 / total_items.max(1) as f64;
+    let new_bin_bonus = 30.0 * (1.0 - progress) + 2.0 * open_bins_count as f64;
+    if bin_residual == bin_capacity {
+        // Brand-new bin candidate: base cost so it only wins when open bins are unattractive.
+        score += 20.0 + new_bin_bonus;
+        // But if the next item exactly fills the remainder after this placement, new bin is great.
+        if next_item_size > 0 && post_residual == next_item_size {
+            score -= 80.0;
+        }
+    }
+
+    // Mean-residual coupling: prefer bins whose residual is below the mean (tighter bins),
+    // penalize dumping into the loosest bin.
+    let bin_res_f = bin_residual as f64;
+    if bin_res_f < mean_residual {
+        score -= 8.0;
+    } else if bin_res_f > mean_residual * 1.5 {
+        score += 6.0;
+    }
+
+    // Late in the stream, close out bins aggressively: reward near-full placements more.
+    if progress > 0.8 && post_residual <= 15 {
+        score -= 20.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_glm_courbe_pilote\tirage\run_seed_3051_tirage.json.tmp

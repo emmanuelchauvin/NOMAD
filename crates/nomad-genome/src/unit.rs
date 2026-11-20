@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use syn::visit::Visit;
 use syn::{Expr, Ident, ItemFn, Local, Stmt};
 
@@ -26,6 +26,8 @@ pub enum LogicalUnitKind {
 /// ou la greffe vers un autre organisme (Section 4.4).
 #[derive(Debug, Clone)]
 pub struct LogicalUnit {
+    /// Position de l'instruction dans le corps du donneur.
+    pub index: usize,
     /// Identifiant synthétique unique de l'unité logique.
     pub unit_id: String,
     /// Nature typologique du fragment (branche, variable, calcul).
@@ -67,6 +69,133 @@ pub fn collect_dependencies(stmt: &Stmt) -> Vec<String> {
     deps
 }
 
+/// Visiteur ne retenant que les variables lues sans être liées dans le fragment : chemins à
+/// un seul segment (`x`), et non les noms de méthode (`.powi(..)`), de champ, de type ou de
+/// chemin (`f64::MAX`). Les liaisons (`let`, fermeture, `for`, `if let`, `match`) suivent la
+/// portée de Rust : un nom n'est lié qu'après son initialisation et jusqu'à la fin du bloc.
+struct FreeVariableCollector {
+    free: HashSet<String>,
+    scopes: Vec<HashSet<String>>,
+}
+
+impl FreeVariableCollector {
+    fn new() -> Self {
+        Self {
+            free: HashSet::new(),
+            scopes: vec![HashSet::new()],
+        }
+    }
+
+    fn bind_pat(&mut self, pat: &syn::Pat) {
+        match pat {
+            syn::Pat::Ident(p) => {
+                self.scopes.last_mut().unwrap().insert(p.ident.to_string());
+            }
+            syn::Pat::Type(t) => self.bind_pat(&t.pat),
+            syn::Pat::Paren(p) => self.bind_pat(&p.pat),
+            syn::Pat::Reference(r) => self.bind_pat(&r.pat),
+            syn::Pat::Tuple(t) => t.elems.iter().for_each(|p| self.bind_pat(p)),
+            syn::Pat::TupleStruct(t) => t.elems.iter().for_each(|p| self.bind_pat(p)),
+            syn::Pat::Or(o) => o.cases.iter().for_each(|p| self.bind_pat(p)),
+            _ => {}
+        }
+    }
+
+    fn scoped(&mut self, f: impl FnOnce(&mut Self)) {
+        self.scopes.push(HashSet::new());
+        f(self);
+        self.scopes.pop();
+    }
+}
+
+impl<'ast> Visit<'ast> for FreeVariableCollector {
+    fn visit_expr_path(&mut self, node: &'ast syn::ExprPath) {
+        if node.qself.is_none() && node.path.segments.len() == 1 {
+            let name = node.path.segments[0].ident.to_string();
+            if !self.scopes.iter().any(|s| s.contains(&name)) {
+                self.free.insert(name);
+            }
+        }
+    }
+    fn visit_block(&mut self, node: &'ast syn::Block) {
+        self.scoped(|c| syn::visit::visit_block(c, node));
+    }
+    fn visit_local(&mut self, node: &'ast Local) {
+        // L'initialisation est lue avant que le nom ne soit lié : `let x = x + 1.0` lit `x`.
+        if let Some(init) = &node.init {
+            self.visit_expr(&init.expr);
+            if let Some((_, diverge)) = &init.diverge {
+                self.visit_expr(diverge);
+            }
+        }
+        self.bind_pat(&node.pat);
+    }
+    fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
+        self.scoped(|c| {
+            node.inputs.iter().for_each(|p| c.bind_pat(p));
+            c.visit_expr(&node.body);
+        });
+    }
+    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+        self.visit_expr(&node.expr);
+        self.scoped(|c| {
+            c.bind_pat(&node.pat);
+            c.visit_block(&node.body);
+        });
+    }
+    fn visit_expr_let(&mut self, node: &'ast syn::ExprLet) {
+        self.visit_expr(&node.expr);
+        self.bind_pat(&node.pat);
+    }
+    fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
+        // Un `if let` lie ses noms pour la branche `then` seulement.
+        self.scoped(|c| {
+            c.visit_expr(&node.cond);
+            c.visit_block(&node.then_branch);
+        });
+        if let Some((_, else_branch)) = &node.else_branch {
+            self.visit_expr(else_branch);
+        }
+    }
+    fn visit_expr_while(&mut self, node: &'ast syn::ExprWhile) {
+        self.scoped(|c| {
+            c.visit_expr(&node.cond);
+            c.visit_block(&node.body);
+        });
+    }
+    fn visit_arm(&mut self, node: &'ast syn::Arm) {
+        self.scoped(|c| {
+            c.bind_pat(&node.pat);
+            if let Some((_, guard)) = &node.guard {
+                c.visit_expr(guard);
+            }
+            c.visit_expr(&node.body);
+        });
+    }
+}
+
+/// Variables qu'un fragment lit sans les définir lui-même : ce que l'hôte doit fournir pour
+/// que la greffe compile. Le nom défini par un `let` de premier niveau n'est requis que s'il
+/// est aussi lu dans son initialisation (`let score = score * 2.0`).
+pub fn collect_free_variables(stmt: &Stmt) -> Vec<String> {
+    let mut c = FreeVariableCollector::new();
+    c.visit_stmt(stmt);
+    let mut free: Vec<String> = c.free.into_iter().collect();
+    free.sort();
+    free
+}
+
+/// Parcourt récursivement une expression AST pour lister toutes les variables référencées.
+pub fn collect_expr_dependencies(expr: &Expr) -> Vec<String> {
+    let mut collector = DependencyCollector {
+        identifiers: HashSet::new(),
+    };
+    collector.visit_expr(expr);
+    let mut deps: Vec<String> = collector.identifiers.into_iter().collect();
+    deps.sort();
+    deps
+}
+
 /// ============================================================================
 /// extract_logical_units : Algorithme d'Extraction des Unités Logiques
 /// ============================================================================
@@ -75,20 +204,14 @@ pub fn collect_dependencies(stmt: &Stmt) -> Vec<String> {
 pub fn extract_logical_units(item_fn: &ItemFn) -> Vec<LogicalUnit> {
     let mut units = Vec::new();
 
-    for stmt in &item_fn.block.stmts {
+    for (index, stmt) in item_fn.block.stmts.iter().enumerate() {
         let (kind, should_extract) = match stmt {
-            Stmt::Local(Local { init: Some(_), .. }) => {
-                (LogicalUnitKind::LocalBinding, true)
-            }
-            Stmt::Expr(Expr::If(_), _) => {
-                (LogicalUnitKind::ConditionalBranch, true)
-            }
+            Stmt::Local(Local { init: Some(_), .. }) => (LogicalUnitKind::LocalBinding, true),
+            Stmt::Expr(Expr::If(_), _) => (LogicalUnitKind::ConditionalBranch, true),
             Stmt::Expr(Expr::Binary(_) | Expr::Assign(_), _) => {
                 (LogicalUnitKind::PenaltyOrBonus, true)
             }
-            Stmt::Expr(Expr::Block(_), _) => {
-                (LogicalUnitKind::GeneralBlock, true)
-            }
+            Stmt::Expr(Expr::Block(_), _) => (LogicalUnitKind::GeneralBlock, true),
             _ => (LogicalUnitKind::GeneralBlock, false),
         };
 
@@ -102,6 +225,7 @@ pub fn extract_logical_units(item_fn: &ItemFn) -> Vec<LogicalUnit> {
             let dependencies = collect_dependencies(stmt);
 
             units.push(LogicalUnit {
+                index,
                 unit_id,
                 kind,
                 stmt: stmt.clone(),
@@ -148,14 +272,65 @@ mod tests {
 
         assert!(units.len() >= 3);
         // Should find local binding
-        assert!(units.iter().any(|u| u.kind == LogicalUnitKind::LocalBinding));
+        assert!(units
+            .iter()
+            .any(|u| u.kind == LogicalUnitKind::LocalBinding));
         // Should find the conditional branches
         let conditionals: Vec<_> = units
             .iter()
             .filter(|u| u.kind == LogicalUnitKind::ConditionalBranch)
             .collect();
         assert_eq!(conditionals.len(), 2);
-        assert!(conditionals[0].dependencies.contains(&"bin_residual".to_string()));
+        assert!(conditionals[0]
+            .dependencies
+            .contains(&"bin_residual".to_string()));
     }
 }
 
+#[cfg(test)]
+mod free_variable_tests {
+    use super::*;
+
+    fn stmt(code: &str) -> Stmt {
+        syn::parse_str(code).unwrap()
+    }
+
+    #[test]
+    fn methods_paths_and_inner_bindings_are_not_free() {
+        let s = stmt(
+            "if post_residual > 0 { let gap = (next_item_size - post_residual) as f64; \
+             score += gap.powi(2).clamp(0.0, f64::MAX) * k; }",
+        );
+        assert_eq!(
+            collect_free_variables(&s),
+            vec!["k", "next_item_size", "post_residual", "score"]
+        );
+    }
+
+    /// Portee de Rust : l'initialisation d'un `let` interne lit le nom externe, et un nom
+    /// lie dans un bloc n'est plus lie apres ce bloc.
+    #[test]
+    fn bindings_follow_rust_scoping() {
+        assert_eq!(
+            collect_free_variables(&stmt("if c { let x = x + 1.0; score += x; }")),
+            vec!["c", "score", "x"]
+        );
+        assert_eq!(
+            collect_free_variables(&stmt("{ if c { let t = 1.0; score += t; } score += t; }")),
+            vec!["c", "score", "t"]
+        );
+        assert_eq!(
+            collect_free_variables(&stmt("if let Some(v) = opt { score += v; } else { score += w; }")),
+            vec!["opt", "score", "w"]
+        );
+    }
+
+    #[test]
+    fn top_level_let_needs_only_its_initialiser() {
+        assert_eq!(collect_free_variables(&stmt("let gap = a - b;")), vec!["a", "b"]);
+        assert_eq!(
+            collect_free_variables(&stmt("let score = score * 2.0;")),
+            vec!["score"]
+        );
+    }
+}

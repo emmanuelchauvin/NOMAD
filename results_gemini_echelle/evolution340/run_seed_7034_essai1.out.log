@@ -1,0 +1,78 @@
+2026-11-14T00:53:48.419602Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7034, Pop=8, MaxGens=37
+2026-11-14T01:29:05.578030Z  INFO nomad_orchestrator::engine: Evaluating winning capsule bc68c779ca83abe5 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7034 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4129 bins (excess: +98), Efficiency: 97.63%, Fuel: 46665016
+ Best In-Dist (w/o Lookahead) : 4255 bins (excess: +224), Efficiency: 94.74%
+ Dynamic Trajectory: tLDR = 1.3319
+ Behavior Profile : DeadSpaceRatio: 26.5%, NewBinRatio: 41.3%, ResVar: 0.50
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 6.483
+ Validation Score : 4106 bins (excess: +97), Efficiency: 97.64%
+ OOD-1 Score      : 10447 bins (excess: +434), Efficiency: 95.85%
+ OOD-2 Score      : 3611 bins (excess: +55), Efficiency: 98.48%
+ Lineage Nodes    : 340, Transitions: 183
+ Best Heuristic   : LLM-Seed-105-mut-g23-mut-g25
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let mut score = post_residual as f64;
+
+    // 1. Refined Perfect Fit and Sliver Mitigation
+    if post_residual == 0 {
+        score -= 2600.0;
+    } else if post_residual < 5 {
+        score += 950.0 - (post_residual as f64 * 180.0);
+    } else if post_residual < (bin_capacity / 5) {
+        // Reward creating mid-sized residual spaces that can accommodate common item sizes
+        score -= 400.0 / (post_residual as f64).sqrt();
+    }
+
+    // 2. Adaptive Lookahead Coupling
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Reward fits that leave exactly enough room for the next item
+            let gap = post_residual - next_item_size;
+            score -= 1300.0 - (gap as f64 * 6.0);
+        } else {
+            score += 650.0 + (next_item_size as f64 * 1.8);
+        }
+    }
+
+    // 3. New Bin Thresholding (Oracle Logic)
+    if bin_residual == bin_capacity {
+        let density = (open_bins_count as f64).powf(1.1) / (step_index as f64 + 1.0).sqrt();
+        score += (900.0 * (1.0 - progress)) + (density * 55.0);
+    } else {
+        // 4. Entropy Reduction: Penalize deviation to force uniform packing
+        let deviation = (post_residual as f64 - mean_residual).abs();
+        score += deviation * 0.85;
+    }
+
+    // 5. Scarcity Constraint
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 2200.0 - (post_residual as f64 * 6.0);
+    }
+
+    // 6. Non-linear utilization bias
+    if bin_residual > bin_capacity / 2 && bin_residual != bin_capacity {
+        let utilization_gain = (bin_residual - post_residual) as f64 / bin_capacity as f64;
+        score -= 500.0 * utilization_gain.powi(2);
+    }
+
+    // 7. Large Item Handling
+    // Prioritize placing large items in bins with the most capacity remaining to avoid stranding
+    if item_size > (bin_capacity / 2) {
+        score -= (bin_capacity - bin_residual) as f64 * 2.0;
+    }
+
+    // 8. Final Stage Cleanup
+    if progress > 0.92 {
+        score -= (bin_capacity - post_residual) as f64 * 8.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7034_evolution340.json.tmp

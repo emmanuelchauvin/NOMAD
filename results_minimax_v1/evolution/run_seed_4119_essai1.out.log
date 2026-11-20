@@ -1,0 +1,98 @@
+2026-11-13T13:13:30.530235Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4119, Pop=8, MaxGens=12
+2026-11-13T13:29:05.948847Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 77f1f7743620b28a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4119 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4227 bins (excess: +178), Efficiency: 95.79%, Fuel: 38392025
+ Best In-Dist (w/o Lookahead) : 4228 bins (excess: +179), Efficiency: 95.77%
+ Dynamic Trajectory: tLDR = 0.2588
+ Behavior Profile : DeadSpaceRatio: 68.1%, NewBinRatio: 42.3%, ResVar: 0.48
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.967
+ Validation Score : 4209 bins (excess: +183), Efficiency: 95.65%
+ OOD-1 Score      : 10521 bins (excess: +413), Efficiency: 96.07%
+ OOD-2 Score      : 3649 bins (excess: +92), Efficiency: 97.48%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-004-mut-g6
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let size = item_size as f64;
+    let residual = bin_residual as f64;
+    let mean = mean_residual.max(0.0);
+    let next = next_item_size as f64;
+    let post = post_residual as f64;
+
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        step_index as f64 / total_items as f64
+    };
+
+    let waste_ratio = (post / capacity).clamp(0.0, 1.0);
+    let fill_ratio = 1.0 - waste_ratio;
+    let residual_ratio = (residual / capacity).clamp(0.0, 1.0);
+    let mean_ratio = (mean / capacity).clamp(0.0, 1.0);
+    let next_ratio = (next / capacity).clamp(0.0, 1.0);
+
+    // Base preference for preserving currently open capacity.
+    let mut score = post;
+
+    // Strongly reward consuming tight residual space, with diminishing returns.
+    score += 26.0 * waste_ratio * waste_ratio - 14.0 * fill_ratio * fill_ratio;
+
+    // Relative residual quality: bins below the mean are preferred.
+    score -= 4.5 * (residual - mean) / capacity;
+
+    // Nonlinear bin-count pressure: opening more bins is increasingly costly.
+    let bins_term = (open_bins_count as f64).sqrt().max(1.0);
+    score += 3.2 * (1.0 - progress) / bins_term;
+
+    // Lookahead: keep enough room for the immediately following item when possible.
+    if next > 0.0 {
+        let next_fits = post + 0.5 >= next;
+        if next_fits {
+            score -= 11.0 * (0.4 + 0.6 * progress);
+        } else {
+            // A large next item makes tiny remnants less valuable.
+            let gap = (next - post).max(0.0);
+            score += 8.0 * (gap / capacity).min(1.0) * (0.45 + 0.55 * progress);
+        }
+    }
+
+    // Choice-set awareness: with few alternatives, accept a worse local fit.
+    if fitting_bins_count <= 1 {
+        score -= 17.0 * (1.0 - progress);
+        score += 7.0 * waste_ratio;
+    } else {
+        score += 1.8 * waste_ratio;
+    }
+
+    // Prefer a bin whose residual is close to the mean only when it is not too tight.
+    let closeness = 1.0 - (residual_ratio - mean_ratio).abs();
+    score += 2.0 * closeness * (1.0 - waste_ratio) * (1.0 - progress);
+
+    // Empty-bin penalty is softened late in the stream, but remains meaningful.
+    if bin_residual == bin_capacity {
+        score += 24.0;
+        score -= 11.0 * progress;
+        if open_bins_count == 0 {
+            score -= 52.0;
+        }
+        if fitting_bins_count == 0 {
+            score -= 24.0;
+        }
+    }
+
+    // Small temporal correction discourages erratic choices without dominating.
+    score += 0.04 * (step_index as f64).sqrt();
+    score -= 0.014 * (total_items as f64).sqrt() * progress;
+
+    // Very small, calibrated preference for the current item size matching tight gaps.
+    let size_gap = (size - residual).abs() / capacity;
+    score -= 0.8 * (1.0 - size_gap.min(1.0)) * (1.0 - progress);
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4119_evolution.json.tmp

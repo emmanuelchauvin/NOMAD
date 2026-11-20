@@ -22,5 +22,7 @@ pub struct ReproducibilityAudit {
     pub raw_response: String,
     /// Timestamp of generation.
     pub timestamp: DateTime<Utc>,
+    /// Flag indicating whether this operation involved an actual remote/network LLM inference call.
+    #[serde(default)]
+    pub is_network_call: bool,
 }
-

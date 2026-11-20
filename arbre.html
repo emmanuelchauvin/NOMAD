@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOMAD Phylogeny Tree - SwarmCross-g8-0f25-039a-mut-g8</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0b0f19;
+      color: #f8fafc;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #111827;
+      border-bottom: 1px solid #1f2937;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .title-group h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .meta-pills {
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .meta-pills span {
+      background: #1f2937;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #374151;
+    }
+    .meta-pills strong {
+      color: #e2e8f0;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn-group {
+      display: flex;
+      background: #1f2937;
+      border-radius: 8px;
+      padding: 2px;
+      border: 1px solid #374151;
+    }
+    button {
+      background: transparent;
+      border: none;
+      color: #f1f5f9;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s, color 0.15s;
+    }
+    button:hover {
+      background: #374151;
+      color: #38bdf8;
+    }
+    .zoom-display {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      min-width: 52px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .legend {
+      display: flex;
+      gap: 12px;
+      font-size: 0.8rem;
+      align-items: center;
+      background: #1e293b;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-root { background: #3b82f6; border: 1px solid #1d4ed8; }
+    .dot-mutation { background: #10b981; border: 1px solid #047857; }
+    .dot-crossover { background: #8b5cf6; border: 1px solid #6d28d9; }
+    
+    #viewport {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(#1e293b 1px, transparent 1px);
+      background-size: 24px 24px;
+      cursor: grab;
+      user-select: none;
+    }
+    #viewport:active {
+      cursor: grabbing;
+    }
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+    /* UNCONSTRAINED SVG RENDERING: Explicit natural dimensions ensure no squashing */
+    #canvas svg {
+      display: block;
+      user-select: none;
+    }
+    .hint {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid #334155;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+    }
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.1rem;
+      color: #38bdf8;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title-group">
+      <h1>🧬 NOMAD Phylogenetic Lineage DAG</h1>
+      <div class="meta-pills">
+        <span>Groupe : <strong>Group C (NOMAD Swarm Crossover)</strong></span>
+        <span>Seed : <strong>42</strong></span>
+        <span>Nœuds : <strong>85</strong></span>
+        <span>Transitions : <strong>123</strong></span>
+        <span>Champion : <strong>SwarmCross-g8-0f25-039a-mut-g8</strong></span>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot dot-root"></div> Racine (Gen 0)</div>
+        <div class="legend-item"><div class="legend-dot dot-mutation"></div> Mutation</div>
+        <div class="legend-item"><div class="legend-dot dot-crossover"></div> Swarm Crossover</div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-dir" title="Basculer entre l'orientation de haut en bas (TD) et de gauche à droite (LR)">⇄ <span id="dir-label">Orientation : LR</span></button>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-zoom-out" title="Zoom Arrière (-)">−</button>
+        <div class="zoom-display" id="zoom-val">100%</div>
+        <button id="btn-zoom-in" title="Zoom Avant (+)">+</button>
+      </div>
+
+      <div class="btn-group">
+        <button id="btn-fit" title="Ajuster à la taille de l'écran">⛶ Ajuster</button>
+        <button id="btn-reset" title="Réinitialiser l'échelle à 100%">⟲ 1:1</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="viewport">
+    <div id="loading">Chargement et tracé du graphe génétique...</div>
+    <div id="canvas"></div>
+    <div class="hint">💡 Molette souris pour Zoomer • Cliquer-Glisser pour Déplacer l'arbre</div>
+  </div>
+
+  <script>
+    const rawMermaidTemplate = `graph TD
+    node_62a22e5450758a0d["LLM-Seed-000<br/>(Gen 0)"]:::root
+    node_9c8a7f5c669e1664["LLM-Seed-001<br/>(Gen 0)"]:::root
+    node_343043ba5a49e3e0["LLM-Seed-002<br/>(Gen 0)"]:::root
+    node_1e0d1651f771e5db["LLM-Seed-003<br/>(Gen 0)"]:::root
+    node_9e725805cbbf7ff5["LLM-Seed-004<br/>(Gen 0)"]:::root
+    node_65eb9dad2d83d11b["LLM-Seed-005<br/>(Gen 0)"]:::root
+    node_cc7a945502a26eb8["LLM-Seed-006<br/>(Gen 0)"]:::root
+    node_b305e2f55d764f1e["LLM-Seed-007<br/>(Gen 0)"]:::root
+    node_933f7f37cd4269c8["SwarmCross-g1-62a2-9c8a<br/>(Gen 1)"]:::crossover
+    node_9a5c2f7eac1ce73e["SwarmCross-g1-933f-9e72<br/>(Gen 1)"]:::crossover
+    node_7a4e4d2df767939d["SwarmCross-g1-933f-9e72<br/>(Gen 1)"]:::crossover
+    node_9531792d2f24bfec["SwarmCross-g1-62a2-9c8a-mut-g1<br/>(Gen 1)"]:::mutation
+    node_c9be4beccf3c76cd["SwarmCross-g1-933f-1e0d<br/>(Gen 1)"]:::crossover
+    node_5f142ac80a08d703["SwarmCross-g1-62a2-9c8a-mut-g1<br/>(Gen 1)"]:::mutation
+    node_be593ba69f29bcbd["SwarmCross-g1-933f-1e0d<br/>(Gen 1)"]:::crossover
+    node_eaab5dd674095d9e["SwarmCross-g2-933f-9531<br/>(Gen 2)"]:::crossover
+    node_61dfecfdc6b7713b["SwarmCross-g2-933f-9531-mut-g2<br/>(Gen 2)"]:::mutation
+    node_5798a26b8edf018c["SwarmCross-g2-933f-9531-mut-g2<br/>(Gen 2)"]:::mutation
+    node_7ae41d6ac3c60a14["SwarmCross-g2-eaab-933f<br/>(Gen 2)"]:::crossover
+    node_58cdf9ed5f2d4da1["SwarmCross-g2-933f-9531-mut-g2<br/>(Gen 2)"]:::mutation
+    node_24f940132fb61c3a["SwarmCross-g2-eaab-62a2<br/>(Gen 2)"]:::crossover
+    node_7f34e73165996eb0["SwarmCross-g2-eaab-5f14<br/>(Gen 2)"]:::crossover
+    node_de363f7620cc2676["SwarmCross-g2-933f-9531-mut-g3<br/>(Gen 3)"]:::mutation
+    node_9afaaeb9428b2e60["SwarmCross-g2-933f-9531-mut-g3<br/>(Gen 3)"]:::mutation
+    node_c27b086ab2c3f5ec["SwarmCross-g3-eaab-5798<br/>(Gen 3)"]:::crossover
+    node_0685753013dbafeb["SwarmCross-g3-c27b-58cd<br/>(Gen 3)"]:::crossover
+    node_00aebb7d4597402c["SwarmCross-g3-c27b-933f<br/>(Gen 3)"]:::crossover
+    node_4afff4ba79580ed2["SwarmCross-g3-eaab-5798-mut-g3<br/>(Gen 3)"]:::mutation
+    node_99d53a39a99a14bc["SwarmCross-g3-c27b-7f34<br/>(Gen 3)"]:::crossover
+    node_c9afde139c7370ef["SwarmCross-g4-c27b-4aff<br/>(Gen 4)"]:::crossover
+    node_764a2dbc92ef59da["SwarmCross-g4-c27b-4aff-mut-g4<br/>(Gen 4)"]:::mutation
+    node_08f0fcc7af4e9590["SwarmCross-g4-c9af-c27b<br/>(Gen 4)"]:::crossover
+    node_c51bfbbeaeade5c4["SwarmCross-g4-c9af-4aff<br/>(Gen 4)"]:::crossover
+    node_378f1e6bf15101d2["SwarmCross-g4-c27b-4aff-mut-g4<br/>(Gen 4)"]:::mutation
+    node_f4fbc45bce8572f4["SwarmCross-g4-c9af-0685<br/>(Gen 4)"]:::crossover
+    node_b04a991f0c2d2f1f["SwarmCross-g4-c27b-4aff-mut-g4<br/>(Gen 4)"]:::mutation
+    node_039ab19c973b7c42["SwarmCross-g5-c9af-378f<br/>(Gen 5)"]:::crossover
+    node_6e8e4ec221e9227e["SwarmCross-g5-c9af-378f-mut-g5<br/>(Gen 5)"]:::mutation
+    node_1ee6aaecd55afece["SwarmCross-g5-c9af-378f-mut-g5<br/>(Gen 5)"]:::mutation
+    node_c89e032e3dbbe750["SwarmCross-g5-1ee6-039a<br/>(Gen 5)"]:::crossover
+    node_89880676616dd715["SwarmCross-g5-c89e-039a<br/>(Gen 5)"]:::crossover
+    node_38ebfbf0fca6f259["SwarmCross-g5-1ee6-039a<br/>(Gen 5)"]:::crossover
+    node_3fc1f58684ed0ec5["SwarmCross-g5-c89e-039a<br/>(Gen 5)"]:::crossover
+    node_e755e45061ef6a06["SwarmCross-g6-1ee6-039a<br/>(Gen 6)"]:::crossover
+    node_86f83ecc5de91b74["SwarmCross-g6-1ee6-039a-mut-g6<br/>(Gen 6)"]:::mutation
+    node_6fb6d6e5746abda5["SwarmCross-g6-1ee6-86f8<br/>(Gen 6)"]:::crossover
+    node_c093348e6740af2e["SwarmCross-g6-86f8-039a<br/>(Gen 6)"]:::crossover
+    node_3c95d6f2e78fc267["SwarmCross-g6-1ee6-86f8-mut-g6<br/>(Gen 6)"]:::mutation
+    node_0e4a7db325e08020["SwarmCross-g6-1ee6-86f8-mut-g6-mut-g6<br/>(Gen 6)"]:::mutation
+    node_010b9b5f9198e455["SwarmCross-g6-3c95-039a<br/>(Gen 6)"]:::crossover
+    node_0f25332e30a3685c["SwarmCross-g7-3c95-039a<br/>(Gen 7)"]:::crossover
+    node_c021c6389b1edc96["SwarmCross-g7-0f25-039a<br/>(Gen 7)"]:::crossover
+    node_76983f0e053e7c5f["SwarmCross-g7-0f25-039a<br/>(Gen 7)"]:::crossover
+    node_833af1527beb5fe8["SwarmCross-g6-1ee6-039a-mut-g6-mut-g7<br/>(Gen 7)"]:::mutation
+    node_a03849c46633ddc2["SwarmCross-g7-3c95-039a-mut-g7<br/>(Gen 7)"]:::mutation
+    node_4553efd299e983e0["SwarmCross-g7-6fb6-833a<br/>(Gen 7)"]:::crossover
+    node_7f31593e3d3451cf["SwarmCross-g6-1ee6-039a-mut-g6-mut-g7-mut-g7<br/>(Gen 7)"]:::mutation
+    node_f1154750f7b7e8d6["SwarmCross-g8-0f25-039a<br/>(Gen 8)"]:::crossover
+    node_4fbc80f282cdf751["SwarmCross-g7-6fb6-833a-mut-g8<br/>(Gen 8)"]:::mutation
+    node_fa50e3ceada985fb["SwarmCross-g6-1ee6-039a-mut-g6-mut-g7-mut-g8<br/>(Gen 8)"]:::mutation
+    node_03294d5accc2b1d9["SwarmCross-g8-0f25-039a-mut-g8<br/>(Gen 8)"]:::mutation
+    node_b7f5ac1f125497ef["SwarmCross-g7-6fb6-833a-mut-g8-mut-g8<br/>(Gen 8)"]:::mutation
+    node_521e52c22f8f97cd["SwarmCross-g8-fa50-0329<br/>(Gen 8)"]:::crossover
+    node_a3d6b87a0475d5da["SwarmCross-g8-f115-0329<br/>(Gen 8)"]:::crossover
+    node_7ef251ecdd37fa35["SwarmCross-g7-6fb6-833a-mut-g8-mut-g9<br/>(Gen 9)"]:::mutation
+    node_bc5527d0a105b9b8["SwarmCross-g9-fa50-0329<br/>(Gen 9)"]:::crossover
+    node_cf5d27107ff5c924["SwarmCross-g8-0f25-039a-mut-g9<br/>(Gen 9)"]:::mutation
+    node_47441e8e870c9918["SwarmCross-g7-6fb6-833a-mut-g8-mut-g9<br/>(Gen 9)"]:::mutation
+    node_dcf1cc986fd8a7bf["SwarmCross-g9-fa50-0329<br/>(Gen 9)"]:::crossover
+    node_234fe717cd361914["SwarmCross-g9-f115-0329<br/>(Gen 9)"]:::crossover
+    node_e0bf39a671804b6a["SwarmCross-g7-6fb6-833a-mut-g8-mut-g9<br/>(Gen 9)"]:::mutation
+    node_5dcffcdda2cdd82c["SwarmCross-g9-fa50-0329-mut-g10<br/>(Gen 10)"]:::mutation
+    node_185ff4c9009b0337["SwarmCross-g10-234f-0329<br/>(Gen 10)"]:::crossover
+    node_9a294f91173b53f1["SwarmCross-g10-e0bf-0329<br/>(Gen 10)"]:::crossover
+    node_d374daa2097f0db3["SwarmCross-g10-5dcf-0329<br/>(Gen 10)"]:::crossover
+    node_9b3379fa80344736["SwarmCross-g10-185f-0329<br/>(Gen 10)"]:::crossover
+    node_953f4507e627a5e9["SwarmCross-g10-9a29-0329<br/>(Gen 10)"]:::crossover
+    node_1e6f28911d15e96f["SwarmCross-g9-fa50-0329-mut-g10-mut-g10<br/>(Gen 10)"]:::mutation
+    node_367dbaa710609265["SwarmCross-g9-fa50-0329-mut-g10-mut-g10-mut-g11<br/>(Gen 11)"]:::mutation
+    node_06fc308a54da1a2d["SwarmCross-g11-367d-0329<br/>(Gen 11)"]:::crossover
+    node_0923de755df97868["SwarmCross-g11-367d-0329<br/>(Gen 11)"]:::crossover
+    node_9a8693e956d61ff0["SwarmCross-g9-fa50-0329-mut-g10-mut-g10-mut-g11-mut-g11<br/>(Gen 11)"]:::mutation
+    node_3506d61036a1c7f0["SwarmCross-g11-367d-0329<br/>(Gen 11)"]:::crossover
+    node_e72048547d49a135["SwarmCross-g11-367d-0329<br/>(Gen 11)"]:::crossover
+    node_43298e5cf5077e00["SwarmCross-g11-367d-0329<br/>(Gen 11)"]:::crossover
+    node_62a22e5450758a0d -->|Parent-1| node_933f7f37cd4269c8
+    node_9c8a7f5c669e1664 -->|Parent-2| node_933f7f37cd4269c8
+    node_933f7f37cd4269c8 -->|Parent-1| node_9a5c2f7eac1ce73e
+    node_9e725805cbbf7ff5 -->|Parent-2| node_9a5c2f7eac1ce73e
+    node_933f7f37cd4269c8 -->|Parent-1| node_7a4e4d2df767939d
+    node_9e725805cbbf7ff5 -->|Parent-2| node_7a4e4d2df767939d
+    node_933f7f37cd4269c8 -->|Mutation| node_9531792d2f24bfec
+    node_933f7f37cd4269c8 -->|Parent-1| node_c9be4beccf3c76cd
+    node_1e0d1651f771e5db -->|Parent-2| node_c9be4beccf3c76cd
+    node_933f7f37cd4269c8 -->|Mutation| node_5f142ac80a08d703
+    node_933f7f37cd4269c8 -->|Parent-1| node_be593ba69f29bcbd
+    node_1e0d1651f771e5db -->|Parent-2| node_be593ba69f29bcbd
+    node_933f7f37cd4269c8 -->|Parent-1| node_eaab5dd674095d9e
+    node_9531792d2f24bfec -->|Parent-2| node_eaab5dd674095d9e
+    node_eaab5dd674095d9e -->|Mutation| node_61dfecfdc6b7713b
+    node_eaab5dd674095d9e -->|Mutation| node_5798a26b8edf018c
+    node_eaab5dd674095d9e -->|Parent-1| node_7ae41d6ac3c60a14
+    node_933f7f37cd4269c8 -->|Parent-2| node_7ae41d6ac3c60a14
+    node_eaab5dd674095d9e -->|Mutation| node_58cdf9ed5f2d4da1
+    node_eaab5dd674095d9e -->|Parent-1| node_24f940132fb61c3a
+    node_62a22e5450758a0d -->|Parent-2| node_24f940132fb61c3a
+    node_eaab5dd674095d9e -->|Parent-1| node_7f34e73165996eb0
+    node_5f142ac80a08d703 -->|Parent-2| node_7f34e73165996eb0
+    node_eaab5dd674095d9e -->|Mutation| node_de363f7620cc2676
+    node_eaab5dd674095d9e -->|Mutation| node_9afaaeb9428b2e60
+    node_eaab5dd674095d9e -->|Parent-1| node_c27b086ab2c3f5ec
+    node_5798a26b8edf018c -->|Parent-2| node_c27b086ab2c3f5ec
+    node_c27b086ab2c3f5ec -->|Parent-1| node_0685753013dbafeb
+    node_58cdf9ed5f2d4da1 -->|Parent-2| node_0685753013dbafeb
+    node_c27b086ab2c3f5ec -->|Parent-1| node_00aebb7d4597402c
+    node_933f7f37cd4269c8 -->|Parent-2| node_00aebb7d4597402c
+    node_c27b086ab2c3f5ec -->|Mutation| node_4afff4ba79580ed2
+    node_c27b086ab2c3f5ec -->|Parent-1| node_99d53a39a99a14bc
+    node_7f34e73165996eb0 -->|Parent-2| node_99d53a39a99a14bc
+    node_c27b086ab2c3f5ec -->|Parent-1| node_c9afde139c7370ef
+    node_4afff4ba79580ed2 -->|Parent-2| node_c9afde139c7370ef
+    node_c9afde139c7370ef -->|Mutation| node_764a2dbc92ef59da
+    node_c9afde139c7370ef -->|Parent-1| node_08f0fcc7af4e9590
+    node_c27b086ab2c3f5ec -->|Parent-2| node_08f0fcc7af4e9590
+    node_c9afde139c7370ef -->|Parent-1| node_c51bfbbeaeade5c4
+    node_4afff4ba79580ed2 -->|Parent-2| node_c51bfbbeaeade5c4
+    node_c9afde139c7370ef -->|Mutation| node_378f1e6bf15101d2
+    node_c9afde139c7370ef -->|Parent-1| node_f4fbc45bce8572f4
+    node_0685753013dbafeb -->|Parent-2| node_f4fbc45bce8572f4
+    node_c9afde139c7370ef -->|Mutation| node_b04a991f0c2d2f1f
+    node_c9afde139c7370ef -->|Parent-1| node_039ab19c973b7c42
+    node_378f1e6bf15101d2 -->|Parent-2| node_039ab19c973b7c42
+    node_039ab19c973b7c42 -->|Mutation| node_6e8e4ec221e9227e
+    node_039ab19c973b7c42 -->|Mutation| node_1ee6aaecd55afece
+    node_1ee6aaecd55afece -->|Parent-1| node_c89e032e3dbbe750
+    node_039ab19c973b7c42 -->|Parent-2| node_c89e032e3dbbe750
+    node_c89e032e3dbbe750 -->|Parent-1| node_89880676616dd715
+    node_039ab19c973b7c42 -->|Parent-2| node_89880676616dd715
+    node_1ee6aaecd55afece -->|Parent-1| node_38ebfbf0fca6f259
+    node_039ab19c973b7c42 -->|Parent-2| node_38ebfbf0fca6f259
+    node_c89e032e3dbbe750 -->|Parent-1| node_3fc1f58684ed0ec5
+    node_039ab19c973b7c42 -->|Parent-2| node_3fc1f58684ed0ec5
+    node_1ee6aaecd55afece -->|Parent-1| node_e755e45061ef6a06
+    node_039ab19c973b7c42 -->|Parent-2| node_e755e45061ef6a06
+    node_e755e45061ef6a06 -->|Mutation| node_86f83ecc5de91b74
+    node_1ee6aaecd55afece -->|Parent-1| node_6fb6d6e5746abda5
+    node_86f83ecc5de91b74 -->|Parent-2| node_6fb6d6e5746abda5
+    node_86f83ecc5de91b74 -->|Parent-1| node_c093348e6740af2e
+    node_039ab19c973b7c42 -->|Parent-2| node_c093348e6740af2e
+    node_6fb6d6e5746abda5 -->|Mutation| node_3c95d6f2e78fc267
+    node_3c95d6f2e78fc267 -->|Mutation| node_0e4a7db325e08020
+    node_3c95d6f2e78fc267 -->|Parent-1| node_010b9b5f9198e455
+    node_039ab19c973b7c42 -->|Parent-2| node_010b9b5f9198e455
+    node_3c95d6f2e78fc267 -->|Parent-1| node_0f25332e30a3685c
+    node_039ab19c973b7c42 -->|Parent-2| node_0f25332e30a3685c
+    node_0f25332e30a3685c -->|Parent-1| node_c021c6389b1edc96
+    node_039ab19c973b7c42 -->|Parent-2| node_c021c6389b1edc96
+    node_0f25332e30a3685c -->|Parent-1| node_76983f0e053e7c5f
+    node_039ab19c973b7c42 -->|Parent-2| node_76983f0e053e7c5f
+    node_86f83ecc5de91b74 -->|Mutation| node_833af1527beb5fe8
+    node_0f25332e30a3685c -->|Mutation| node_a03849c46633ddc2
+    node_6fb6d6e5746abda5 -->|Parent-1| node_4553efd299e983e0
+    node_833af1527beb5fe8 -->|Parent-2| node_4553efd299e983e0
+    node_833af1527beb5fe8 -->|Mutation| node_7f31593e3d3451cf
+    node_0f25332e30a3685c -->|Parent-1| node_f1154750f7b7e8d6
+    node_039ab19c973b7c42 -->|Parent-2| node_f1154750f7b7e8d6
+    node_4553efd299e983e0 -->|Mutation| node_4fbc80f282cdf751
+    node_833af1527beb5fe8 -->|Mutation| node_fa50e3ceada985fb
+    node_f1154750f7b7e8d6 -->|Mutation| node_03294d5accc2b1d9
+    node_4fbc80f282cdf751 -->|Mutation| node_b7f5ac1f125497ef
+    node_fa50e3ceada985fb -->|Parent-1| node_521e52c22f8f97cd
+    node_03294d5accc2b1d9 -->|Parent-2| node_521e52c22f8f97cd
+    node_f1154750f7b7e8d6 -->|Parent-1| node_a3d6b87a0475d5da
+    node_03294d5accc2b1d9 -->|Parent-2| node_a3d6b87a0475d5da
+    node_4fbc80f282cdf751 -->|Mutation| node_7ef251ecdd37fa35
+    node_fa50e3ceada985fb -->|Parent-1| node_bc5527d0a105b9b8
+    node_03294d5accc2b1d9 -->|Parent-2| node_bc5527d0a105b9b8
+    node_f1154750f7b7e8d6 -->|Mutation| node_cf5d27107ff5c924
+    node_4fbc80f282cdf751 -->|Mutation| node_47441e8e870c9918
+    node_fa50e3ceada985fb -->|Parent-1| node_dcf1cc986fd8a7bf
+    node_03294d5accc2b1d9 -->|Parent-2| node_dcf1cc986fd8a7bf
+    node_f1154750f7b7e8d6 -->|Parent-1| node_234fe717cd361914
+    node_03294d5accc2b1d9 -->|Parent-2| node_234fe717cd361914
+    node_4fbc80f282cdf751 -->|Mutation| node_e0bf39a671804b6a
+    node_dcf1cc986fd8a7bf -->|Mutation| node_5dcffcdda2cdd82c
+    node_234fe717cd361914 -->|Parent-1| node_185ff4c9009b0337
+    node_03294d5accc2b1d9 -->|Parent-2| node_185ff4c9009b0337
+    node_e0bf39a671804b6a -->|Parent-1| node_9a294f91173b53f1
+    node_03294d5accc2b1d9 -->|Parent-2| node_9a294f91173b53f1
+    node_5dcffcdda2cdd82c -->|Parent-1| node_d374daa2097f0db3
+    node_03294d5accc2b1d9 -->|Parent-2| node_d374daa2097f0db3
+    node_185ff4c9009b0337 -->|Parent-1| node_9b3379fa80344736
+    node_03294d5accc2b1d9 -->|Parent-2| node_9b3379fa80344736
+    node_9a294f91173b53f1 -->|Parent-1| node_953f4507e627a5e9
+    node_03294d5accc2b1d9 -->|Parent-2| node_953f4507e627a5e9
+    node_5dcffcdda2cdd82c -->|Mutation| node_1e6f28911d15e96f
+    node_1e6f28911d15e96f -->|Mutation| node_367dbaa710609265
+    node_367dbaa710609265 -->|Parent-1| node_06fc308a54da1a2d
+    node_03294d5accc2b1d9 -->|Parent-2| node_06fc308a54da1a2d
+    node_367dbaa710609265 -->|Parent-1| node_0923de755df97868
+    node_03294d5accc2b1d9 -->|Parent-2| node_0923de755df97868
+    node_367dbaa710609265 -->|Mutation| node_9a8693e956d61ff0
+    node_367dbaa710609265 -->|Parent-1| node_3506d61036a1c7f0
+    node_03294d5accc2b1d9 -->|Parent-2| node_3506d61036a1c7f0
+    node_367dbaa710609265 -->|Parent-1| node_e72048547d49a135
+    node_03294d5accc2b1d9 -->|Parent-2| node_e72048547d49a135
+    node_367dbaa710609265 -->|Parent-1| node_43298e5cf5077e00
+    node_03294d5accc2b1d9 -->|Parent-2| node_43298e5cf5077e00
+    classDef root fill:#1e40af,stroke:#3b82f6,stroke-width:2px,color:#fff
+    classDef mutation fill:#065f46,stroke:#10b981,stroke-width:2px,color:#fff
+    classDef crossover fill:#5b21b6,stroke:#8b5cf6,stroke-width:2px,color:#fff
+`;
+    let currentDirection = "LR"; // Default to Left-to-Right for optimal phylogenetic tree readability
+
+    let scale = 1.0;
+    let panX = 40;
+    let panY = 40;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('canvas');
+    const loading = document.getElementById('loading');
+    const zoomVal = document.getElementById('zoom-val');
+    const dirLabel = document.getElementById('dir-label');
+
+    function updateTransform() {
+      canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+      zoomVal.textContent = `${Math.round(scale * 100)}%`;
+    }
+
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      isDragging = true;
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+      const newScale = Math.min(Math.max(scale * zoomFactor, 0.05), 8.0);
+
+      panX = mouseX - (mouseX - panX) * (newScale / scale);
+      panY = mouseY - (mouseY - panY) * (newScale / scale);
+      scale = newScale;
+
+      updateTransform();
+    }, { passive: false });
+
+    document.getElementById('btn-zoom-in').addEventListener('click', () => {
+      const rect = viewport.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const newScale = Math.min(scale * 1.25, 8.0);
+      panX = centerX - (centerX - panX) * (newScale / scale);
+      panY = centerY - (centerY - panY) * (newScale / scale);
+      scale = newScale;
+      updateTransform();
+    });
+
+    document.getElementById('btn-zoom-out').addEventListener('click', () => {
+      const rect = viewport.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const newScale = Math.max(scale / 1.25, 0.05);
+      panX = centerX - (centerX - panX) * (newScale / scale);
+      panY = centerY - (centerY - panY) * (newScale / scale);
+      scale = newScale;
+      updateTransform();
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      scale = 1.0;
+      panX = 60;
+      panY = 60;
+      updateTransform();
+    });
+
+    function fitGraph() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      
+      const vb = svg.viewBox ? svg.viewBox.baseVal : null;
+      const naturalWidth = (vb && vb.width > 0) ? vb.width : (parseFloat(svg.getAttribute('width')) || 2000);
+      const naturalHeight = (vb && vb.height > 0) ? vb.height : (parseFloat(svg.getAttribute('height')) || 1500);
+
+      const vRect = viewport.getBoundingClientRect();
+      const pad = 60;
+      const availW = Math.max(vRect.width - pad * 2, 200);
+      const availH = Math.max(vRect.height - pad * 2, 200);
+
+      const scaleX = availW / naturalWidth;
+      const scaleY = availH / naturalHeight;
+      scale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.05), 1.0);
+
+      panX = Math.round((vRect.width - naturalWidth * scale) / 2);
+      panY = Math.round((vRect.height - naturalHeight * scale) / 2);
+      updateTransform();
+    }
+
+    document.getElementById('btn-fit').addEventListener('click', fitGraph);
+
+    document.getElementById('btn-dir').addEventListener('click', () => {
+      currentDirection = (currentDirection === "LR") ? "TD" : "LR";
+      dirLabel.textContent = `Orientation : ${currentDirection}`;
+      renderGraph();
+    });
+
+    async function renderGraph() {
+      loading.style.display = 'flex';
+      let code = rawMermaidTemplate;
+      if (currentDirection === "LR") {
+        code = code.replace(/^graph TD/m, 'graph LR');
+      } else {
+        code = code.replace(/^graph LR/m, 'graph TD');
+      }
+
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'dark',
+          securityLevel: 'loose',
+          flowchart: {
+            curve: 'basis',
+            nodeSpacing: 45,
+            rankSpacing: 60,
+            useMaxWidth: false,
+            htmlLabels: true
+          }
+        });
+        
+        canvas.innerHTML = '';
+        const id = 'svg-' + Date.now();
+        const { svg } = await mermaid.render(id, code);
+        canvas.innerHTML = svg;
+
+        // Force SVG to keep its exact unconstrained natural layout dimensions
+        const svgEl = canvas.querySelector('svg');
+        if (svgEl) {
+          const vb = svgEl.viewBox ? svgEl.viewBox.baseVal : null;
+          const naturalW = (vb && vb.width > 0) ? vb.width : (parseFloat(svgEl.getAttribute('width')) || 2500);
+          const naturalH = (vb && vb.height > 0) ? vb.height : (parseFloat(svgEl.getAttribute('height')) || 2000);
+
+          svgEl.removeAttribute('style');
+          svgEl.setAttribute('width', naturalW);
+          svgEl.setAttribute('height', naturalH);
+          svgEl.style.width = naturalW + 'px';
+          svgEl.style.height = naturalH + 'px';
+          svgEl.style.maxWidth = 'none';
+          svgEl.style.display = 'block';
+        }
+
+        loading.style.display = 'none';
+        fitGraph();
+      } catch (err) {
+        loading.textContent = 'Erreur lors du rendu du graphe: ' + err.message;
+        console.error(err);
+      }
+    }
+
+    // Initial render
+    renderGraph();
+  </script>
+</body>
+</html>

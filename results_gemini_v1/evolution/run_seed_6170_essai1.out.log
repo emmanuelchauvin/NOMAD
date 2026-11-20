@@ -1,0 +1,85 @@
+2026-11-13T20:41:25.264965Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6170, Pop=8, MaxGens=10
+2026-11-13T20:46:32.967010Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 971e2cf3edca10fb on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6170 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4179 bins (excess: +153), Efficiency: 96.34%, Fuel: 29007496
+ Best In-Dist (w/o Lookahead) : 4229 bins (excess: +203), Efficiency: 95.20%
+ Dynamic Trajectory: tLDR = 0.2901
+ Behavior Profile : DeadSpaceRatio: 63.6%, NewBinRatio: 41.8%, ResVar: 0.46
+ MAP-Elites Niches: 4 active (4.0% coverage), QD-Score: 3.773
+ Validation Score : 4148 bins (excess: +149), Efficiency: 96.41%
+ OOD-1 Score      : 10365 bins (excess: +325), Efficiency: 96.86%
+ OOD-2 Score      : 3638 bins (excess: +81), Efficiency: 97.77%
+ Lineage Nodes    : 85, Transitions: 60
+ Best Heuristic   : LLM-Seed-021-mut-g2-mut-g3-mut-g7
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Base score: punish large gaps, prioritize tighter packing.
+    let mut score = post_residual as f64;
+
+    // 1. Enhanced Lookahead: Focus on "Dead Space" avoidance for the next item.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Reward for keeping room for the next item, but scale by item size to favor larger fits.
+            score -= (next_item_size as f64) * 3.65;
+        } else if post_residual > 0 {
+            // Penalty for stranding the next item is now non-linear, emphasizing the risk of small remaining gaps.
+            score += ((next_item_size - post_residual) as f64).powf(1.2) * 5.8;
+        }
+    }
+
+    // 2. Adaptive New-Bin Threshold:
+    // Increased penalty for opening new bins to force consolidation, especially as the stream nears completion.
+    if is_new_bin {
+        let completion_pressure = progress * 110.0;
+        let consolidation_pressure = (open_bins_count as f64).powf(0.92) * 20.0;
+        let efficiency_discount = (mean_residual - 20.0).max(0.0) * 2.5;
+        score += (80.0 + completion_pressure + consolidation_pressure - efficiency_discount).max(18.0);
+    } else {
+        // 3. Fragmentation Control:
+        // Prioritize exhausting bins that have become restrictive.
+        if fitting_bins_count == 1 {
+            score -= 125.0;
+        } else if fitting_bins_count <= 2 {
+            score -= 60.0 + (progress * 45.0);
+        }
+        
+        // 4. Harmonic Alignment:
+        // Target zero-residual and "near-full" states more aggressively.
+        if post_residual == 0 {
+            score -= 145.0; 
+        } else if post_residual <= 4 {
+            score -= 55.0;
+        } else if post_residual % 20 == 0 {
+            score -= 30.0;
+        }
+    }
+
+    // 5. Variance Smoothing:
+    // Penalize deviation from the mean to ensure uniform depletion of bins.
+    let dev = (post_residual as f64 - mean_residual).abs();
+    score += dev * 1.1;
+
+    // 6. Micro-Tightness Bias:
+    // Aggressively eliminate 'dead' space < 14 that prevents large item placement.
+    if post_residual > 0 && post_residual < 14 {
+        score -= (14 - post_residual) as f64 * 18.0;
+    }
+
+    // 7. Density-Aware Consolidation:
+    // If we have many open bins, heavily penalize creating more space-intensive bins.
+    // Use a dynamic threshold based on the remaining item count.
+    let remaining_ratio = 1.0 - progress;
+    if (open_bins_count as f64) > (total_items as f64 * 0.04).max(10.0) * remaining_ratio {
+        score += post_residual as f64 * 1.15;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6170_evolution.json.tmp

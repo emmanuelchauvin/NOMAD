@@ -1,0 +1,96 @@
+[2m2026-11-15T07:05:48.258521Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8357, Pop=8, MaxGens=192
+[2m2026-11-15T10:00:42.011655Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule bc3e4583640659d1 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8357 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4076 bins (excess: +68), Efficiency: 98.33%, Fuel: 145767708
+ Best In-Dist (w/o Lookahead) : 4204 bins (excess: +196), Efficiency: 95.34%
+ Dynamic Trajectory: tLDR = 2.7494
+ Behavior Profile : DeadSpaceRatio: 7.2%, NewBinRatio: 40.8%, ResVar: 0.72
+ MAP-Elites Niches: 32 active (32.0% coverage), QD-Score: 27.803
+ Validation Score : 4110 bins (excess: +82), Efficiency: 98.01%
+ OOD-1 Score      : 10147 bins (excess: +102), Efficiency: 99.00%
+ OOD-2 Score      : 3609 bins (excess: +50), Efficiency: 98.62%
+ Lineage Nodes    : 1359, Transitions: 863
+ Best Heuristic   : LLM-Seed-006-mut-g1-mut-g5-mut-g8-mut-g10-mut-g13-mut-g22-mut-g29-mut-g129-mut-g129-mut-g129-mut-g130-mut-g136-mut-g138-mut-g186
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    let mut score = post_residual as f64;
+
+    // 1. Enhanced Fragmentation Suppression: Stronger penalty for "unfillable" slivers
+    if post_residual > 0 {
+        if post_residual < 8 {
+            score += 115.0 / (post_residual as f64 + 0.1);
+        } else if post_residual < 16 {
+            score += 45.0;
+        }
+    }
+
+    // 2. Lookahead Synergy: Dynamic fit alignment
+    if next_item_size > 0 {
+        if post_residual == 0 {
+            score -= 88.0;
+        } else if post_residual < next_item_size {
+            score += (next_item_size - post_residual) as f64 * 38.0;
+        } else {
+            // Favor bins that leave exactly enough space for the next item
+            let tight_fit = (post_residual as f64 - next_item_size as f64).abs();
+            score -= (25.0 - tight_fit).max(0.0) * 1.5;
+        }
+    }
+
+    // 3. Adaptive New Bin Threshold: Heuristic cost growth
+    if is_new_bin {
+        let open_cost = 135.0 + (mean_residual * 2.8) + (progress * 550.0);
+        score += open_cost;
+    } else {
+        // 4. Load Balancing: Variance minimization relative to bin capacity
+        let usage = (bin_capacity - bin_residual) as f64;
+        let deviation = (usage - (bin_capacity as f64 - mean_residual)).abs();
+        score += deviation.powf(1.6) * 0.9;
+    }
+
+    // 5. Scarcity Logic: Consolidation pressure
+    if fitting_bins_count > 0 {
+        score -= 210.0 / (fitting_bins_count as f64 + 0.5).sqrt();
+    }
+
+    // 6. Tail-End Compaction: Aggressive closure
+    if progress > 0.82 {
+        if is_new_bin {
+            score += 3500.0 * (1.0 + progress);
+        } else {
+            score -= (bin_capacity - bin_residual) as f64 * 8.5;
+        }
+    }
+
+    // 7. Residual Quantization: Favor "clean" remainder space
+    if post_residual == 0 {
+        score -= 45.0;
+    } else if post_residual % 10 == 0 {
+        score -= 25.0;
+    }
+
+    // 8. Density-Fit coupling: Bias towards filling deep bins
+    let depth = (bin_capacity - bin_residual) as f64 / bin_capacity as f64;
+    if !is_new_bin {
+        score -= depth * 40.0;
+    }
+
+    // 9. Entropy reduction: Penalize bins that deviate from optimal packing density
+    if !is_new_bin && post_residual as f64 > (mean_residual * 2.2) {
+        score += 75.0;
+    }
+
+    // 10. Global Density Incentive: Heavier penalty for opening too many bins
+    if open_bins_count > 6 {
+        score -= (bin_capacity - post_residual) as f64 * 1.2;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8357_evolution.json.tmp

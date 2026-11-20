@@ -1,0 +1,94 @@
+2026-11-13T16:53:04.223976Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5068, Pop=8, MaxGens=10
+2026-11-13T17:01:04.889630Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 9a2b3cdee427f629 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5068 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4109 bins (excess: +91), Efficiency: 97.79%, Fuel: 38548354
+ Best In-Dist (w/o Lookahead) : 6864 bins (excess: +2846), Efficiency: 58.58%
+ Dynamic Trajectory: tLDR = 0.7092
+ Behavior Profile : DeadSpaceRatio: 56.2%, NewBinRatio: 41.1%, ResVar: 0.26
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.212
+ Validation Score : 4152 bins (excess: +101), Efficiency: 97.57%
+ OOD-1 Score      : 10181 bins (excess: +136), Efficiency: 98.66%
+ OOD-2 Score      : 3598 bins (excess: +60), Efficiency: 98.33%
+ Lineage Nodes    : 85, Transitions: 45
+ Best Heuristic   : LLM-Seed-013
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    let item = item_size as f64;
+    let capacity = bin_capacity as f64;
+    let residual = bin_residual as f64;
+    let next = next_item_size as f64;
+    let mean = mean_residual.max(0.0);
+
+    if residual >= capacity {
+        score = 0.0;
+    } else {
+        // Exact or near-exact completion is strongly preferred.
+        if post_residual == 0 {
+            score -= 140.0;
+        } else if post_residual <= 3 {
+            score -= 75.0;
+        } else if post_residual <= 8 {
+            score -= 38.0;
+        }
+
+        // Reward preserving a slot large enough for the next known item.
+        if next > 0.0 {
+            if post_residual as u32 >= next_item_size {
+                score -= 55.0;
+                let surplus = post_residual as f64 - next;
+                score -= (18.0 * surplus / capacity).min(18.0);
+            } else {
+                score += 48.0;
+                let deficit = next - post_residual as f64;
+                score += (32.0 * deficit / capacity).min(32.0);
+            }
+        } else {
+            // With no lookahead, prefer tighter residual space.
+            score += 0.65 * post_residual as f64;
+        }
+
+        // Favor placements at or below the typical residual profile, but not
+        // at the expense of an exact fit or a useful next-item slot.
+        if mean > 0.0 {
+            let deviation = post_residual as f64 - mean;
+            score += 0.28 * deviation.abs();
+            if post_residual as f64 > mean {
+                score += 0.10 * (post_residual as f64 - mean);
+            }
+        }
+
+        // Avoid creating many tiny unusable fragments across many bins.
+        if post_residual > 0 && post_residual < item.min(10) {
+            score += 26.0;
+        }
+
+        // Urgency: when this is the only fitting bin, strongly favor using it
+        // rather than opening another bin, especially for large items.
+        if fitting_bins_count <= 1 {
+            score -= 24.0 + 0.32 * item;
+        }
+
+        // Near the end of the stream, tighten the fit more aggressively.
+        let progress = if total_items == 0 {
+            1.0
+        } else {
+            (step_index as f64 / total_items as f64).min(1.0)
+        };
+        score += 0.20 * progress * post_residual as f64;
+
+        // Opening many bins suggests poor packing pressure; reward useful
+        // utilization of existing bins.
+        if open_bins_count > 1 {
+            score -= 2.0 * (open_bins_count as f64 - 1.0).min(12.0);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5068_evolution.json.tmp

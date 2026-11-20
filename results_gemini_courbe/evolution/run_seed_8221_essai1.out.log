@@ -1,0 +1,90 @@
+[2m2026-11-15T05:46:51.609347Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8221, Pop=8, MaxGens=192
+[2m2026-11-15T09:09:13.042279Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 5dd125cfeaefdc73 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8221 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4095 bins (excess: +72), Efficiency: 98.24%, Fuel: 90506404
+ Best In-Dist (w/o Lookahead) : 4171 bins (excess: +148), Efficiency: 96.45%
+ Dynamic Trajectory: tLDR = 2.8703
+ Behavior Profile : DeadSpaceRatio: 7.6%, NewBinRatio: 41.0%, ResVar: 0.56
+ MAP-Elites Niches: 24 active (24.0% coverage), QD-Score: 19.729
+ Validation Score : 4101 bins (excess: +87), Efficiency: 97.88%
+ OOD-1 Score      : 10263 bins (excess: +181), Efficiency: 98.24%
+ OOD-2 Score      : 3619 bins (excess: +64), Efficiency: 98.24%
+ Lineage Nodes    : 1359, Transitions: 884
+ Best Heuristic   : LLM-Seed-380-mut-g142-mut-g142-mut-g149-mut-g154-mut-g155-mut-g156-mut-g156-mut-g159-mut-g168-mut-g171-mut-g188
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let post = post_residual as f64;
+    let residual = bin_residual as f64;
+    let capacity = bin_capacity as f64;
+    
+    let mut score = post;
+
+    // Refined fragmentation penalty: 
+    // Increased threshold and weight to aggressively discourage small, unusable slivers.
+    if post > 0.0 && post < 48.0 {
+        score += (48.0 - post) * 22.8;
+    }
+
+    // Lookahead refinement: 
+    // Dynamically adjust lookahead sensitivity based on the volume of remaining items.
+    if next_item_size > 0 {
+        let next = next_item_size as f64;
+        // Penalize bins that would leave a post_residual too small for the next item, 
+        // but reward those that fit it exactly.
+        if post < next && post > 0.0 {
+            let lookahead_penalty = (next - post) * 28.0 * (1.1 - progress).max(0.1);
+            score += lookahead_penalty * (1.0 + (open_bins_count as f64 / 52.0));
+        } else if post >= next && post < (next + 5.0) {
+            score -= 15.0; // Bonus for "just enough" space
+        }
+    }
+
+    if bin_residual == bin_capacity {
+        // New Bin Decision:
+        // Increased resistance to opening new bins, especially late in the stream.
+        score += (mean_residual * 6.2) + (progress * 72.0);
+        
+        if fitting_bins_count > 0 {
+            score += 325.0 * (1.0 - progress).powf(4.8) + (open_bins_count as f64 * 7.5);
+        }
+    } else {
+        // Existing bin strategy:
+        // Exponential reward for density, favoring bins that are already well-filled.
+        let used = capacity - residual;
+        score -= (used / capacity).powf(6.8) * 125.0;
+        
+        // Stricter penalty for "medium-empty" bins to force tighter packing.
+        if residual > (capacity * 0.15) {
+            score += (residual - (capacity * 0.10)) * 9.5;
+        }
+    }
+
+    // Global density control:
+    // Scaling on open_bins_count to favor consolidation early, shifting to efficiency late.
+    score += (open_bins_count as f64).powf(2.4) * (1.05 - (progress * 0.4));
+
+    // Perfect fit priority:
+    // Stronger incentive to close bins entirely.
+    if post == 0.0 && bin_residual != bin_capacity {
+        score -= 185.0;
+    }
+    
+    // Entropy dampener: 
+    // Prevents small items from 'wasting' space in nearly-full bins while encouraging 
+    // them to fill moderately empty bins.
+    if item_size < 25 {
+        if bin_residual > (bin_capacity / 4) {
+            score -= 42.0 * (1.0 - (residual / capacity)).powf(2.5);
+        } else {
+            score += 20.0; // Penalty for putting small items in nearly-full bins
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8221_evolution.json.tmp

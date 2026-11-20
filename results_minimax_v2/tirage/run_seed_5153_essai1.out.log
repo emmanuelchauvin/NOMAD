@@ -1,0 +1,69 @@
+2026-11-13T16:13:36.485572Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5153, Pop=85, MaxGens=1
+2026-11-13T16:23:09.859091Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 596ba03199987757 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5153 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4208 bins (excess: +170), Efficiency: 95.96%, Fuel: 34503304
+ Best In-Dist (w/o Lookahead) : 4248 bins (excess: +210), Efficiency: 95.06%
+ Dynamic Trajectory: tLDR = 0.6634
+ Behavior Profile : DeadSpaceRatio: 67.3%, NewBinRatio: 42.1%, ResVar: 0.48
+ MAP-Elites Niches: 9 active (9.0% coverage), QD-Score: 6.884
+ Validation Score : 4171 bins (excess: +160), Efficiency: 96.17%
+ OOD-1 Score      : 10396 bins (excess: +344), Efficiency: 96.69%
+ OOD-2 Score      : 3664 bins (excess: +130), Efficiency: 96.45%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-003
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    if bin_residual == bin_capacity {
+        score -= 28.0;
+    }
+
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            score -= 18.0 + (next_item_size as f64 / bin_capacity as f64) * 8.0;
+        } else {
+            let overflow = (next_item_size - post_residual) as f64;
+            score += overflow * 0.65;
+        }
+
+        let post_deviation = post_residual as f64 - mean_residual;
+        score += post_deviation * 0.18;
+
+        if post_residual < next_item_size && post_residual < item_size {
+            score += 10.0;
+        }
+    } else {
+        score += post_residual as f64 * 0.08;
+    }
+
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score += 7.0;
+    }
+
+    let progress = if total_items > 0 {
+        step_index as f64 / total_items as f64
+    } else {
+        0.0
+    };
+
+    if bin_residual != bin_capacity {
+        score -= progress * 4.0;
+
+        if open_bins_count > 1 {
+            let utilization = 1.0 - (bin_residual as f64 / bin_capacity as f64);
+            score -= utilization * utilization * 6.0;
+        }
+    }
+
+    if post_residual == 0 {
+        score -= 20.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\tirage\run_seed_5153_tirage.json.tmp

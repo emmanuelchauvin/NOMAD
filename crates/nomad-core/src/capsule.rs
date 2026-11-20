@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 
-use crate::types::{
-    CapsuleId, GraftManifest, PolicyKind, StructuralFingerprint, ValidationStatus,
-};
+use crate::types::{CapsuleId, GraftManifest, PolicyKind, StructuralFingerprint, ValidationStatus};
 
 fn default_interface_version() -> String {
     "ScorePolicyV1".to_string()
@@ -111,6 +109,7 @@ impl SkillCapsule {
     /// ========================================================================
     /// Construit une capsule complète avec validation AST, empreinte topologique
     /// et manifeste de greffe externe (`GraftManifest`).
+    #[allow(clippy::too_many_arguments)]
     pub fn new_v2(
         name: impl Into<String>,
         semantic_interface: impl Into<String>,
@@ -182,4 +181,3 @@ impl SkillCapsule {
         self.parent_ids.is_empty()
     }
 }
-

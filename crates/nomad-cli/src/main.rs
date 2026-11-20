@@ -1,12 +1,14 @@
+#![allow(clippy::field_reassign_with_default)]
+
+use anyhow::Result;
+use clap::{Parser, Subcommand, ValueEnum};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use anyhow::Result;
-use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use nomad_core::{ExperimentConfig, ExperimentalGroup};
-use nomad_evaluator::{Dataset, OracleEvaluator};
+use nomad_core::{ExperimentConfig, ExperimentalGroup, ProblemDomain};
+use nomad_evaluator::{Dataset, OracleEvaluator, SchedulingDataset, SchedulingOracle};
 use nomad_operator::{DeterministicMockOperator, HttpLlamaOperator, SkillOperator};
 use nomad_orchestrator::EvolutionEngine;
 use nomad_sandbox::DeterministicSandbox;
@@ -46,6 +48,22 @@ impl From<GroupArg> for ExperimentalGroup {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+#[value(rename_all = "kebab-case")]
+enum DomainArg {
+    BinPacking,
+    Scheduling,
+}
+
+impl From<DomainArg> for ProblemDomain {
+    fn from(arg: DomainArg) -> Self {
+        match arg {
+            DomainArg::BinPacking => ProblemDomain::BinPacking1D,
+            DomainArg::Scheduling => ProblemDomain::MultiResourceScheduling,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 #[value(rename_all = "lowercase")]
 enum OperatorArg {
     Mock,
@@ -75,7 +93,12 @@ enum Commands {
     /// Export or visualize the phylogenetic DAG from a run report file.
     Graph {
         /// Path to the JSON run report file produced by `nomad run --output <file>`.
-        #[arg(short, long, visible_alias = "report", default_value = "run_report.json")]
+        #[arg(
+            short,
+            long,
+            visible_alias = "report",
+            default_value = "run_report.json"
+        )]
         input: PathBuf,
 
         /// Format for visualization: mermaid, dot, or html.
@@ -91,16 +114,38 @@ enum Commands {
     Dataset {
         #[arg(short, long, default_value_t = 42)]
         seed: u64,
+
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
     },
 
-    /// Run classical algorithmic baselines (First-Fit, Best-Fit, Worst-Fit).
+    /// Evaluate a heuristic source file (bin packing `score_bin`) on all datasets.
+    Eval {
+        #[arg(short, long, default_value_t = 42)]
+        seed: u64,
+
+        /// Path to a Rust source file containing `pub fn score_bin(...) -> f64`.
+        #[arg(long)]
+        code: PathBuf,
+
+        #[arg(long, default_value_t = 50_000)]
+        fuel: u64,
+    },
+
+    /// Run classical algorithmic baselines.
     Baseline {
         #[arg(short, long, default_value_t = 42)]
         seed: u64,
+
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
     },
 
     /// Run the "Mort et Renaissance" protocol: Epoch 1 -> Extinction -> Epoch 2 (Heritage vs Tabula Rasa).
     Rebirth {
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
+
         #[arg(short, long, default_value_t = 42)]
         seed: u64,
 
@@ -109,6 +154,14 @@ enum Commands {
 
         #[arg(short = 'n', long, default_value_t = 3)]
         generations: usize,
+
+        /// Number of successive civilizational epochs (2 or 3).
+        #[arg(short = 'e', long, default_value_t = 2)]
+        epochs: usize,
+
+        /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        lookahead: bool,
 
         #[arg(long, value_enum, default_value_t = OperatorArg::Mock)]
         operator: OperatorArg,
@@ -125,6 +178,9 @@ enum Commands {
 
     /// Run an evolutionary trial for a specific group.
     Run {
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
+
         #[arg(short = 'G', long, value_enum, default_value_t = GroupArg::C)]
         group: GroupArg,
 
@@ -150,12 +206,23 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         cooldown_ms: u64,
 
+        /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        lookahead: bool,
+
+        /// Enable local AST constant hill-climbing optimization (default: false).
+        #[arg(long, default_value_t = false)]
+        enable_constant_opt: bool,
+
         #[arg(short, long, default_value = "run_report.json")]
         output: PathBuf,
     },
 
     /// Run pre-registered comparative experiment between Group C (Swarm) and Group D (Mutation only).
     Compare {
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
+
         #[arg(short, long, default_value_t = 5)]
         runs: usize,
 
@@ -164,6 +231,14 @@ enum Commands {
 
         #[arg(short = 'n', long, default_value_t = 5)]
         generations: usize,
+
+        /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        lookahead: bool,
+
+        /// Enable local AST constant hill-climbing optimization (default: false).
+        #[arg(long, default_value_t = false)]
+        enable_constant_opt: bool,
 
         #[arg(long, value_enum, default_value_t = OperatorArg::Ollama)]
         operator: OperatorArg,
@@ -180,6 +255,51 @@ enum Commands {
 
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+
+    /// Run full 30-seed pre-registered statistical campaign (Group C vs Group D).
+    Campaign {
+        #[arg(short, long, value_enum, default_value_t = DomainArg::BinPacking)]
+        domain: DomainArg,
+
+        /// Number of paired seeds in the campaign (pre-registered protocol: 30).
+        #[arg(short, long, default_value_t = 30)]
+        seeds: usize,
+
+        /// First seed of the campaign. Seed r is `seed_start + 17 * r`.
+        #[arg(long, default_value_t = 1000)]
+        seed_start: u64,
+
+        #[arg(short, long, default_value_t = 10)]
+        pop_size: usize,
+
+        #[arg(short = 'n', long, default_value_t = 5)]
+        generations: usize,
+
+        /// Toggle lookahead (k=2) evaluation (pass --lookahead=false to disable lookahead).
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        lookahead: bool,
+
+        /// Enable local AST constant hill-climbing optimization (default: false).
+        #[arg(long, default_value_t = false)]
+        enable_constant_opt: bool,
+
+        #[arg(long, value_enum, default_value_t = OperatorArg::Ollama)]
+        operator: OperatorArg,
+
+        #[arg(long, default_value = "http://localhost:11434/v1/chat/completions")]
+        ollama_url: String,
+
+        #[arg(long, default_value = "qwen2.5-coder:7b")]
+        model: String,
+
+        /// Optional cooldown in milliseconds between LLM calls to prevent GPU overheating.
+        #[arg(long, default_value_t = 0)]
+        cooldown_ms: u64,
+
+        /// Output directory for individual runs and aggregate JSON report.
+        #[arg(short, long, default_value = "campaign_results")]
+        output_dir: PathBuf,
     },
 }
 
@@ -203,7 +323,9 @@ fn main() -> Result<()> {
             println!();
             println!("Target Domain : Online 1D Bin Packing (C = 100)");
             println!("Lineage Graph : Directed Acyclic Graph (DAG) with full ancestry tracking.");
-            println!("Reproduction  : Mutation + Swarm Crossover (Group C) vs Mutation only (Group D).");
+            println!(
+                "Reproduction  : Mutation + Swarm Crossover (Group C) vs Mutation only (Group D)."
+            );
             println!("Oracle        : Independent, strict gas & validity constraints.");
             println!("============================================================");
         }
@@ -218,27 +340,48 @@ fn main() -> Result<()> {
             }
             let content = std::fs::read_to_string(&input)?;
             let report: nomad_orchestrator::ExperimentRunReport = serde_json::from_str(&content)
-                .map_err(|e| anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e))?;
+                .or_else(|_| {
+                    serde_json::from_str::<nomad_orchestrator::RebirthExperimentReport>(&content)
+                        .map(|r| r.epoch3_heritage.unwrap_or(r.epoch2_heritage))
+                })
+                .map_err(|e| {
+                    anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e)
+                })?;
 
             println!("============================================================");
             println!(" MAP-Elites Archive Inspection : {}", report.group.name());
-            println!(" Total Niches Defined : {} x {}", report.archive.dim_x, report.archive.dim_y);
-            println!(" Active Occupied Niches: {} ({:.1}% Coverage)", report.archive.occupied_niches_count(), report.archive.coverage() * 100.0);
+            println!(
+                " Total Niches Defined : {} x {}",
+                report.archive.dim_x, report.archive.dim_y
+            );
+            println!(
+                " Active Occupied Niches: {} ({:.1}% Coverage)",
+                report.archive.occupied_niches_count(),
+                report.archive.coverage() * 100.0
+            );
             println!(" QD-Score : {:.3}", report.archive.qd_score());
             println!("------------------------------------------------------------");
-            println!("{:<10} {:<12} {:<12} {:<12} {:<18} {}", "Niche", "DeadSpace", "NewBinRatio", "BinsUsed", "Capsule ID", "Name");
+            println!(
+                "{:<10} {:<14} {:<14} {:<12} {:<18} Name",
+                "Niche", "DeadSpace/Imb", "NewBin/ResVar", "UnitsUsed", "Capsule ID"
+            );
             println!("------------------------------------------------------------");
 
             let mut entries: Vec<_> = report.archive.grid.values().collect();
             entries.sort_by_key(|e| e.niche_coord);
 
             for e in entries {
+                let y_val = if e.behavior.residual_variance > 0.0 {
+                    e.behavior.residual_variance
+                } else {
+                    e.behavior.new_bin_ratio
+                };
                 println!(
-                    "({:>2},{:>2})     {:<12.3} {:<12.3} {:<12} {:<18} {}",
+                    "({:>2},{:>2})     {:<14.3} {:<14.3} {:<12} {:<18} {}",
                     e.niche_coord.0,
                     e.niche_coord.1,
                     e.behavior.dead_space_ratio,
-                    e.behavior.new_bin_ratio,
+                    y_val,
                     e.fitness.total_bins,
                     e.capsule.id.0,
                     e.capsule.name
@@ -254,7 +397,13 @@ fn main() -> Result<()> {
         } => {
             let content = std::fs::read_to_string(&input)?;
             let report: nomad_orchestrator::ExperimentRunReport = serde_json::from_str(&content)
-                .map_err(|e| anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e))?;
+                .or_else(|_| {
+                    serde_json::from_str::<nomad_orchestrator::RebirthExperimentReport>(&content)
+                        .map(|r| r.epoch3_heritage.unwrap_or(r.epoch2_heritage))
+                })
+                .map_err(|e| {
+                    anyhow::anyhow!("Could not parse report from {}: {}", input.display(), e)
+                })?;
 
             if report.phylogeny.node_count() == 0 {
                 eprintln!(
@@ -674,88 +823,215 @@ fn main() -> Result<()> {
             }
         }
 
-        Commands::Dataset { seed } => {
-            let in_dist = Dataset::generate_in_distribution(seed);
-            let ood1 = Dataset::generate_ood1_scale(seed);
-            let ood2 = Dataset::generate_ood2_distribution_shift(seed);
+        Commands::Dataset { seed, domain } => {
+            if domain == DomainArg::Scheduling {
+                let in_dist = SchedulingDataset::generate_in_distribution(seed);
+                let ood1 = SchedulingDataset::generate_ood_scale(seed);
+                let ood2 = SchedulingDataset::generate_ood_skewed(seed);
 
-            println!("--- Pre-Registered Benchmark Datasets (Seed: {}) ---", seed);
-            println!("In-Distribution (50 instances, N=50,  U(10,80)) :");
-            println!("  SHA-256: {}", in_dist.dataset_hash);
-            println!("OOD-1 Scale     (50 instances, N=500, U(10,80)) :");
-            println!("  SHA-256: {}", ood1.dataset_hash);
-            println!("OOD-2 Shift     (50 instances, N=500, Power-Law):");
-            println!("  SHA-256: {}", ood2.dataset_hash);
+                println!(
+                    "--- Pre-Registered Multi-Resource Scheduling Datasets (Seed: {}) ---",
+                    seed
+                );
+                println!("In-Distribution (50 uniform + 25 moderate-skew instances, N=50 jobs, Node: 32C/128G) :");
+                println!("  SHA-256: {}", in_dist.dataset_hash);
+                println!("OOD-1 Scale     (50 instances, N=300 jobs, Node: 32C/128G) :");
+                println!("  SHA-256: {}", ood1.dataset_hash);
+                println!("OOD-2 Skewed    (50 instances, N=100 jobs, Asymmetric)    :");
+                println!("  SHA-256: {}", ood2.dataset_hash);
+            } else {
+                let in_dist = Dataset::generate_in_distribution(seed);
+                let ood1 = Dataset::generate_ood1_scale(seed);
+                let ood2 = Dataset::generate_ood2_distribution_shift(seed);
+
+                println!("--- Pre-Registered Benchmark Datasets (Seed: {}) ---", seed);
+                println!("In-Distribution (50 instances, N=50,  U(10,80)) :");
+                println!("  SHA-256: {}", in_dist.dataset_hash);
+                println!("OOD-1 Scale     (50 instances, N=500, U(10,80)) :");
+                println!("  SHA-256: {}", ood1.dataset_hash);
+                println!("OOD-2 Shift     (50 instances, N=500, Power-Law):");
+                println!("  SHA-256: {}", ood2.dataset_hash);
+            }
         }
 
-        Commands::Baseline { seed } => {
+        Commands::Eval { seed, code, fuel } => {
+            let sandbox = DeterministicSandbox::new();
             let oracle = OracleEvaluator::new(seed);
-            println!("--- Classical Heuristic Benchmarks (Dataset Seed: {}) ---", seed);
-
-            for name in &["FIRST_FIT", "BEST_FIT", "WORST_FIT"] {
-                let in_score = oracle.evaluate_classical_baseline(name, &oracle.in_distribution);
-                let ood1_score = oracle.evaluate_classical_baseline(name, &oracle.ood1_scale);
-                let ood2_score = oracle.evaluate_classical_baseline(name, &oracle.ood2_powerlaw);
-
-                println!("\n[Heuristic: {}]", name);
+            let source = std::fs::read_to_string(&code)?;
+            let capsule = nomad_core::SkillCapsule::new(
+                "eval-candidate",
+                "Externally supplied heuristic",
+                source,
+                vec![],
+                0,
+                std::collections::HashMap::new(),
+            );
+            println!("--- Heuristic evaluation (Dataset Seed: {}) ---", seed);
+            for (label, ds) in [
+                ("In-Dist", &oracle.in_distribution),
+                ("Valid  ", &oracle.validation),
+                ("OOD-1  ", &oracle.ood1_scale),
+                ("OOD-2  ", &oracle.ood2_powerlaw),
+            ] {
+                let sc = oracle.evaluate_dataset(ds, &capsule, &sandbox, fuel);
+                let bf = oracle.evaluate_classical_baseline("BEST_FIT", ds);
                 println!(
-                    "  In-Dist : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
-                    in_score.total_bins,
-                    in_score.total_excess_bins,
-                    in_score.mean_efficiency * 100.0,
-                    in_score.total_fuel
-                );
-                println!(
-                    "  OOD-1   : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
-                    ood1_score.total_bins,
-                    ood1_score.total_excess_bins,
-                    ood1_score.mean_efficiency * 100.0,
-                    ood1_score.total_fuel
-                );
-                println!(
-                    "  OOD-2   : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
-                    ood2_score.total_bins,
-                    ood2_score.total_excess_bins,
-                    ood2_score.mean_efficiency * 100.0,
-                    ood2_score.total_fuel
+                    "  {} : valid={} {} bins (excess: +{}), Best-Fit: {} (excess: +{}), fuel: {}",
+                    label,
+                    sc.is_valid,
+                    sc.total_bins,
+                    sc.total_excess_bins,
+                    bf.total_bins,
+                    bf.total_excess_bins,
+                    sc.total_fuel
                 );
             }
         }
 
+        Commands::Baseline { seed, domain } => {
+            let sandbox = DeterministicSandbox::new();
+            if domain == DomainArg::Scheduling {
+                let sched_oracle = SchedulingOracle::new(seed);
+                println!(
+                    "--- Multi-Resource Scheduling Baselines (Dataset Seed: {}) ---",
+                    seed
+                );
+
+                for name in &[
+                    "FIRST_FIT_NODE",
+                    "BEST_FIT_CPU",
+                    "BEST_FIT_RAM",
+                    "BALANCED_FIT",
+                ] {
+                    let in_score = sched_oracle.evaluate_classical_baseline(
+                        name,
+                        &sched_oracle.in_distribution,
+                        &sandbox,
+                    );
+                    let ood1_score = sched_oracle.evaluate_classical_baseline(
+                        name,
+                        &sched_oracle.ood1_scale,
+                        &sandbox,
+                    );
+                    let ood2_score = sched_oracle.evaluate_classical_baseline(
+                        name,
+                        &sched_oracle.ood2_skewed,
+                        &sandbox,
+                    );
+
+                    println!("\n[Heuristic: {}]", name);
+                    println!(
+                        "  In-Dist : {} nodes (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        in_score.total_bins,
+                        in_score.total_excess_bins,
+                        in_score.mean_efficiency * 100.0,
+                        in_score.total_fuel
+                    );
+                    println!(
+                        "  OOD-1   : {} nodes (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        ood1_score.total_bins,
+                        ood1_score.total_excess_bins,
+                        ood1_score.mean_efficiency * 100.0,
+                        ood1_score.total_fuel
+                    );
+                    println!(
+                        "  OOD-2   : {} nodes (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        ood2_score.total_bins,
+                        ood2_score.total_excess_bins,
+                        ood2_score.mean_efficiency * 100.0,
+                        ood2_score.total_fuel
+                    );
+                }
+            } else {
+                let oracle = OracleEvaluator::new(seed);
+                println!(
+                    "--- Classical Heuristic Benchmarks (Dataset Seed: {}) ---",
+                    seed
+                );
+
+                for name in &["FIRST_FIT", "BEST_FIT", "BEST_FIT_LOOKAHEAD", "WORST_FIT"] {
+                    let in_score =
+                        oracle.evaluate_classical_baseline(name, &oracle.in_distribution);
+                    let ood1_score = oracle.evaluate_classical_baseline(name, &oracle.ood1_scale);
+                    let ood2_score =
+                        oracle.evaluate_classical_baseline(name, &oracle.ood2_powerlaw);
+
+                    println!("\n[Heuristic: {}]", name);
+                    println!(
+                        "  In-Dist : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        in_score.total_bins,
+                        in_score.total_excess_bins,
+                        in_score.mean_efficiency * 100.0,
+                        in_score.total_fuel
+                    );
+                    println!(
+                        "  OOD-1   : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        ood1_score.total_bins,
+                        ood1_score.total_excess_bins,
+                        ood1_score.mean_efficiency * 100.0,
+                        ood1_score.total_fuel
+                    );
+                    println!(
+                        "  OOD-2   : {} bins (excess: +{}), efficiency: {:.2}%, fuel: {}",
+                        ood2_score.total_bins,
+                        ood2_score.total_excess_bins,
+                        ood2_score.mean_efficiency * 100.0,
+                        ood2_score.total_fuel
+                    );
+                }
+            }
+        }
+
         Commands::Rebirth {
+            domain,
             seed,
             pop_size,
             generations,
+            epochs,
+            lookahead,
             operator,
             ollama_url,
             model,
             output,
         } => {
+            let prob_domain: ProblemDomain = domain.into();
             let mut config = ExperimentConfig::default();
+            config.domain = prob_domain;
             config.rng_seed = seed;
             config.population_size = pop_size;
             config.max_generations = generations;
+            config.lookahead = lookahead;
 
             let oracle = OracleEvaluator::new(seed);
+            let sched_oracle = SchedulingOracle::new(seed);
             let sandbox = DeterministicSandbox::new();
 
             let op_instance: Box<dyn SkillOperator> = match operator {
-                OperatorArg::Mock => Box::new(DeterministicMockOperator::default()),
-                OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
-                    ollama_url,
-                    model,
-                    "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
-                    "Ollama API (Qwen 2.5 Coder 7B)",
-                    0.7,
-                    0.95,
-                )),
+                OperatorArg::Mock => {
+                    let mut mock = DeterministicMockOperator::default();
+                    mock.domain = prob_domain;
+                    Box::new(mock)
+                }
+                OperatorArg::Ollama => Box::new(
+                    HttpLlamaOperator::new(
+                        ollama_url,
+                        model,
+                        "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+                        "Ollama API (Qwen 2.5 Coder 7B)",
+                        0.7,
+                        0.95,
+                    )
+                    .with_domain(prob_domain),
+                ),
             };
 
-            let rebirth_report = nomad_orchestrator::execute_rebirth_protocol(
+            let rebirth_report = nomad_orchestrator::execute_rebirth_protocol_extended(
                 config,
                 &oracle,
+                Some(&sched_oracle),
                 &sandbox,
                 op_instance.as_ref(),
+                epochs,
             )?;
 
             println!("\n============================================================");
@@ -763,8 +1039,15 @@ fn main() -> Result<()> {
             println!("============================================================");
             println!(
                 " Époque 1 (Genèse)     : Best Bins: {} (eff: {:.2}%), Niches: {}",
-                rebirth_report.epoch1_genesis.best_in_distribution_score.total_bins,
-                rebirth_report.epoch1_genesis.best_in_distribution_score.mean_efficiency * 100.0,
+                rebirth_report
+                    .epoch1_genesis
+                    .best_in_distribution_score
+                    .total_bins,
+                rebirth_report
+                    .epoch1_genesis
+                    .best_in_distribution_score
+                    .mean_efficiency
+                    * 100.0,
                 rebirth_report.heritage.distinct_niches_count
             );
             println!(
@@ -775,29 +1058,121 @@ fn main() -> Result<()> {
             println!("------------------------------------------------------------");
             println!(
                 " Époque 2 (Héritière)  : Best Bins: {} (excess: +{}), Eff: {:.2}%",
-                rebirth_report.epoch2_heritage.best_in_distribution_score.total_bins,
-                rebirth_report.epoch2_heritage.best_in_distribution_score.total_excess_bins,
-                rebirth_report.epoch2_heritage.best_in_distribution_score.mean_efficiency * 100.0
+                rebirth_report
+                    .epoch2_heritage
+                    .best_in_distribution_score
+                    .total_bins,
+                rebirth_report
+                    .epoch2_heritage
+                    .best_in_distribution_score
+                    .total_excess_bins,
+                rebirth_report
+                    .epoch2_heritage
+                    .best_in_distribution_score
+                    .mean_efficiency
+                    * 100.0
             );
             println!(
                 " Époque 2 (Tabula Rasa): Best Bins: {} (excess: +{}), Eff: {:.2}%",
-                rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.total_bins,
-                rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.total_excess_bins,
-                rebirth_report.epoch2_tabula_rasa.best_in_distribution_score.mean_efficiency * 100.0
+                rebirth_report
+                    .epoch2_tabula_rasa
+                    .best_in_distribution_score
+                    .total_bins,
+                rebirth_report
+                    .epoch2_tabula_rasa
+                    .best_in_distribution_score
+                    .total_excess_bins,
+                rebirth_report
+                    .epoch2_tabula_rasa
+                    .best_in_distribution_score
+                    .mean_efficiency
+                    * 100.0
             );
+            if let Some(ref ep3) = rebirth_report.epoch3_heritage {
+                println!(
+                    " Époque 3 (Héritière 2): Best Bins: {} (excess: +{}), Eff: {:.2}%",
+                    ep3.best_in_distribution_score.total_bins,
+                    ep3.best_in_distribution_score.total_excess_bins,
+                    ep3.best_in_distribution_score.mean_efficiency * 100.0
+                );
+            }
             println!("------------------------------------------------------------");
+            if let Some(cif_p) = rebirth_report.cumulative_metrics.cif_performance {
+                println!(" CIF Performance (Excess ratio)       : {:.3}x", cif_p);
+            } else {
+                println!(
+                    " CIF Performance (Excess ratio)       : Undefined (Zero excess achieved)"
+                );
+            }
             println!(
-                " Cumulative Improvement Factor (CIF) : {:.3}x",
-                rebirth_report.cumulative_metrics.cumulative_improvement_factor
+                " CIF Quality-Diversity (QD ratio)     : {:.3}x",
+                rebirth_report.cumulative_metrics.cif_qd
             );
             println!(
                 " Functional Heritability Rate (R_herit): {:.1}%",
-                rebirth_report.cumulative_metrics.functional_heritability_rate * 100.0
+                rebirth_report
+                    .cumulative_metrics
+                    .functional_heritability_rate
+                    * 100.0
             );
             println!(
                 " Innovation Rate (R_innov)             : {:.3} per 1000 evals",
                 rebirth_report.cumulative_metrics.innovation_rate
             );
+            println!("------------------------------------------------------------");
+            println!(" Budget Breakdown (Executions consumed):");
+            println!(
+                "  - Époque 1 (Genèse)                  : {} execs, {} LLM calls",
+                rebirth_report
+                    .budget_breakdown
+                    .budget_patrimony_epoch1
+                    .executions_consumed,
+                rebirth_report
+                    .budget_breakdown
+                    .budget_patrimony_epoch1
+                    .llm_calls_consumed
+            );
+            println!(
+                "  - Réévaluation du Patrimoine Hérité  : {} execs, {} LLM calls",
+                rebirth_report
+                    .budget_breakdown
+                    .budget_reevaluation_heritage
+                    .executions_consumed,
+                rebirth_report
+                    .budget_breakdown
+                    .budget_reevaluation_heritage
+                    .llm_calls_consumed
+            );
+            println!(
+                "  - Recherche Lignée Héritière         : {} execs, {} LLM calls",
+                rebirth_report
+                    .budget_breakdown
+                    .budget_search_heritage
+                    .executions_consumed,
+                rebirth_report
+                    .budget_breakdown
+                    .budget_search_heritage
+                    .llm_calls_consumed
+            );
+            println!(
+                "  - Recherche Lignée Tabula Rasa       : {} execs, {} LLM calls",
+                rebirth_report
+                    .budget_breakdown
+                    .budget_search_tabula_rasa
+                    .executions_consumed,
+                rebirth_report
+                    .budget_breakdown
+                    .budget_search_tabula_rasa
+                    .llm_calls_consumed
+            );
+            println!("------------------------------------------------------------");
+            println!(" Marginal Epoch Analysis:");
+            for rep in &rebirth_report.epoch_marginal_reports {
+                println!(
+                    "  Époque {} -> Bins Gain: {:+} | Excess Gain: {:+} | QD Gain: {:+.3}",
+                    rep.epoch, rep.bins_gain, rep.excess_gain, rep.qd_gain
+                );
+            }
             println!("============================================================");
 
             if let Some(path) = output {
@@ -809,6 +1184,7 @@ fn main() -> Result<()> {
         }
 
         Commands::Run {
+            domain,
             group,
             seed,
             pop_size,
@@ -817,45 +1193,71 @@ fn main() -> Result<()> {
             ollama_url,
             model,
             cooldown_ms,
+            lookahead,
+            enable_constant_opt,
             output,
         } => {
             let exp_group: ExperimentalGroup = group.into();
+            let prob_domain: ProblemDomain = domain.into();
             let mut config = ExperimentConfig::default();
+            config.domain = prob_domain;
             config.group = exp_group;
             config.rng_seed = seed;
             config.population_size = pop_size;
             config.max_generations = generations;
             config.cooldown_ms = cooldown_ms;
+            config.lookahead = lookahead;
+            config.enable_constant_optimization = enable_constant_opt;
 
             let oracle = OracleEvaluator::new(seed);
+            let sched_oracle = SchedulingOracle::new(seed);
             let sandbox = DeterministicSandbox::new();
 
             let op_instance: Box<dyn SkillOperator> = match operator {
-                OperatorArg::Mock => Box::new(DeterministicMockOperator::default()),
-                OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
-                    ollama_url,
-                    model,
-                    "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364", // SHA256 digest of qwen2.5-coder:7b
-                    "Ollama API (Qwen 2.5 Coder 7B)",
-                    0.7,
-                    0.95,
-                )),
+                OperatorArg::Mock => {
+                    let mut mock = DeterministicMockOperator::default();
+                    mock.domain = prob_domain;
+                    Box::new(mock)
+                }
+                OperatorArg::Ollama => Box::new(
+                    HttpLlamaOperator::new(
+                        ollama_url,
+                        model,
+                        "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364", // SHA256 digest of qwen2.5-coder:7b
+                        "Ollama API (Qwen 2.5 Coder 7B)",
+                        0.7,
+                        0.95,
+                    )
+                    .with_domain(prob_domain),
+                ),
             };
 
-            let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, op_instance.as_ref());
+            let mut engine = EvolutionEngine::new(config, &oracle, &sandbox, op_instance.as_ref())
+                .with_scheduling_oracle(&sched_oracle);
             let report = engine.execute_run()?;
 
             println!("\n============================================================");
             println!(" Run Completed: {}", report.group.name());
-            println!(" Seed: {} | Generations: {}", report.rng_seed, report.total_generations);
+            println!(
+                " Seed: {} | Generations: {}",
+                report.rng_seed, report.total_generations
+            );
             println!("------------------------------------------------------------");
             println!(
-                " Best In-Dist Bins: {} (excess: +{}), Efficiency: {:.2}%, Fuel: {}",
+                " Best In-Dist (w/ Lookahead)  : {} bins (excess: +{}), Efficiency: {:.2}%, Fuel: {}",
                 report.best_in_distribution_score.total_bins,
                 report.best_in_distribution_score.total_excess_bins,
                 report.best_in_distribution_score.mean_efficiency * 100.0,
                 report.best_in_distribution_score.total_fuel
             );
+            if let Some(ref no_la) = report.best_score_without_lookahead {
+                println!(
+                    " Best In-Dist (w/o Lookahead) : {} bins (excess: +{}), Efficiency: {:.2}%",
+                    no_la.total_bins,
+                    no_la.total_excess_bins,
+                    no_la.mean_efficiency * 100.0
+                );
+            }
             println!(
                 " Dynamic Trajectory: tLDR = {:.4}",
                 report.best_in_distribution_score.tldr_score
@@ -872,6 +1274,14 @@ fn main() -> Result<()> {
                 report.archive.coverage() * 100.0,
                 report.archive.qd_score()
             );
+            if let Some(ref val_score) = report.best_validation_score {
+                println!(
+                    " Validation Score : {} bins (excess: +{}), Efficiency: {:.2}%",
+                    val_score.total_bins,
+                    val_score.total_excess_bins,
+                    val_score.mean_efficiency * 100.0
+                );
+            }
             println!(
                 " OOD-1 Score      : {} bins (excess: +{}), Efficiency: {:.2}%",
                 report.best_ood1_score.total_bins,
@@ -884,7 +1294,10 @@ fn main() -> Result<()> {
                 report.best_ood2_score.total_excess_bins,
                 report.best_ood2_score.mean_efficiency * 100.0
             );
-            println!(" Lineage Nodes    : {}, Transitions: {}", report.total_lineage_nodes, report.total_lineage_edges);
+            println!(
+                " Lineage Nodes    : {}, Transitions: {}",
+                report.total_lineage_nodes, report.total_lineage_edges
+            );
             println!(" Best Heuristic   : {}", report.best_capsule.name);
             println!(" Logic Code       : {}", report.best_capsule.logic_code);
             println!("============================================================");
@@ -896,17 +1309,24 @@ fn main() -> Result<()> {
         }
 
         Commands::Compare {
+            domain,
             runs,
             pop_size,
             generations,
+            lookahead,
+            enable_constant_opt,
             operator,
             ollama_url,
             model,
             cooldown_ms,
             output,
         } => {
+            let prob_domain: ProblemDomain = domain.into();
             println!("============================================================");
             println!(" Running Paired Study: Group C (Swarm) vs Group D (Mutation)");
+            println!(" Target Domain        : {:?}", prob_domain);
+            println!(" Lookahead (k=2)      : {}", lookahead);
+            println!(" Constant Opt Hill-Cl : {}", enable_constant_opt);
             println!(" Number of Paired Runs: {}", runs);
             if cooldown_ms > 0 {
                 println!(" Thermal Cooldown: {} ms between LLM calls", cooldown_ms);
@@ -914,15 +1334,22 @@ fn main() -> Result<()> {
             println!("============================================================");
 
             let op_instance: Box<dyn SkillOperator> = match operator {
-                OperatorArg::Mock => Box::new(DeterministicMockOperator::default()),
-                OperatorArg::Ollama => Box::new(HttpLlamaOperator::new(
-                    ollama_url,
-                    model,
-                    "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
-                    "Ollama API (Qwen 2.5 Coder 7B)",
-                    0.7,
-                    0.95,
-                )),
+                OperatorArg::Mock => {
+                    let mut mock = DeterministicMockOperator::default();
+                    mock.domain = prob_domain;
+                    Box::new(mock)
+                }
+                OperatorArg::Ollama => Box::new(
+                    HttpLlamaOperator::new(
+                        ollama_url,
+                        model,
+                        "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+                        "Ollama API (Qwen 2.5 Coder 7B)",
+                        0.7,
+                        0.95,
+                    )
+                    .with_domain(prob_domain),
+                ),
             };
 
             let mut paired_results = Vec::new();
@@ -930,16 +1357,22 @@ fn main() -> Result<()> {
             for r in 0..runs {
                 let seed = 1000 + (r as u64) * 7;
                 let oracle = OracleEvaluator::new(seed);
+                let sched_oracle = SchedulingOracle::new(seed);
                 let sandbox = DeterministicSandbox::new();
 
                 // Group D run
                 let mut config_d = ExperimentConfig::default();
+                config_d.domain = prob_domain;
                 config_d.group = ExperimentalGroup::GroupD;
                 config_d.rng_seed = seed;
                 config_d.population_size = pop_size;
                 config_d.max_generations = generations;
                 config_d.cooldown_ms = cooldown_ms;
-                let mut engine_d = EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref());
+                config_d.lookahead = lookahead;
+                config_d.enable_constant_optimization = enable_constant_opt;
+                let mut engine_d =
+                    EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
+                        .with_scheduling_oracle(&sched_oracle);
                 let report_d = engine_d.execute_run()?;
 
                 // GPU breathing pause between Group D and Group C
@@ -947,22 +1380,40 @@ fn main() -> Result<()> {
 
                 // Group C run
                 let mut config_c = ExperimentConfig::default();
+                config_c.domain = prob_domain;
                 config_c.group = ExperimentalGroup::GroupC;
                 config_c.rng_seed = seed;
                 config_c.population_size = pop_size;
                 config_c.max_generations = generations;
                 config_c.cooldown_ms = cooldown_ms;
-                let mut engine_c = EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref());
+                config_c.lookahead = lookahead;
+                config_c.enable_constant_optimization = enable_constant_opt;
+                let mut engine_c =
+                    EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
+                        .with_scheduling_oracle(&sched_oracle);
                 let report_c = engine_c.execute_run()?;
 
+                let val_d = report_d.best_validation_score.as_ref().map(|s| s.total_bins).unwrap_or(0);
+                let val_c = report_c.best_validation_score.as_ref().map(|s| s.total_bins).unwrap_or(0);
                 println!(
-                    "Pair #{:02} (Seed {}): Group D Bins = {} vs Group C Bins = {} (Δ = {:+})",
+                    "Pair #{:02} (Seed {}):\n  In-Dist : Group D = {} vs Group C = {} (Δ = {:+})\n  Val     : Group D = {} vs Group C = {} (Δ = {:+})\n  OOD-1   : Group D = {} vs Group C = {} (Δ = {:+})\n  OOD-2   : Group D = {} vs Group C = {} (Δ = {:+})",
                     r + 1,
                     seed,
                     report_d.best_in_distribution_score.total_bins,
                     report_c.best_in_distribution_score.total_bins,
                     (report_c.best_in_distribution_score.total_bins as i64)
-                        - (report_d.best_in_distribution_score.total_bins as i64)
+                        - (report_d.best_in_distribution_score.total_bins as i64),
+                    val_d,
+                    val_c,
+                    (val_c as i64) - (val_d as i64),
+                    report_d.best_ood1_score.total_bins,
+                    report_c.best_ood1_score.total_bins,
+                    (report_c.best_ood1_score.total_bins as i64)
+                        - (report_d.best_ood1_score.total_bins as i64),
+                    report_d.best_ood2_score.total_bins,
+                    report_c.best_ood2_score.total_bins,
+                    (report_c.best_ood2_score.total_bins as i64)
+                        - (report_d.best_ood2_score.total_bins as i64),
                 );
 
                 paired_results.push((report_c, report_d));
@@ -981,6 +1432,149 @@ fn main() -> Result<()> {
                 file.write_all(serialized.as_bytes())?;
                 println!("Paired comparison written to {}", path.display());
             }
+        }
+
+        Commands::Campaign {
+            domain,
+            seeds,
+            seed_start,
+            pop_size,
+            generations,
+            lookahead,
+            enable_constant_opt,
+            operator,
+            ollama_url,
+            model,
+            cooldown_ms,
+            output_dir,
+        } => {
+            let prob_domain: ProblemDomain = domain.into();
+            std::fs::create_dir_all(&output_dir)?;
+            println!("============================================================");
+            println!(" NOMAD PRE-REGISTERED {}-SEED STATISTICAL CAMPAIGN", seeds);
+            println!(" Target Domain   : {:?}", prob_domain);
+            println!(" Paired Seeds    : {} (first seed {}, step 17)", seeds, seed_start);
+            println!(
+                " Fuel per call   : {} (scaled with instance length)",
+                ExperimentConfig::default().fuel_limit_per_call
+            );
+            println!(
+                " Parent select   : {:?}",
+                ExperimentConfig::default().parent_selection
+            );
+            println!(
+                " BP profile      : {}",
+                std::env::var("NOMAD_BP_PROFILE").unwrap_or_else(|_| "default".to_string())
+            );
+            println!(" Lookahead (k=2) : {}", lookahead);
+            println!(" Constant Opt    : {}", enable_constant_opt);
+            println!(" Output Directory: {}", output_dir.display());
+            println!("============================================================");
+
+            let op_instance: Box<dyn SkillOperator> = match operator {
+                OperatorArg::Mock => {
+                    let mut mock = DeterministicMockOperator::default();
+                    mock.domain = prob_domain;
+                    Box::new(mock)
+                }
+                OperatorArg::Ollama => Box::new(
+                    HttpLlamaOperator::new(
+                        ollama_url,
+                        model,
+                        "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+                        "Ollama API (Qwen 2.5 Coder 7B)",
+                        0.7,
+                        0.95,
+                    )
+                    .with_domain(prob_domain),
+                ),
+            };
+
+            let mut aggregate_pairs = Vec::new();
+
+            for r in 0..seeds {
+                let seed = seed_start + (r as u64) * 17;
+                let oracle = OracleEvaluator::new(seed);
+                let sched_oracle = SchedulingOracle::new(seed);
+                let sandbox = DeterministicSandbox::new();
+
+                // 1. Group D Run (Mutation-only baseline)
+                let mut config_d = ExperimentConfig::default();
+                config_d.domain = prob_domain;
+                config_d.group = ExperimentalGroup::GroupD;
+                config_d.rng_seed = seed;
+                config_d.population_size = pop_size;
+                config_d.max_generations = generations;
+                config_d.cooldown_ms = cooldown_ms;
+                config_d.lookahead = lookahead;
+                config_d.enable_constant_optimization = enable_constant_opt;
+
+                let mut engine_d =
+                    EvolutionEngine::new(config_d, &oracle, &sandbox, op_instance.as_ref())
+                        .with_scheduling_oracle(&sched_oracle);
+                let report_d = engine_d.execute_run()?;
+
+                let d_file = output_dir.join(format!("run_seed_{:04}_group_d.json", seed));
+                let mut f_d = File::create(&d_file)?;
+                f_d.write_all(serde_json::to_string_pretty(&report_d)?.as_bytes())?;
+
+                if cooldown_ms > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(cooldown_ms));
+                }
+
+                // 2. Group C Run (Full Swarm with Crossover)
+                let mut config_c = ExperimentConfig::default();
+                config_c.domain = prob_domain;
+                config_c.group = ExperimentalGroup::GroupC;
+                config_c.rng_seed = seed;
+                config_c.population_size = pop_size;
+                config_c.max_generations = generations;
+                config_c.cooldown_ms = cooldown_ms;
+                config_c.lookahead = lookahead;
+                config_c.enable_constant_optimization = enable_constant_opt;
+
+                let mut engine_c =
+                    EvolutionEngine::new(config_c, &oracle, &sandbox, op_instance.as_ref())
+                        .with_scheduling_oracle(&sched_oracle);
+                let report_c = engine_c.execute_run()?;
+
+                let c_file = output_dir.join(format!("run_seed_{:04}_group_c.json", seed));
+                let mut f_c = File::create(&c_file)?;
+                f_c.write_all(serde_json::to_string_pretty(&report_c)?.as_bytes())?;
+
+                println!(
+                    "Seed {:04} ({:02}/{}): Group D = {} bins | Group C = {} bins (Diff = {:+})",
+                    seed,
+                    r + 1,
+                    seeds,
+                    report_d.best_in_distribution_score.total_bins,
+                    report_c.best_in_distribution_score.total_bins,
+                    (report_c.best_in_distribution_score.total_bins as i64)
+                        - (report_d.best_in_distribution_score.total_bins as i64)
+                );
+
+                aggregate_pairs.push((report_c, report_d));
+
+                // Incremental auto-save of aggregate file
+                let agg_file = output_dir.join("campaign_aggregate.json");
+                let mut f_agg = File::create(&agg_file)?;
+                f_agg.write_all(serde_json::to_string_pretty(&aggregate_pairs)?.as_bytes())?;
+            }
+
+            println!("============================================================");
+            println!(
+                " Campaign Complete: {} paired runs saved in {}",
+                seeds,
+                output_dir.display()
+            );
+            println!(
+                " Aggregate data file: {}",
+                output_dir.join("campaign_aggregate.json").display()
+            );
+            println!(" To analyze with statistical significance and Holm correction:");
+            println!("   python scripts/analysis/wilcoxon_analysis.py {}/campaign_aggregate.json --output-json {}/stats.json --output-csv {}/stats.csv",
+                output_dir.display(), output_dir.display(), output_dir.display());
+            println!("============================================================");
         }
     }
 

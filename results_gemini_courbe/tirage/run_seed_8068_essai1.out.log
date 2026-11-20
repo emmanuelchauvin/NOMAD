@@ -1,0 +1,61 @@
+[2m2026-11-14T08:58:07.325497Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8068, Pop=1359, MaxGens=1
+[2m2026-11-14T11:55:27.569482Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 3b72fc1dbd041db6 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8068 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4098 bins (excess: +96), Efficiency: 97.66%, Fuel: 46794636
+ Best In-Dist (w/o Lookahead) : 4156 bins (excess: +154), Efficiency: 96.30%
+ Dynamic Trajectory: tLDR = 2.4920
+ Behavior Profile : DeadSpaceRatio: 12.0%, NewBinRatio: 41.0%, ResVar: 0.57
+ MAP-Elites Niches: 19 active (19.0% coverage), QD-Score: 14.288
+ Validation Score : 4110 bins (excess: +95), Efficiency: 97.69%
+ OOD-1 Score      : 10204 bins (excess: +142), Efficiency: 98.61%
+ OOD-2 Score      : 3595 bins (excess: +55), Efficiency: 98.47%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-035
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Base score is the post_residual (Best Fit principle)
+    let mut score = post_residual as f64;
+
+    // Penalty for opening a new bin: scales with progress to discourage early waste
+    // and rewards opening new bins late in the stream if necessary.
+    if is_new_bin {
+        score += 15.0 + (progress * 25.0);
+    }
+
+    // Penalty for "bad" fits: If the remaining space is small but unusable,
+    // we penalize it quadratically.
+    if !is_new_bin && post_residual > 0 {
+        let tightness = (bin_capacity - post_residual) as f64 / bin_capacity as f64;
+        score += (tightness * 10.0).powf(2.0);
+    }
+
+    // Lookahead logic: If the next item exists, penalize bins that can't fit it
+    // or favor bins that leave enough space for the next item.
+    if next_item_size > 0 {
+        if post_residual < next_item_size {
+            score += 20.0 * (1.0 - progress);
+        } else {
+            // Reward bins that can accommodate the next item perfectly
+            score -= 5.0 * (1.0 - (post_residual as f64 - next_item_size as f64) / bin_capacity as f64);
+        }
+    }
+
+    // Pressure factor: if only one bin can fit the item, we are forced to use it.
+    // If fitting_bins_count is low, we reduce the score to ensure we don't open a new bin.
+    if !is_new_bin && fitting_bins_count == 1 {
+        score -= 10.0;
+    }
+
+    // Interaction with mean_residual to keep bins balanced
+    score += (post_residual as f64 - mean_residual).abs() * 0.1;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\tirage\run_seed_8068_tirage.json.tmp

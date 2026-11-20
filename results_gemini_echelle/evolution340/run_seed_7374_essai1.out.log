@@ -1,0 +1,74 @@
+2026-11-14T05:16:26.606426Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7374, Pop=8, MaxGens=37
+2026-11-14T05:35:46.531182Z  INFO nomad_orchestrator::engine: Evaluating winning capsule c94a034bfc4c6182 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7374 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4166 bins (excess: +145), Efficiency: 96.52%, Fuel: 28143724
+ Best In-Dist (w/o Lookahead) : 4171 bins (excess: +150), Efficiency: 96.41%
+ Dynamic Trajectory: tLDR = 0.4817
+ Behavior Profile : DeadSpaceRatio: 61.7%, NewBinRatio: 41.7%, ResVar: 0.46
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 5.222
+ Validation Score : 4186 bins (excess: +156), Efficiency: 96.28%
+ OOD-1 Score      : 10400 bins (excess: +322), Efficiency: 96.90%
+ OOD-2 Score      : 3615 bins (excess: +72), Efficiency: 98.01%
+ Lineage Nodes    : 340, Transitions: 195
+ Best Heuristic   : LLM-Seed-091-mut-g23
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Adaptive Residual Pressure: Increased penalty for orphans, coupled with mean_residual variance
+    if post_residual > 0 && post_residual < 22 {
+        score += 52.0 + (mean_residual * 0.85);
+        if next_item_size > 0 && post_residual < next_item_size {
+            score += 38.0;
+        }
+    }
+
+    // 2. Critical Fit Prioritization: Force usage of existing valid bins to prevent unnecessary new bin creation
+    if fitting_bins_count > 0 && bin_residual >= item_size {
+        score -= (95.0 / (fitting_bins_count as f64).sqrt());
+    }
+
+    // 3. New Bin Thresholding (The "Threshold Gate")
+    if bin_residual == bin_capacity {
+        let progress = step_index as f64 / total_items as f64;
+        // Base penalty for opening a new bin, scaled by current bin count and progress
+        score += 75.0 + (open_bins_count as f64 * 2.5) + (progress * 65.0);
+        
+        // If the item is large (e.g., > 60% capacity), it's a stronger candidate for a new bin to preserve small-item capacity
+        if item_size > (bin_capacity * 60 / 100) {
+            score -= 60.0;
+        }
+    }
+
+    // 4. Lookahead Predictive Coupling: Reward perfect fits, penalize "slivers" (unusable tiny gaps)
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 48.0; 
+        } else if post_residual > next_item_size && (post_residual - next_item_size) < 8 {
+            score += 42.0; 
+        }
+    }
+
+    // 5. Entropy Balancing: If mean_residual is high, we are under-packing. Force tighter fits.
+    // Use a non-linear penalty for residuals that are too large, pushing toward Best Fit.
+    if mean_residual > 22.0 && post_residual > 5 {
+        score += (post_residual as f64 * 0.6);
+    }
+
+    // 6. Density Multiplier: Penalize leaving bins with very high residual (waste) if we have enough open bins.
+    if post_residual > (bin_capacity * 80 / 100) && open_bins_count > 5 {
+        score += 25.0;
+    }
+
+    // 7. Small Item Aggregation: If item is small, favor bins that are already partially filled.
+    if item_size < (bin_capacity / 5) && bin_residual < (bin_capacity / 2) {
+        score -= 10.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7374_evolution340.json.tmp

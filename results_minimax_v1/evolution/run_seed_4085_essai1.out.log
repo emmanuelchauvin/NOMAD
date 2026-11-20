@@ -1,0 +1,143 @@
+2026-11-13T12:43:46.314381Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4085, Pop=8, MaxGens=12
+2026-11-13T12:58:17.863857Z  INFO nomad_orchestrator::engine: Evaluating winning capsule d52a01a336dcc271 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4085 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4162 bins (excess: +162), Efficiency: 96.11%, Fuel: 47987308
+ Best In-Dist (w/o Lookahead) : 4178 bins (excess: +178), Efficiency: 95.74%
+ Dynamic Trajectory: tLDR = 0.3469
+ Behavior Profile : DeadSpaceRatio: 62.4%, NewBinRatio: 41.6%, ResVar: 0.49
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.446
+ Validation Score : 4174 bins (excess: +164), Efficiency: 96.07%
+ OOD-1 Score      : 10401 bins (excess: +349), Efficiency: 96.65%
+ OOD-2 Score      : 3605 bins (excess: +72), Efficiency: 98.01%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-002-mut-g1-mut-g3-mut-g4-mut-g4-mut-g6-mut-g6-mut-g6-mut-g7
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let residual = post_residual as f64;
+    let item = item_size as f64;
+    let next = next_item_size as f64;
+    let total = total_items.max(1) as f64;
+    let bins = open_bins_count.max(1) as f64;
+    let progress = (step_index as f64 / total).clamp(0.0, 1.0);
+    let remaining = 1.0 - progress;
+    let empty_bin = bin_residual == bin_capacity;
+
+    let pre_fill = (bin_residual as f64 / capacity).clamp(0.0, 1.0);
+    let post_fill = 1.0 - (residual / capacity).clamp(0.0, 1.0);
+    let fill_gain = (post_fill - pre_fill).max(0.0);
+    let residue_fraction = (residual / capacity).clamp(0.0, 1.0);
+
+    let mut score = 0.0;
+
+    score -= 43.0 * (item / capacity);
+    score -= 27.0 * fill_gain;
+
+    // Favor compact remainders, with the preferred window drifting smaller
+    // as the stream advances.
+    let center = 0.190 - 0.050 * progress;
+    let width = 0.116 - 0.024 * progress;
+    let middle_weight = (-((residue_fraction - center) / width).powi(2)).exp();
+    score += (13.0 + 17.0 * progress) * middle_weight;
+
+    if residual <= 0.0001 {
+        score -= 39.0;
+    } else if residual < item * 0.135 {
+        score += (6.0 + 14.0 * progress) * (residual / capacity);
+    }
+
+    if next > 0.0 {
+        let next_exact = (residual == next) as u8 as f64;
+        let next_near = ((residual - next).abs() <= next * 0.088 + 1.0
+            && residual != next) as u8 as f64;
+        let next_reject = (residual < next) as u8 as f64;
+
+        score -= 31.0 * next_exact * (0.62 + 0.38 * remaining);
+        score -= 13.0 * next_near;
+        score += 19.0 * next_reject * (0.38 + 0.62 * progress);
+
+        let useful_upper = next + (next * 0.18 + 1.0);
+        if residual > next && residual <= useful_upper {
+            score -= 10.0 * (0.75 + 0.25 * progress);
+        }
+    }
+
+    if mean_residual > 0.0 {
+        let deviation = (residual - mean_residual).abs() / capacity;
+        score += 5.6 * deviation;
+        if fitting_bins_count <= 2 {
+            score -= 4.5 * deviation;
+        }
+    }
+
+    if fitting_bins_count == 1 {
+        score -= 31.0;
+    } else if fitting_bins_count == 2 {
+        score -= 9.5;
+    } else if fitting_bins_count >= 5 {
+        score += 5.5;
+    }
+
+    // Penalize residues that are unlikely to be consumed, with an additional
+    // narrow-band penalty for capacity stranded just above the next item.
+    if residual > 0.0001 {
+        let next_dead = if residual < next * 0.38 { 1.0 } else { 0.0 };
+        let next_reject = if residual < next { 1.0 } else { 0.0 };
+        score += 25.0 * next_dead * (0.42 + 0.58 * progress)
+            * (0.50 + 0.50 * next_reject);
+
+        if residue_fraction > 0.032 && residue_fraction < 0.425 {
+            let t = (residue_fraction - 0.032) / 0.393;
+            let bowl = 1.0 - 4.0 * t * (1.0 - t);
+            score += (10.0 + 14.0 * progress) * bowl;
+        }
+
+        if next > 0.0 && residual > next {
+            let excess = (residual - next) / capacity;
+            let excess_window = (-((excess - 0.070) / 0.132).powi(2)).exp();
+            score -= 11.0 * excess_window;
+
+            // Residues only slightly larger than the next item are often
+            // difficult to repair, so distinguish them from useful headroom.
+            if excess < 0.045 {
+                score += 8.0 * (1.0 - excess / 0.045);
+            }
+        }
+    }
+
+    if empty_bin {
+        score += 99.0 + 14.5 * bins.sqrt();
+
+        if fitting_bins_count == 0 {
+            score -= 67.0;
+        } else {
+            let future_miss = if residual < next { 1.0 } else { 0.0 };
+            score += 30.0 * future_miss * (0.42 + 0.58 * progress);
+
+            if fitting_bins_count >= 4 {
+                score -= 20.0 * (1.0 - progress);
+            }
+
+            let best_residue = (bin_residual.saturating_sub(item)) as f64;
+            let awkward_fit = if best_residue <= 0.0 {
+                0.0
+            } else {
+                (-((best_residue / capacity - 0.19) / 0.155).powi(2)).exp()
+            };
+            score += 12.0 * awkward_fit * (0.35 + 0.65 * progress);
+
+            score += 10.0 * (0.5 + 0.5 * progress) * (1.0 - progress);
+        }
+    }
+
+    let pressure = bins / total.sqrt();
+    score += 6.5 * pressure * progress;
+    score += 3.0 * pressure * progress * progress;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4085_evolution.json.tmp

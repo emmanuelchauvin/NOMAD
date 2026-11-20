@@ -1,0 +1,176 @@
+2026-11-13T13:29:14.318114Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4136, Pop=8, MaxGens=12
+2026-11-13T13:45:30.582435Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 90d2f34f3eedccd1 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4136 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4198 bins (excess: +171), Efficiency: 95.93%, Fuel: 56308106
+ Best In-Dist (w/o Lookahead) : 4212 bins (excess: +185), Efficiency: 95.61%
+ Dynamic Trajectory: tLDR = 0.3571
+ Behavior Profile : DeadSpaceRatio: 61.4%, NewBinRatio: 42.0%, ResVar: 0.52
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 6.223
+ Validation Score : 4188 bins (excess: +166), Efficiency: 96.04%
+ OOD-1 Score      : 10404 bins (excess: +348), Efficiency: 96.66%
+ OOD-2 Score      : 3660 bins (excess: +78), Efficiency: 97.87%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-004-mut-g2-mut-g2-mut-g5-mut-g7-mut-g8-mut-g8-mut-g10
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let next = next_item_size as f64;
+    let residual = bin_residual.min(bin_capacity) as f64;
+    let after = post_residual.min(bin_capacity) as f64;
+    let mean = mean_residual.max(0.0).min(capacity);
+    let progress = if total_items > 0 {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    let new_bin = bin_residual == bin_capacity;
+    let fit_share = if open_bins_count > 0 {
+        (fitting_bins_count as f64 / open_bins_count as f64).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+
+    let before_fill = (capacity - residual) / capacity;
+    let after_fill = (capacity - after) / capacity;
+    let after_ratio = after / capacity;
+    let item_ratio = (item / capacity).min(1.0);
+    let next_ratio = (next / capacity).min(1.0);
+    let mean_ratio = mean / capacity;
+    let next_fits = next <= after;
+    let next_dead = after > 0.0 && after < next;
+    let residue_dead = after > 0.0 && after < item.min(next);
+    let scarcity = 1.0 - fit_share;
+    let horizon = 1.0 - progress;
+
+    let mut score = 0.0;
+
+    if new_bin {
+        score += 25.0 * scarcity;
+        score += 8.0 * horizon;
+        score += 13.0 * (1.0 - item_ratio);
+        score += 0.20 * (item - mean).max(0.0);
+
+        if next_fits {
+            score -= 8.0 * horizon;
+        } else {
+            score += 3.0 * next_ratio * horizon;
+        }
+
+        if fitting_bins_count > 0 && item <= mean {
+            score += 5.0 * fit_share;
+        }
+        if fitting_bins_count == 1 {
+            score += 2.5 * (mean - after).abs() / capacity;
+        }
+    } else {
+        score -= 12.0 * before_fill;
+        score -= 7.5 * after_fill;
+        score -= 6.5 * after_ratio * after_ratio;
+
+        if after == 0.0 {
+            score -= 22.0;
+        }
+        if next_fits {
+            score -= 8.0 * next_ratio;
+        } else {
+            score += 4.0 * next_ratio * horizon;
+        }
+
+        score -= 9.0 * residue_dead as u8 as f64 * (0.35 + 0.65 * horizon);
+        if residue_dead {
+            score += 12.0 + 0.35 * after;
+            score += 6.0 * (item.min(next) - after) / capacity;
+        }
+
+        let exact = (after - item).abs();
+        score -= 3.8 * (exact / capacity).min(1.0);
+        score -= 3.0 * (after_ratio - mean_ratio).abs();
+
+        if next_dead {
+            score += 3.2 * (next - after) / capacity * horizon;
+        }
+    }
+
+    if !new_bin && fitting_bins_count == 1 {
+        score -= 24.0 - 0.30 * next;
+        if next_dead {
+            score -= 4.5 * (next - after) / capacity;
+        }
+        if after >= next && after - next < capacity * 0.12 {
+            score -= 4.5;
+        }
+    } else if !new_bin && fitting_bins_count == 2 {
+        score -= 6.0 * horizon;
+        if after >= next && after - next < capacity * 0.15 {
+            score -= 4.5;
+        }
+    } else if !new_bin && fitting_bins_count > 2 {
+        score -= 1.7 * fit_share * horizon;
+    }
+
+    let residual_excess = (after - mean).max(0.0);
+    score -= 2.8 * (residual_excess / capacity).min(1.0);
+    score += 1.1 * horizon * (mean - after).abs() / capacity;
+
+    let dead_fraction = if capacity > 0.0 {
+        ((mean - after).max(0.0) / capacity).min(1.0)
+    } else {
+        0.0
+    };
+    let fragmented = after > 0.0
+        && after < item
+        && after < next
+        && after < capacity * 0.25;
+    if !new_bin && fragmented {
+        score += 3.5 * dead_fraction * (0.4 + 0.6 * scarcity);
+    }
+
+    if !new_bin {
+        let residual_slack = (after - item).max(0.0);
+        let useful_slack = residual_slack.min(next);
+        score -= 2.0 * (useful_slack / capacity).min(1.0);
+        if after > item && after < item + capacity * 0.08 {
+            score -= 2.4 * horizon;
+        }
+    }
+
+    let small_residue = after > 0.0 && after <= capacity * 0.15;
+    if !new_bin && small_residue {
+        let gap = (item.min(next) - after).max(0.0) / capacity;
+        score += 4.0 * gap * (0.3 + 0.7 * scarcity);
+    }
+
+    let residue_dispersion = (after_ratio - mean_ratio).abs();
+    if !new_bin && residue_dispersion > 0.18 {
+        score += 2.5 * (residue_dispersion - 0.18) * (0.5 + 0.5 * scarcity);
+    }
+
+    let target_gap = (after - next).abs() / capacity;
+    if !new_bin && target_gap <= 0.10 {
+        score -= 4.0 * (1.0 - target_gap / 0.10) * (0.35 + 0.65 * horizon);
+    }
+
+    let residual_square = after_ratio * after_ratio;
+    let dead_pressure = if after < next {
+        ((next - after) / capacity).min(1.0)
+    } else {
+        0.0
+    };
+    if !new_bin {
+        score -= 2.0 * residual_square * (0.4 + 0.6 * scarcity);
+        score += 5.0 * dead_pressure * (0.25 + 0.75 * scarcity) * horizon;
+    }
+
+    let near_mean = (after_ratio - mean_ratio).abs() < 0.12;
+    if !new_bin && near_mean && after > 0.0 && after < item.min(next) {
+        score += 3.0 * scarcity;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4136_evolution.json.tmp

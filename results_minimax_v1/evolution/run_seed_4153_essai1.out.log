@@ -1,0 +1,192 @@
+2026-11-13T13:45:49.799827Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4153, Pop=8, MaxGens=12
+2026-11-13T13:57:13.279789Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 9392e3ea74f1af89 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4153 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4175 bins (excess: +156), Efficiency: 96.27%, Fuel: 50976266
+ Best In-Dist (w/o Lookahead) : 4169 bins (excess: +150), Efficiency: 96.40%
+ Dynamic Trajectory: tLDR = 0.2639
+ Behavior Profile : DeadSpaceRatio: 64.2%, NewBinRatio: 41.8%, ResVar: 0.47
+ MAP-Elites Niches: 4 active (4.0% coverage), QD-Score: 3.770
+ Validation Score : 4198 bins (excess: +173), Efficiency: 95.88%
+ OOD-1 Score      : 10446 bins (excess: +380), Efficiency: 96.36%
+ OOD-2 Score      : 3656 bins (excess: +93), Efficiency: 97.46%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-005-mut-g5-mut-g6-mut-g6-mut-g7-mut-g9-mut-g10-mut-g11
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let pre_ratio = (bin_residual as f64 / capacity).clamp(0.0, 1.0);
+    let post_ratio = (post_residual as f64 / capacity).clamp(0.0, 1.0);
+    let fit_ratio = (item / capacity).clamp(0.0, 1.0);
+    let mean_ratio = (mean_residual.max(0.0) / capacity).clamp(0.0, 1.0);
+    let next_ratio = (next_item_size as f64 / capacity).clamp(0.0, 1.0);
+    let progress = if total_items == 0 {
+        1.0
+    } else {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    };
+
+    let mut score = 69.0 * post_ratio;
+    score += 31.0 * (1.0 - post_ratio).powi(2);
+    score -= 18.0 * (pre_ratio - post_ratio).abs();
+    score -= 31.0 * (post_ratio - mean_ratio).abs();
+
+    let scarcity = if fitting_bins_count == 0 {
+        1.0
+    } else {
+        1.0 / (fitting_bins_count as f64).sqrt()
+    };
+    score -= 36.0 * scarcity * (1.0 - progress) * post_ratio;
+
+    if next_item_size > 0 {
+        let direct_fit = (post_ratio + 1e-12 >= next_ratio) as u8 as f64;
+        let near_fit = ((post_ratio - next_ratio).abs() <= 0.07) as u8 as f64;
+        score -= 35.0 * next_ratio * direct_fit;
+        score -= 13.0 * near_fit * (1.0 - progress);
+        score += 27.0 * (post_ratio - next_ratio).max(0.0);
+    }
+
+    if fitting_bins_count <= 1 {
+        score -= 27.0 * (1.0 - progress) * (1.0 - post_ratio);
+    }
+
+    if open_bins_count > 1 {
+        score += 3.5 * (open_bins_count as f64).ln() * post_ratio;
+    }
+
+    let new_bin = bin_residual == bin_capacity;
+    if new_bin {
+        let marginal_new_bin = 43.0 - 30.0 * scarcity - 17.0 * mean_ratio + 11.0 * progress;
+        score += marginal_new_bin;
+        score += 8.0 * (1.0 - mean_ratio) * (1.0 - progress);
+        if open_bins_count > 2 {
+            let open_penalty = 2.6 * (open_bins_count as f64 - 2.0).ln()
+                * (1.0 - mean_ratio) * (1.0 - progress);
+            score -= open_penalty;
+        }
+    } else {
+        let stranded = pre_ratio * (1.0 - fit_ratio);
+        score += 3.0 * stranded;
+
+        let usable_tail = if post_ratio + 1e-12 >= next_ratio {
+            1.0
+        } else {
+            0.0
+        };
+        score -= 4.5 * usable_tail * post_ratio;
+
+        if post_ratio <= 0.02 {
+            score -= 23.0 * (1.0 - progress);
+        } else if post_ratio <= 0.06 {
+            score -= 9.0 * (1.0 - progress) * (0.06 - post_ratio) / 0.04;
+        }
+
+        if post_ratio > 0.06 && post_ratio < 0.25 {
+            let band = (post_ratio - 0.06) / 0.19;
+            score -= 7.5 * band * band * (1.0 - 0.55 * progress);
+        } else if post_ratio >= 0.25 && post_ratio < 0.45 {
+            let band = (post_ratio - 0.25) / 0.20;
+            score -= 4.0 * band * (1.0 - 0.6 * progress);
+        }
+
+        let below_mean = (mean_ratio - post_ratio).max(0.0);
+        let above_mean = (post_ratio - mean_ratio).max(0.0);
+        score -= 13.0 * below_mean * (1.0 - progress);
+        score += 8.0 * above_mean;
+
+        let hole = post_ratio * capacity;
+        if next_item_size > 0 && hole > 0.5 {
+            let nxt = next_item_size as f64;
+            let mismatch = (hole - nxt).abs() / capacity;
+            let alive = (1.0 - (mismatch / 0.10).min(1.0));
+            score += 6.0 * alive * post_ratio * (1.0 - progress);
+        } else if hole <= 0.5 && hole > 0.0 {
+            score += 5.0 * (1.0 - progress);
+        }
+
+        let tiny_hole_band = ((post_ratio - next_ratio * 0.35) / 0.12).clamp(0.0, 1.0);
+        let reclaim_probability = (post_ratio / next_ratio.max(0.08)).min(1.0);
+        score += 10.0 * tiny_hole_band * (1.0 - reclaim_probability)
+            * (1.0 - 0.35 * progress);
+
+        if post_ratio > 0.12 && post_ratio < 0.38 {
+            let mid = (post_ratio - 0.12) / 0.26;
+            score -= 5.0 * mid * mid * (1.0 - 0.45 * progress);
+        }
+
+        let residual_gap = post_ratio - mean_ratio;
+        let gap_scale = 0.18 + 0.22 * (1.0 - progress);
+        let dead_band = ((residual_gap.abs() - gap_scale) / 0.12).clamp(0.0, 1.0);
+        let useful_hole = (post_ratio / mean_ratio.max(0.10)).min(1.0);
+        score += 6.5 * dead_band * (1.0 - useful_hole);
+
+        if next_item_size > 0 {
+            let surplus = (post_ratio - next_ratio).max(0.0);
+            let over_hole = (surplus / 0.28).min(1.0);
+            score += 8.0 * (1.0 - over_hole) * (surplus / 0.28).min(1.0)
+                * (1.0 - progress);
+            score += 5.0 * over_hole * post_ratio * progress;
+        }
+
+        let local_target = if next_item_size > 0 {
+            next_ratio.max(mean_ratio * 0.65)
+        } else {
+            mean_ratio
+        };
+        let local_gap = (post_ratio - local_target).abs();
+        score -= 10.0 * (1.0 - (local_gap / 0.20).min(1.0))
+            * (1.0 - 0.25 * progress);
+
+        // Refine residual-space selection: distinguish harmless small holes
+        // from gaps whose exact size is unlikely to match a future item.
+        let residual_width = post_ratio * capacity;
+        let target_width = if next_item_size > 0 {
+            next_item_size as f64
+        } else {
+            mean_ratio * capacity
+        };
+        if residual_width > 0.5 && target_width > 0.5 {
+            let width_error = (residual_width - target_width).abs() / capacity;
+            let reusable_width = (1.0 - (width_error / 0.075).min(1.0));
+            let future_value = reusable_width * (1.0 - 0.45 * progress);
+            score -= 11.0 * future_value;
+
+            let centered_error = (residual_width - target_width).abs();
+            let dead_width = (centered_error / (capacity * 0.14)).min(1.0);
+            score += 7.0 * dead_width * (1.0 - progress);
+        }
+
+        // A hole just below the next item is more flexible than one just above
+        // it: keep enough slack for the current item without wasting a bin.
+        if next_item_size > 0 {
+            let slack = (next_item_size as f64 - residual_width).max(0.0) / capacity;
+            let near_next = (1.0 - (slack / 0.16).min(1.0));
+            score -= 5.5 * near_next * (1.0 - progress);
+
+            let too_small = (next_item_size as f64 - residual_width).max(0.0);
+            let unusable = (too_small / (next_item_size.max(1) as f64)).min(1.0);
+            score += 9.0 * unusable * (1.0 - 0.25 * progress);
+        }
+
+        // Penalize residual states that are much larger than the observed
+        // residual distribution, while softly rewarding their reduction.
+        let excess = (post_ratio - mean_ratio).max(0.0);
+        let excess_band = (excess / 0.16).min(1.0);
+        score += 5.5 * excess_band * excess_band * (1.0 - 0.35 * progress);
+
+        let scarce_fit = if fitting_bins_count == 0 {
+            1.0
+        } else {
+            (1.0 / fitting_bins_count as f64).min(1.0)
+        };
+        let compact_fit = (post_ratio / next_ratio.max(0.04)).min(1.0);
+        score -= 8.0 * scarce_fit * compact_fit * (1.0 - progress);
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4153_evolution.json.tmp

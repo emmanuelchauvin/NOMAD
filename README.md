@@ -3,6 +3,7 @@
 > **Decentralized Cognitive Swarm, Horizontal Evolutionary Recombination & Cumulative Culture for LLM-Synthesized Heuristics**
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
+[![CI](https://github.com/emmanuelchauvin/NOMAD/actions/workflows/ci.yml/badge.svg)](https://github.com/emmanuelchauvin/NOMAD/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#6-license)
 [![Status](https://img.shields.io/badge/scientific_study-pre--registered_V2-green.svg)](SPECIFICATIONS.md)
 
@@ -14,7 +15,7 @@ NOMAD (**DARWIN.RS**) is an evolutionary computing and artificial intelligence f
 
 ### Core Scientific Hypotheses
 * **H1 (Cumulative Cultural Evolution):** Lineages with access to collective cultural heritage via cross-epoch transmission achieve higher Cumulative Improvement Factor ($CIF > 1.0$) and discover novel behavioral niches faster than Tabula Rasa lineages ($R_{\text{innov, A}} > R_{\text{innov, B}}$).
-* **H2 (In-Distribution Superiority):** Swarm horizontal recombination (**Swarm Crossover**) discovers bin packing heuristics that achieve superior packing efficiency compared to mutation-only selection (**Group C vs Group D**, $p < 0.05$).
+* **H2 (Recombination Superiority & Parsimony):** Swarm horizontal recombination (**Swarm Crossover**) discovers bin packing heuristics that break seed inertia and achieve superior packing efficiency and computational parsimony compared to mutation-only selection (**Group C vs Group D**).
 * **H3 (Out-Of-Distribution Generalization):** Heuristics evolved via multi-trajectory dynamic evaluation generalize superior packing efficiency on Out-Of-Distribution datasets (scale shift $N=500$ and heavy-tailed Weibull distribution).
 
 ---
@@ -23,14 +24,14 @@ NOMAD (**DARWIN.RS**) is an evolutionary computing and artificial intelligence f
 
 NOMAD V2 resolves the vulnerabilities of genetic LLM frameworks through 4 foundational pillars and 1 transversal cumulative culture protocol:
 
-1. **Pillar 1 — AST-Level Semantic Unit Representation**: Heuristics are represented as validated Abstract Syntax Trees rather than brittle free-form text. Swarm Crossover swaps verified logical functional subtrees (`ScoreModifier`, `FilterCondition`, `SortingKey`).
+1. **Pillar 1 — AST-Level Semantic Unit Representation & Multi-Loci Crossover**: Heuristics are represented as validated Abstract Syntax Trees rather than brittle free-form text. Swarm Crossover combines non-conflicting logical loci (`early_horizon` and `score_calc`) or verified functional subtrees (`ScoreModifier`, `FilterCondition`, `SortingKey`).
 2. **Pillar 2 — 3-Level Anti-Dead-Code Verification Pipeline**:
    - *Level 1 (Structural)*: AST linting for unreachable branches and tautologies.
    - *Level 2 (Dynamic Branch Coverage)*: Runtime instrumentation tagging executed AST branches.
    - *Level 3 (Functional Semantic Impact)*: Differential ablation proving that replacing a unit with identity significantly degrades performance.
-3. **Pillar 3 — Dynamic Trajectory & Behavioral Diversity**: Capsules are profiled along behavioral axes (Dead Space Ratio, New Bin Creation Ratio, Residual Capacity Variance) and dynamic trajectories ($tLDR$).
-4. **Pillar 4 — MAP-Elites Quality-Diversity Archive**: An unconstrained $10 \times 10$ behavioral grid maintaining the best-performing heuristic in each unique behavioral niche, preventing premature convergence.
-5. **Transversal Pillar — Cumulative Culture & "Mort et Renaissance"**: Extinction protocol evaluating whether lineages inheriting validated cultural heritage systematically outperform scratch populations across successive epochs.
+3. **Pillar 3 — Dynamic Trajectory, Bounded Lookahead ($k=2$) & Behavioral Diversity**: Capsules are profiled along behavioral axes (Dead Space Ratio, New Bin Creation Ratio, Residual Capacity Variance), dynamic trajectories ($tLDR$), and stream lookahead awareness (`next_item_size`, `next_job_cpu`, `next_job_ram`).
+4. **Pillar 4 — MAP-Elites Quality-Diversity Archive**: An unconstrained $10 \times 10$ calibrated behavioral grid maintaining the best-performing heuristic in each unique behavioral niche, preventing premature convergence.
+5. **Transversal Pillar — Cumulative Culture & 3-Epoch "Mort et Renaissance"**: Multi-civilizational extinction protocol evaluating whether lineages inheriting validated cultural heritage systematically outperform scratch populations across successive epochs ($CIF > 1.0$, $R_{\text{herit}} = 100\%$).
 
 ---
 
@@ -66,48 +67,71 @@ cargo build --release
 
 ### 1. Run an Evolutionary Trial
 ```bash
-# Run Group C (NOMAD Swarm with Crossover) with Ollama (e.g., Qwen 2.5 Coder 7B)
-cargo run --release --bin nomad -- run --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 10 --group c --output run_report.json
+# 1D Online Bin Packing (Group C Swarm with Crossover)
+cargo run --release --bin nomad -- run --domain bin-packing --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 10 --group c --output run_report.json
 
-# Run Group D (Evolutionary Selection with Mutation Only)
+# Multi-Resource Cloud Job Scheduling (CPU & RAM Vector Packing)
+cargo run --release --bin nomad -- run --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 10 --group c --output run_report_sched.json
+
+# Group D (Evolutionary Selection with Mutation Only)
 cargo run --release --bin nomad -- run --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 10 --group d --output run_group_d.json
 ```
 
 ### 2. Run the "Mort et Renaissance" Protocol (Cumulative Culture)
 ```bash
-cargo run --release --bin nomad -- rebirth --operator ollama --model qwen2.5-coder:7b --pop-size 6 -n 8 --output rebirth_report.json
+# 3-Epoch Bin Packing Cumulative Culture Protocol with Lookahead k=2
+cargo run --release --bin nomad -- rebirth --domain bin-packing --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 8 -e 3 --output grand_rebirth_bp_v2.json
+
+# 3-Epoch Cloud Scheduling Cumulative Culture Protocol
+cargo run --release --bin nomad -- rebirth --domain scheduling --operator ollama --model qwen2.5-coder:7b --pop-size 8 -n 8 -e 3 --output grand_rebirth_sched.json
 ```
 *Outputs: Cumulative Improvement Factor ($CIF$), Functional Heritability ($R_{\text{herit}}$), and Innovation Rate ($R_{\text{innov}}$).*
 
 ### 3. Inspect the MAP-Elites Quality-Diversity Archive
 ```bash
-cargo run --release --bin nomad -- archive --input run_report.json
+cargo run --release --bin nomad -- archive --input grand_rebirth_bp_v2.json
 ```
 
 ### 4. Export & Visualize Interactive Phylogenetic Tree (HTML / SVG)
 ```bash
-cargo run --release --bin nomad -- graph --format html --output arbre.html
-start arbre.html
+# Supports both ExperimentRunReport and RebirthExperimentReport
+cargo run --release --bin nomad -- graph --report grand_rebirth_bp_v2.json --format html --output grand_arbre_rebirth_bp.html
+cargo run --release --bin nomad -- graph --report grand_rebirth_sched.json --format html --output grand_arbre_sched.html
+start grand_arbre_rebirth_bp.html
 ```
 
 ### 5. Datasets & Deterministic Baselines
 ```bash
-# Cryptographic SHA-256 dataset verification
-cargo run --release --bin nomad -- dataset
+# Cryptographic SHA-256 dataset verification (Bin Packing & Scheduling)
+cargo run --release --bin nomad -- dataset --domain bin-packing
+cargo run --release --bin nomad -- dataset --domain scheduling
 
-# Classical baselines (First-Fit, Best-Fit, Worst-Fit)
-cargo run --release --bin nomad -- baseline
+# Classical baselines (First-Fit, Best-Fit, Balanced-Fit)
+cargo run --release --bin nomad -- baseline --domain bin-packing
+cargo run --release --bin nomad -- baseline --domain scheduling
+```
+
+### 6. Paired Comparative Study (Group C Swarm vs Group D Mutation)
+```bash
+# Compare Swarm crossover vs pure mutation across 5 paired seeds
+cargo run --release --bin nomad -- compare --domain bin-packing --operator ollama --runs 5
+cargo run --release --bin nomad -- compare --domain scheduling --operator mock --runs 5
 ```
 
 ---
 
 ## 5. Scientific Validation & Testing
 
-NOMAD is verified by an automated test suite comprising 16 unit tests and 4 macro-acceptance protocols:
-- `cargo test --workspace` (All 16 unit & integration tests pass deterministically)
-- Level 1-3 Anti-dead-code validation
-- MAP-Elites niche competition & replacement
-- Cryptographic reproducibility across random seeds
+NOMAD is verified by an automated test suite comprising **41 unit and integration tests** and empirical acceptance protocols:
+- `cargo test --workspace` (All 41 unit & integration tests pass deterministically)
+- **Controlled Ablation Study (Group C vs Group D, 15 Generations) :** Recombinant champion `SwarmCross-g6-d6a1-8f9d-mut-g12-mut-g12` verified as `PassedLevel2Computational` (computational viability confirmed; behavioral causality of graft remains exploratory), achieving **28.96% fuel reduction** (Fuel: 703 568 vs 990 350, +40.76% extra fuel in Group D) and superior Quality-Diversity coverage (10 niches, QD-Score: 8.770 vs 9 niches, 7.873) over mutation-only baseline locked in single-lineage mode (`ablation_group_c.json` & `ablation_group_d.json`).
+- **Multi-Resource Cloud Scheduling :** Exploratory score of **391 servers** observed on a single seed ($CIF_{\text{perf}} = 1.071\text{x}$, $R_{\text{herit}} = 100\%$, OOD-2: 1 731 servers).
+- **Online 1D Bin Packing :** Lookahead $k=2$ + Dynamic Horizon with **98.56% OOD-2 efficiency** and $R_{\text{herit}} = 100\%$. Fair comparison against `BEST_FIT_LOOKAHEAD` baseline at equal $k=2$.
+- Level 1-3 Anti-dead-code validation with surgical $C_{\text{null}}$ differential ablation (hash-verified statement neutralization, directional degradation threshold).
+- Pre-registered paired Wilcoxon signed-rank test and permutation test campaign (`nomad campaign`) for multi-seed statistical significance.
+- Adaptive Operator Selection (AOS) for dynamic Swarm crossover control.
+- MAP-Elites niche competition & replacement with fuel parsimony tie-breaking.
+- Cryptographic reproducibility across random seeds.
 
 See [TESTS.md](TESTS.md) for detailed experimental benchmarks and [SPECIFICATIONS.md](SPECIFICATIONS.md) for full mathematical definitions.
 

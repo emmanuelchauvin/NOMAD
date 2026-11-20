@@ -1,0 +1,85 @@
+2026-11-13T19:47:14.848380Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6068, Pop=8, MaxGens=10
+2026-11-13T19:56:15.802334Z  INFO nomad_orchestrator::engine: Evaluating winning capsule a075f39e6cda0d9c on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6068 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4086 bins (excess: +66), Efficiency: 98.39%, Fuel: 66371364
+ Best In-Dist (w/o Lookahead) : 4214 bins (excess: +194), Efficiency: 95.40%
+ Dynamic Trajectory: tLDR = 2.1913
+ Behavior Profile : DeadSpaceRatio: 5.7%, NewBinRatio: 40.9%, ResVar: 0.53
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 9.525
+ Validation Score : 4101 bins (excess: +74), Efficiency: 98.20%
+ OOD-1 Score      : 10116 bins (excess: +71), Efficiency: 99.30%
+ OOD-2 Score      : 3601 bins (excess: +42), Efficiency: 98.84%
+ Lineage Nodes    : 85, Transitions: 63
+ Best Heuristic   : LLM-Seed-008-mut-g5-mut-g5-mut-g5-mut-g6-mut-g6-mut-g7-mut-g9
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    let utilization = 1.0 - (bin_residual as f64 / bin_capacity as f64);
+    
+    // Mutation: Reduced linear cost, increased exponential utilization penalty (6th power) 
+    // to strictly favor high-density bins while minimizing residual noise.
+    let mut score = (post_residual as f64 * 1.25) + (utilization.powi(6) * 55.0);
+
+    // 1. Adaptive New Bin Penalty:
+    // Tightened the threshold for opening new bins; increased the progress-based penalty
+    // to force maximum reuse of existing bins as the stream nears completion.
+    if is_new_bin {
+        let density_factor = (mean_residual / bin_capacity as f64).clamp(0.0, 1.0);
+        let base_penalty = 105.0 + (progress * 150.0); 
+        let progress_penalty = 130.0 * (1.0 - progress).powf(4.5);
+        score += base_penalty + progress_penalty + (density_factor * 110.0);
+        
+        if fitting_bins_count == 0 {
+            score -= 420.0; // Aggressive bypass for forced new bin creation
+        }
+    }
+
+    // 2. Lookahead Refinement:
+    // Increased the cost of creating unusable gaps. If the bin cannot fit the next item,
+    // the penalty is now scaled by the ratio of the gap to the next item size.
+    if next_item_size > 0 {
+        if post_residual == 0 {
+            score -= 90.0; // Stronger perfect closure reward
+        } else if post_residual < next_item_size {
+            // Penalize small unusable gaps more heavily to discourage fragmentation.
+            score += (next_item_size - post_residual) as f64 * (28.0 + (progress * 15.0));
+        } else {
+            // Reward "Goldilocks" bins: high utilization + room for the next item.
+            let headroom = post_residual - next_item_size;
+            score -= 75.0 * (1.0 - (headroom as f64 / bin_capacity as f64)).powf(0.35);
+        }
+    }
+
+    // 3. Load Balancing:
+    // Penalize variance relative to the mean to force a more uniform filling profile.
+    if !is_new_bin && open_bins_count > 1 {
+        let deviation = (bin_residual as f64 - mean_residual).abs();
+        score += deviation * 3.25;
+    }
+
+    // 4. End-of-stream Consolidation:
+    // Steeper slope for consolidation in the final 12% to aggressively eliminate fragments.
+    if progress > 0.88 {
+        if !is_new_bin {
+            score -= 320.0 * (progress - 0.88) / 0.12;
+        } else {
+            score += 750.0 * (1.0 + progress);
+        }
+    }
+
+    // 5. Flexibility metric:
+    // Reward bins that remain "flexible" (able to take future items) with a tighter coupling 
+    // to utilization to prevent early-bin stagnation.
+    if !is_new_bin {
+        let flexibility = (fitting_bins_count as f64).sqrt() * 18.0;
+        score -= flexibility * (1.0 - utilization.powi(4));
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6068_evolution.json.tmp

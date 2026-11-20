@@ -1,0 +1,126 @@
+2026-11-13T15:59:10.187781Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5119, Pop=8, MaxGens=10
+2026-11-13T16:11:24.912688Z  INFO nomad_orchestrator::engine: Evaluating winning capsule a8afa74ff70c938a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5119 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4146 bins (excess: +135), Efficiency: 96.75%, Fuel: 81828050
+ Best In-Dist (w/o Lookahead) : 4321 bins (excess: +310), Efficiency: 92.83%
+ Dynamic Trajectory: tLDR = 1.3580
+ Behavior Profile : DeadSpaceRatio: 1.1%, NewBinRatio: 41.5%, ResVar: 0.65
+ MAP-Elites Niches: 12 active (12.0% coverage), QD-Score: 10.716
+ Validation Score : 4171 bins (excess: +136), Efficiency: 96.75%
+ OOD-1 Score      : 10134 bins (excess: +98), Efficiency: 99.03%
+ OOD-2 Score      : 3625 bins (excess: +84), Efficiency: 97.68%
+ Lineage Nodes    : 85, Transitions: 60
+ Best Heuristic   : LLM-Seed-022-mut-g6-mut-g7-mut-g8
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let residual = bin_residual as f64;
+    let post = post_residual as f64;
+    let mean = mean_residual.max(0.0);
+    let next = next_item_size as f64;
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    };
+
+    let mut score = post;
+
+    // Residues below a size-dependent viability boundary are nearly dead.
+    // The boundary expands mildly with stream maturity, while the penalty
+    // grows faster than the missing space to avoid creating stranded gaps.
+    let viability = next.max(item).max(2.0);
+    let dead_threshold = viability * (0.58 + 0.055 * progress);
+    if post > 0.0 && post < dead_threshold {
+        let deficit = dead_threshold - post;
+        let deadness = deficit / dead_threshold.max(1.0);
+        score += deficit * (7.2 + 3.8 * progress);
+        score += deadness * deadness * (13.0 + 3.0 * progress);
+    }
+
+    // Prefer placements that either close the bin or leave a residue capable
+    // of absorbing likely forthcoming items.
+    if post == 0.0 {
+        score -= 45.0;
+    } else {
+        let fill = ((capacity - residual) / capacity).clamp(0.0, 1.0);
+        score -= (capacity - residual).min(item) * 0.16;
+        score -= fill * fill * 6.2;
+
+        if post <= item.max(2.0) {
+            score -= 5.2;
+        }
+
+        let reusable_band = next.max(item).max(2.0) * 1.45;
+        if post < next {
+            let scarcity = (next - post) / next.max(1.0);
+            score += (next - post) * (3.0 + 0.9 * scarcity);
+        } else if post > reusable_band {
+            let excess = post - reusable_band;
+            let excess_ratio = excess / capacity.max(1.0);
+            score += excess.min(capacity * 0.38) * (0.95 + 0.55 * progress);
+            score += excess_ratio * 11.0;
+        }
+    }
+
+    // A residue far below the stream average is more dangerous than one far
+    // above it: small residues rarely regain useful structure.
+    if mean > 0.0 {
+        let delta = residual - mean;
+        if delta > 0.0 {
+            score += delta * (0.10 + 0.16 * progress);
+        } else {
+            score += delta * 0.045;
+        }
+    }
+
+    // Fragmentation has an increasing opportunity cost as the stream advances.
+    score += open_bins_count as f64 * (0.25 + 0.36 * progress);
+
+    // Protect a unique fitting bin when it closes or leaves a compact residue,
+    // but do not overvalue it when the placement creates obvious dead space.
+    if fitting_bins_count == 1 {
+        if post == 0.0 {
+            score -= 10.5;
+        } else if post < dead_threshold {
+            score += 12.5;
+        } else if post <= item.max(2.0) {
+            score -= 4.8;
+        } else {
+            score += 3.0;
+        }
+    }
+
+    // Empty bins are acceptable when existing fits would leave poor residue;
+    // otherwise paying the fixed opening cost is preferable.
+    if residual >= capacity {
+        score += 30.0;
+        score -= (capacity - item).max(0.0) * 0.045;
+        if fitting_bins_count == 0 {
+            score -= 20.0;
+        } else if fitting_bins_count <= 2 {
+            score -= 6.5;
+        }
+    }
+
+    // Progressively emphasize residual space that is unlikely to be recovered.
+    let post_ratio = (post / capacity).clamp(0.0, 1.0);
+    score += progress * post_ratio * (20.0 + 7.0 * progress);
+
+    // Near the end, closure and very small residues dominate ordinary reuse.
+    if progress > 0.82 {
+        let closure_bonus = (1.0 - post_ratio) * (progress - 0.82) * 14.0;
+        score -= closure_bonus;
+        if post > 0.0 && post <= 2.0 {
+            score -= (progress - 0.82) * 18.0;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5119_evolution.json.tmp

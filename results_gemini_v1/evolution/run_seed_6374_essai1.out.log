@@ -1,0 +1,63 @@
+2026-11-13T20:40:22.773993Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6374, Pop=8, MaxGens=10
+2026-11-13T20:45:19.230412Z  INFO nomad_orchestrator::engine: Evaluating winning capsule e5782e9414d4ee7a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6374 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4128 bins (excess: +123), Efficiency: 97.03%, Fuel: 69353974
+ Best In-Dist (w/o Lookahead) : 4186 bins (excess: +181), Efficiency: 95.68%
+ Dynamic Trajectory: tLDR = 3.7049
+ Behavior Profile : DeadSpaceRatio: 41.0%, NewBinRatio: 41.3%, ResVar: 1.02
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 5.378
+ Validation Score : 4166 bins (excess: +127), Efficiency: 96.96%
+ OOD-1 Score      : 10466 bins (excess: +414), Efficiency: 96.04%
+ OOD-2 Score      : 3674 bins (excess: +140), Efficiency: 96.20%
+ Lineage Nodes    : 85, Transitions: 45
+ Best Heuristic   : LLM-Seed-003
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Encourage Best-Fit behavior: Penalize leaving large gaps that are hard to fill.
+    // Higher post_residual is generally bad, but we want to avoid "fragile" gaps.
+    if post_residual > 0 {
+        score += (post_residual as f64).powf(1.2);
+    }
+
+    // 2. Lookahead Synergy: If the current post_residual can perfectly or nearly fit the next item, reward it.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Reward placement that makes the next item fit perfectly (Best-Fit-Lookahead)
+            score -= (100.0 - (post_residual as f64 - next_item_size as f64).abs()).powf(1.5);
+        } else {
+            // Penalize if this placement makes it impossible to fit the next item in this bin
+            score += 50.0;
+        }
+    }
+
+    // 3. Density Management: Penalize creating new bins unless necessary.
+    if bin_residual == bin_capacity {
+        // Penalty for opening a new bin is inversely proportional to how many open bins are already struggling.
+        // We only want to open a new bin if the current `open_bins_count` is low or the fit is terrible.
+        score += 80.0 + (open_bins_count as f64 * 2.0);
+    }
+
+    // 4. Global State Awareness: If we are near the end of the stream, prioritize closing bins.
+    let progress = step_index as f64 / total_items as f64;
+    if progress > 0.8 {
+        // Near the end, be more aggressive about filling existing bins rather than opening new ones.
+        score += (1.0 - progress) * 200.0;
+    }
+
+    // 5. Fitting Constraint: If this is the last bin that can fit the item, give it a strong preference.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 150.0;
+    }
+
+    // 6. Mean Residual Balancing: Avoid bins that deviate significantly from the average residual.
+    score += (post_residual as f64 - mean_residual).abs() * 0.5;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6374_evolution.json.tmp

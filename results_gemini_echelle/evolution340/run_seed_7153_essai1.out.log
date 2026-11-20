@@ -1,0 +1,95 @@
+2026-11-14T04:35:26.245227Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7153, Pop=8, MaxGens=37
+2026-11-14T04:56:31.880951Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 3d24922e07cfa9bd on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7153 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4140 bins (excess: +124), Efficiency: 97.01%, Fuel: 40324300
+ Best In-Dist (w/o Lookahead) : 4200 bins (excess: +184), Efficiency: 95.62%
+ Dynamic Trajectory: tLDR = 0.9838
+ Behavior Profile : DeadSpaceRatio: 36.0%, NewBinRatio: 41.4%, ResVar: 0.58
+ MAP-Elites Niches: 11 active (11.0% coverage), QD-Score: 8.760
+ Validation Score : 4163 bins (excess: +125), Efficiency: 97.00%
+ OOD-1 Score      : 10301 bins (excess: +228), Efficiency: 97.79%
+ OOD-2 Score      : 3616 bins (excess: +62), Efficiency: 98.28%
+ Lineage Nodes    : 340, Transitions: 204
+ Best Heuristic   : LLM-Seed-071-mut-g3-mut-g5-mut-g5-mut-g6-mut-g6-mut-g14-mut-g20-mut-g21-mut-g25
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Base score: non-linear penalty on post_residual to favor tightest fit
+    // Refined exponent to 1.38 to further penalize large gaps
+    let mut score = (post_residual as f64).powf(1.38);
+
+    // 1. Predictive Lookahead:
+    // Focus on minimizing "leftover" potential for the next_item_size
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 105.0; 
+        } else if post_residual > next_item_size {
+            // Reward gaps that allow the next item plus a minimal buffer
+            score += (post_residual as f64 - next_item_size as f64).powf(0.88) * 0.52;
+        } else {
+            // Increased penalty for stranding a gap smaller than the next item
+            score += (next_item_size - post_residual) as f64 * 7.2;
+        }
+    }
+
+    // 2. Adaptive New-Bin Thresholding:
+    if bin_residual == bin_capacity {
+        let progress = step_index as f64 / total_items as f64;
+        // Stricter barrier to opening new bins; dynamic threshold based on stream phase
+        let threshold = 14.0 + (open_bins_count as f64 * 0.12) - (progress * 8.0);
+        if mean_residual < threshold {
+            score -= 22.0; 
+        } else {
+            score += 195.0; // Increased penalty for opening new bins
+        }
+    } else {
+        // 3. Density Balancing:
+        // Stronger bias toward near-perfect fills
+        if post_residual == 0 {
+            score -= 98.0;
+        } else if post_residual < 6 {
+            score -= 65.0 - (post_residual as f64 * 6.0);
+        }
+    }
+
+    // 4. Fitting Pressure:
+    // Force the use of the only viable bin to avoid premature bin opening
+    if fitting_bins_count == 1 && bin_residual >= item_size {
+        score -= 320.0;
+    }
+
+    // 5. Harmonic Alignment:
+    // Reward residuals that keep bin capacity modular (favors 25/50/75/100)
+    if post_residual % 25 == 0 {
+        score -= 40.0;
+    } else if post_residual % 10 == 0 {
+        score -= 15.0;
+    }
+
+    // 6. Terminal Phase: 
+    // Aggressive consolidation in the final 15% of the stream.
+    let progress = step_index as f64 / total_items as f64;
+    if progress > 0.85 {
+        score -= (progress * 150.0);
+        if bin_residual == bin_capacity {
+            score += 750.0; // Near-prohibitive cost to open new bins at the end
+        }
+    }
+
+    // 7. Global State Normalization:
+    // Penalty for proliferation of open bins, scaled by current bin utilization
+    score += (open_bins_count as f64 / (total_items as f64 / 400.0 + 1.0)) * 5.8;
+
+    // 8. Mean Residual Correction:
+    // Prevent significant deviation from average bin density to ensure uniform packing
+    if bin_residual != bin_capacity {
+        let deviation = (bin_residual as f64 - mean_residual).abs();
+        score += deviation * 0.62;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7153_evolution340.json.tmp

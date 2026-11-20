@@ -1,0 +1,63 @@
+2026-11-13T19:55:07.664788Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6289, Pop=8, MaxGens=10
+2026-11-13T20:04:20.957044Z  INFO nomad_orchestrator::engine: Evaluating winning capsule e76957d54eb0bd20 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6289 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4170 bins (excess: +172), Efficiency: 95.88%, Fuel: 25774599
+ Best In-Dist (w/o Lookahead) : 4174 bins (excess: +176), Efficiency: 95.78%
+ Dynamic Trajectory: tLDR = 0.3365
+ Behavior Profile : DeadSpaceRatio: 65.8%, NewBinRatio: 41.7%, ResVar: 0.51
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 5.888
+ Validation Score : 4203 bins (excess: +187), Efficiency: 95.55%
+ OOD-1 Score      : 10505 bins (excess: +432), Efficiency: 95.89%
+ OOD-2 Score      : 3659 bins (excess: +112), Efficiency: 96.94%
+ Lineage Nodes    : 85, Transitions: 54
+ Best Heuristic   : LLM-Seed-000-mut-g3
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // We aim to reduce the bin count by making the "New Bin" option more expensive
+    // while refining the packing of existing bins to be more "Best-Fit" oriented.
+    let mut score = if is_new_bin {
+        // Threshold: Only open a new bin if the average waste is already high, 
+        // or if we are in the final 5% of the stream to clear remaining items.
+        let base_penalty = 52.0 + (mean_residual * 0.4);
+        if progress > 0.95 { base_penalty - 25.0 } else { base_penalty }
+    } else {
+        // Use a non-linear penalty for fragmentation.
+        // post_residual: 0 is ideal, large values are bad.
+        let mut s = (post_residual as f64).powi(2) / 12.0;
+
+        // Lookahead optimization: If the bin can fit the next item, 
+        // we reward that potential synergy to prevent future bin openings.
+        if next_item_size > 0 && post_residual >= next_item_size {
+            s -= 8.0 * (1.0 - (post_residual - next_item_size) as f64 / bin_capacity as f64);
+        }
+        s
+    };
+
+    // Apply pressure to reduce the total number of bins by favoring 
+    // filling existing bins when open_bins_count is high.
+    if !is_new_bin {
+        score -= (open_bins_count as f64 * 0.12);
+        
+        // If this is the only bin that fits the current item, 
+        // prioritize it heavily to avoid the new bin penalty.
+        if fitting_bins_count == 1 {
+            score -= 22.0;
+        }
+    }
+
+    // Dynamic phase adjustment: 
+    // Early stream: Prioritize packing density (mean_residual).
+    // Late stream: Prioritize closing bins (lower score for existing).
+    score += (1.0 - progress) * (mean_residual * 0.3);
+    score -= progress * 5.0;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6289_evolution.json.tmp

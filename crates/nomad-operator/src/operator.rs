@@ -1,16 +1,16 @@
-use std::collections::HashMap;
 use chrono::Utc;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use std::collections::HashMap;
 use thiserror::Error;
 
+use crate::meta::ReproducibilityAudit;
 use nomad_core::{
-    PolicyKind, SkillCapsule, ValidationStatus,
+    LineageEvolutionState, PolicyKind, ProblemDomain, SkillCapsule, ValidationStatus,
 };
 use nomad_genome::{
-    compute_structural_fingerprint, deterministic_ast_crossover, parse_score_bin,
+    ast_crossover_with, compute_structural_fingerprint, parse_score_bin, GraftMode,
 };
-use crate::meta::ReproducibilityAudit;
 
 #[derive(Debug, Error)]
 pub enum OperatorError {
@@ -35,7 +35,31 @@ pub trait SkillOperator: Send + Sync {
         parent: &SkillCapsule,
         generation: usize,
         seed: u64,
+    ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
+        self.mutate_with_lineage(parent, generation, seed, None)
+    }
+
+    /// Mutates an existing capsule with optional AgentPSO lineage and momentum guidance.
+    fn mutate_with_lineage(
+        &self,
+        parent: &SkillCapsule,
+        generation: usize,
+        seed: u64,
+        lineage: Option<&LineageEvolutionState>,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError>;
+
+    /// Mutation informee : comme `mutate_with_lineage`, avec les resultats mesures du parent
+    /// et le meilleur programme connu. Par defaut, le contexte est ignore.
+    fn mutate_informed(
+        &self,
+        parent: &SkillCapsule,
+        generation: usize,
+        seed: u64,
+        lineage: Option<&LineageEvolutionState>,
+        _context: Option<&MutationContext>,
+    ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
+        self.mutate_with_lineage(parent, generation, seed, lineage)
+    }
 
     /// Performs horizontal Swarm Crossover between two parent capsules (Group C only).
     fn crossover(
@@ -47,20 +71,64 @@ pub trait SkillOperator: Send + Sync {
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError>;
 }
 
+/// Resultats mesures sur le jeu d'entrainement, transmis au prompt de mutation informee.
+#[derive(Debug, Clone)]
+pub struct MutationContext {
+    /// Le parent est valide sur le jeu d'entrainement.
+    pub parent_valid: bool,
+    /// Bacs utilises par le parent.
+    pub parent_bins: usize,
+    /// Minimum theorique de bacs sur le meme jeu.
+    pub lower_bound_bins: usize,
+    /// Code et bacs du meilleur programme connu, s'il differe du parent.
+    pub best_other: Option<(String, usize)>,
+}
+
+impl MutationContext {
+    /// Section ajoutee au prompt de mutation.
+    pub fn prompt_section(&self) -> String {
+        let mut s = String::from("\n\n--- MEASURED RESULTS ON THE TRAINING SET (fewer bins is better) ---");
+        if self.parent_valid {
+            s.push_str(&format!(
+                "\n- This parent uses {} bins. The theoretical minimum is {} bins, so {} bins are wasted.",
+                self.parent_bins,
+                self.lower_bound_bins,
+                self.parent_bins.saturating_sub(self.lower_bound_bins)
+            ));
+        } else {
+            s.push_str("\n- This parent is INVALID on the training set (it crashes, exceeds its compute limit or breaks a constraint). Simplify it and fix it.");
+        }
+        match &self.best_other {
+            Some((code, bins)) => s.push_str(&format!(
+                "\n- The best heuristic found so far uses {} bins. Its code:\n```rust\n{}\n```\n\
+Your mutation is useful only if it uses fewer bins than its parent; aim for fewer than {} bins. You may borrow ideas from the best heuristic, but return a mutation of the PARENT.",
+                bins, code, bins
+            )),
+            None => s.push_str(
+                "\n- This parent is the best heuristic found so far. Small cosmetic edits will not beat it: change its logic in a meaningful way while keeping what makes it work.",
+            ),
+        }
+        s
+    }
+}
+
 /// Fully reproducible deterministic operator for testing, validation, and benchmarking.
 #[derive(Debug, Clone)]
 pub struct DeterministicMockOperator {
     pub model_name: String,
     pub model_sha256: String,
     pub engine_version: String,
+    pub domain: ProblemDomain,
 }
 
 impl Default for DeterministicMockOperator {
     fn default() -> Self {
         Self {
             model_name: "Mock-NOMAD-Darwin-7B".to_string(),
-            model_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+            model_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                .to_string(),
             engine_version: "nomad-mock-v2.0".to_string(),
+            domain: ProblemDomain::BinPacking1D,
         }
     }
 }
@@ -71,31 +139,58 @@ impl SkillOperator for DeterministicMockOperator {
         index: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        let variants = [
+        let bin_variants = [
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    score\n}",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let mut score = post_residual as f64;\n    score\n}",
                 "Best Fit linear remaining capacity baseline",
             ),
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual < 10 {\n        score = score + 95.0;\n    }\n    score\n}",
-                "Best Fit with dead space penalty (< 10)",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let mut score = post_residual as f64;\n    if bin_residual >= next_item_size && post_residual < next_item_size {\n        score = score + 40.0;\n    }\n    if post_residual == next_item_size && next_item_size > 0 {\n        score = score - 60.0;\n    }\n    if post_residual < 10 {\n        score = score + 95.0;\n    }\n    score\n}",
+                "Best Fit with lookahead pairing bonus, opportunity penalty, and dead space penalty",
             ),
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64;\n    if bin_residual == 0 {\n        score = score - 50.0;\n    }\n    score\n}",
-                "Best Fit with exact closure bonus",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let mut score = post_residual as f64;\n    if post_residual == next_item_size || (post_residual >= next_item_size && post_residual - next_item_size < 10) {\n        score = score - 50.0;\n    }\n    if post_residual == 0 {\n        score = score - 50.0;\n    }\n    score\n}",
+                "Best Fit with exact closure and lookahead harmonic bonus",
             ),
             (
-                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {\n    let mut score = bin_residual as f64 * 1.25;\n    score\n}",
-                "Scaled tightness scoring",
+                "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let mut score = post_residual as f64 * 1.25;\n    if bin_residual >= next_item_size && post_residual < next_item_size {\n        score = score + 35.0;\n    }\n    if fitting_bins_count == 1 {\n        score = score - 25.0;\n    }\n    score\n}",
+                "Scaled tightness scoring with lookahead opportunity cost and fitting bins priority",
+            ),
+        ];
+
+        let sched_variants = [
+            (
+                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let mut score = node_residual_cpu as f64 + node_residual_ram as f64;\n    score\n}",
+                "Linear CPU+RAM residual baseline",
+            ),
+            (
+                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let mut score = cpu_norm * cpu_norm + ram_norm * ram_norm;\n    score\n}",
+                "Euclidean 2D Vector Balanced Fit",
+            ),
+            (
+                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let mut score = (cpu_norm + ram_norm) + imbalance * 3.0;\n    score\n}",
+                "Vector Fit with strict resource imbalance penalty",
+            ),
+            (
+                "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let horizon = (total_jobs - step_index) as f64 / total_jobs as f64;\n    let mut score = (node_residual_cpu as f64 + node_residual_ram as f64) * (1.0 + horizon * 0.4);\n    score\n}",
+                "Dynamic horizon-adaptive cloud scheduler",
             ),
         ];
 
         let mut rng = ChaCha8Rng::seed_from_u64(seed ^ (index as u64));
-        let variant_idx = rng.gen_range(0..variants.len());
-        let (code, desc) = variants[variant_idx];
+        let (code, desc) = if self.domain == ProblemDomain::MultiResourceScheduling {
+            let variant_idx = rng.gen_range(0..sched_variants.len());
+            sched_variants[variant_idx]
+        } else {
+            let variant_idx = rng.gen_range(0..bin_variants.len());
+            bin_variants[variant_idx]
+        };
         let name = format!("Seed-Heuristic-{:03}", index);
 
-        let prompt = format!("SYSTEM: Synthesize an online bin packing heuristic.\nSEED INDEX: {}", index);
+        let prompt = format!(
+            "SYSTEM: Synthesize an optimization heuristic.\nDOMAIN: {:?}\nSEED INDEX: {}",
+            self.domain, index
+        );
         let audit = ReproducibilityAudit {
             model_name: self.model_name.clone(),
             model_sha256: self.model_sha256.clone(),
@@ -106,10 +201,14 @@ impl SkillOperator for DeterministicMockOperator {
             full_prompt: prompt,
             raw_response: code.to_string(),
             timestamp: Utc::now(),
+            is_network_call: false,
         };
 
         let mut metadata = HashMap::new();
-        metadata.insert("operator".to_string(), "DeterministicMockOperator".to_string());
+        metadata.insert(
+            "operator".to_string(),
+            "DeterministicMockOperator".to_string(),
+        );
         metadata.insert("initial_seed".to_string(), seed.to_string());
 
         let parsed_fn = parse_score_bin(code).ok();
@@ -133,32 +232,57 @@ impl SkillOperator for DeterministicMockOperator {
         Ok((capsule, audit))
     }
 
-    fn mutate(
+    fn mutate_with_lineage(
         &self,
         parent: &SkillCapsule,
         generation: usize,
         seed: u64,
+        _lineage: Option<&LineageEvolutionState>,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let penalty_val: f64 = rng.gen_range(50.0..120.0);
 
-        let new_code = if parent.logic_code.contains("score_bin") {
-            if parent.logic_code.contains("bin_residual < 10") {
-                parent.logic_code.replace("95.0", &format!("{:.1}", penalty_val))
+        let new_code = if parent.logic_code.contains("score_node") {
+            if parent.logic_code.contains("imbalance * 3.0") {
+                let factor: f64 = rng.gen_range(1.5..5.5);
+                parent
+                    .logic_code
+                    .replace("imbalance * 3.0", &format!("imbalance * {:.1}", factor))
+            } else {
+                let factor: f64 = rng.gen_range(1.5..4.5);
+                format!(
+                    "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {{\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let mut score = (cpu_norm + ram_norm) + imbalance * {:.1};\n    score\n}}",
+                    factor
+                )
+            }
+        } else if parent.logic_code.contains("score_bin") {
+            if parent.logic_code.contains("post_residual < 10")
+                || parent.logic_code.contains("bin_residual < 10")
+            {
+                parent
+                    .logic_code
+                    .replace("95.0", &format!("{:.1}", penalty_val))
             } else {
                 // Introduce dead space conditional branch
                 format!(
-                    "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
+                    "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {{\n    let mut score = post_residual as f64;\n    if post_residual < 10 {{\n        score = score + {:.1};\n    }}\n    score\n}}",
                     penalty_val
                 )
             }
         } else {
             // Legacy fallback
-            format!("SCORE: alpha={:.3} beta=0.2 dead_space_penalty={:.1} tight_fit=true", 1.0 + rng.gen_range(-0.1..0.1), penalty_val)
+            format!(
+                "SCORE: alpha={:.3} beta=0.2 dead_space_penalty={:.1} tight_fit=true",
+                1.0 + rng.gen_range(-0.1..0.1),
+                penalty_val
+            )
         };
 
         let name = format!("{}-mut-g{}", parent.name, generation);
-        let desc = format!("Mutated from parent {} with targeted parameter or condition tuning", parent.id);
+        let desc = format!(
+            "Mutated from parent {} with targeted parameter or condition tuning",
+            parent.id
+        );
 
         let prompt = format!(
             "SYSTEM: Mutate heuristic code to improve packing efficiency.\nPARENT CODE: {}\nPARENT ID: {}",
@@ -175,6 +299,7 @@ impl SkillOperator for DeterministicMockOperator {
             full_prompt: prompt,
             raw_response: new_code.clone(),
             timestamp: Utc::now(),
+            is_network_call: false,
         };
 
         let mut metadata = HashMap::new();
@@ -209,9 +334,14 @@ impl SkillOperator for DeterministicMockOperator {
         generation: usize,
         seed: u64,
     ) -> Result<(SkillCapsule, ReproducibilityAudit), OperatorError> {
-        // Attempt deterministic AST crossover first if both parents have parseable score_bin
-        if parent_a.logic_code.contains("score_bin") && parent_b.logic_code.contains("score_bin") {
-            if let Ok((child, manifest)) = deterministic_ast_crossover(parent_a, parent_b, seed, generation) {
+        // Attempt deterministic AST crossover first if both parents have parseable scoring functions
+        if (parent_a.logic_code.contains("score_") || parent_a.logic_code.contains("fn score"))
+            && (parent_b.logic_code.contains("score_") || parent_b.logic_code.contains("fn score"))
+        {
+            let ast_res =
+                ast_crossover_with(parent_a, parent_b, seed, generation, GraftMode::from_env());
+
+            if let Ok((child, manifest)) = ast_res {
                 let audit = ReproducibilityAudit {
                     model_name: self.model_name.clone(),
                     model_sha256: self.model_sha256.clone(),
@@ -219,9 +349,13 @@ impl SkillOperator for DeterministicMockOperator {
                     seed,
                     temperature: 0.0,
                     top_p: 1.0,
-                    full_prompt: format!("Deterministic AST crossover: host={}, donor={}", parent_a.id, parent_b.id),
+                    full_prompt: format!(
+                        "Deterministic AST crossover: host={}, donor={}",
+                        parent_a.id, parent_b.id
+                    ),
                     raw_response: child.logic_code.clone(),
                     timestamp: Utc::now(),
+                    is_network_call: false,
                 };
                 let mut child_with_manifest = child;
                 child_with_manifest.graft_manifest = Some(manifest);
@@ -230,11 +364,14 @@ impl SkillOperator for DeterministicMockOperator {
         }
 
         // Fallback for hybrid or legacy
-        let recombined_code = format!(
-            "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64) -> f64 {{\n    let mut score = bin_residual as f64;\n    if bin_residual < 10 {{\n        score = score + 95.0;\n    }}\n    score\n}}"
-        );
+        let recombined_code = "pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {\n    let mut score = post_residual as f64;\n    if post_residual < 10 {\n        score = score + 95.0;\n    }\n    score\n}".to_string();
 
-        let name = format!("SwarmCross-g{}-{}-{}", generation, &parent_a.id.0[..4.min(parent_a.id.0.len())], &parent_b.id.0[..4.min(parent_b.id.0.len())]);
+        let name = format!(
+            "SwarmCross-g{}-{}-{}",
+            generation,
+            &parent_a.id.0[..4.min(parent_a.id.0.len())],
+            &parent_b.id.0[..4.min(parent_b.id.0.len())]
+        );
         let desc = format!(
             "Horizontal Swarm Crossover combining [{}] and [{}]",
             parent_a.semantic_interface, parent_b.semantic_interface
@@ -255,6 +392,7 @@ impl SkillOperator for DeterministicMockOperator {
             full_prompt: prompt,
             raw_response: recombined_code.clone(),
             timestamp: Utc::now(),
+            is_network_call: false,
         };
 
         let mut metadata = HashMap::new();
@@ -281,5 +419,38 @@ impl SkillOperator for DeterministicMockOperator {
         );
 
         Ok((capsule, audit))
+    }
+}
+
+#[cfg(test)]
+mod mutation_context_tests {
+    use super::MutationContext;
+
+    #[test]
+    fn prompt_section_reports_scores_and_best_program() {
+        let ctx = MutationContext {
+            parent_valid: true,
+            parent_bins: 4227,
+            lower_bound_bins: 4049,
+            best_other: Some(("fn best() {}".to_string(), 4180)),
+        };
+        let s = ctx.prompt_section();
+        assert!(s.contains("4227 bins"));
+        assert!(s.contains("178 bins are wasted"));
+        assert!(s.contains("fn best() {}"));
+        assert!(s.contains("fewer than 4180 bins"));
+    }
+
+    #[test]
+    fn prompt_section_handles_best_and_invalid_parents() {
+        let best = MutationContext {
+            parent_valid: true,
+            parent_bins: 4100,
+            lower_bound_bins: 4049,
+            best_other: None,
+        };
+        assert!(best.prompt_section().contains("best heuristic found so far"));
+        let invalid = MutationContext { parent_valid: false, ..best };
+        assert!(invalid.prompt_section().contains("INVALID"));
     }
 }

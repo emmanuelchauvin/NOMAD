@@ -1,9 +1,25 @@
+use crate::dataset::{BinPackingInstance, Dataset};
 use nomad_core::{
     BehaviorDescriptor, BenchmarkScore, InstanceEvaluation, PackingDecision, SkillCapsule,
     TrajectoryMetrics,
 };
 use nomad_sandbox::{DeterministicSandbox, HeuristicSandbox};
-use crate::dataset::{BinPackingInstance, Dataset};
+use rayon::prelude::*;
+
+/// Longueur d'instance pour laquelle `fuel_limit_per_call` est calibre (jeu d'entrainement
+/// du profil Weibull : 1 000 objets).
+pub const FUEL_REFERENCE_ITEMS: usize = 1_000;
+
+/// Limite de fuel par decision, proportionnelle a la longueur de l'instance.
+///
+/// Une decision note chaque bac ouvert : son cout croit avec le nombre de bacs, donc avec
+/// le nombre d'objets. Une limite fixe invalide sur les longues instances (OOD-1, 5 000
+/// objets) des heuristiques valides sur 1 000 objets. La limite est multipliee par
+/// `ceil(n_items / FUEL_REFERENCE_ITEMS)` et reste inchangee jusqu'a 1 000 objets.
+pub fn scaled_fuel_limit(fuel_limit_per_call: u64, n_items: usize) -> u64 {
+    let factor = n_items.div_ceil(FUEL_REFERENCE_ITEMS).max(1) as u64;
+    fuel_limit_per_call.saturating_mul(factor)
+}
 
 /// ============================================================================
 /// compute_trajectory_tldr : Algorithme Mathématique du tLDR (Sections 6.4 & 6.5)
@@ -29,6 +45,16 @@ pub fn compute_trajectory_tldr(
     trajectory: &[usize],
     capacity: u32,
 ) -> (f64, TrajectoryMetrics) {
+    compute_trajectory_tldr_with_epsilon(items, trajectory, capacity, 1e-4)
+}
+
+/// Calcule le taux expérimental de décroissance de Lyapunov (tLDR) avec un paramètre epsilon configurable.
+pub fn compute_trajectory_tldr_with_epsilon(
+    items: &[u32],
+    trajectory: &[usize],
+    capacity: u32,
+    epsilon: f64,
+) -> (f64, TrajectoryMetrics) {
     let n = items.len();
     if n == 0 || trajectory.is_empty() {
         return (0.0, TrajectoryMetrics::default());
@@ -47,7 +73,6 @@ pub fn compute_trajectory_tldr(
 
     // Window [t0, N] with t0 = floor(N / 5) (Section 6.5)
     let t0 = (n / 5).max(1);
-    let epsilon = 1e-4;
     let lambda = 0.5;
 
     let mut taus = Vec::new();
@@ -106,6 +131,30 @@ pub fn compute_trajectory_tldr(
     (tldr, metrics)
 }
 
+/// Calcule l'entropie de Shannon de la distribution des résidus discrétisée en 10 buckets
+fn compute_residual_entropy(bin_levels: &[u32], capacity: u32) -> f64 {
+    if bin_levels.is_empty() {
+        return 0.0;
+    }
+    let num_buckets = 10;
+    let mut counts = [0usize; 10];
+    for &lvl in bin_levels {
+        let rem = capacity.saturating_sub(lvl) as f64;
+        let b = ((rem / capacity as f64) * num_buckets as f64).floor() as usize;
+        let idx = b.min(num_buckets - 1);
+        counts[idx] += 1;
+    }
+    let total = bin_levels.len() as f64;
+    let mut entropy = 0.0;
+    for &c in &counts {
+        if c > 0 {
+            let p = c as f64 / total;
+            entropy -= p * p.ln();
+        }
+    }
+    entropy
+}
+
 /// ============================================================================
 /// OracleEvaluator : Évaluateur Souverain et Sanctuarisé de NOMAD
 /// ============================================================================
@@ -114,20 +163,71 @@ pub fn compute_trajectory_tldr(
 ///
 /// **Jeux de données sanctuarisés :**
 /// - `in_distribution` : 50 instances, N=50, tailles U(10, 80), capacité C=100.
+/// - `validation` : 50 instances de validation in-distribution (seed dérivée sanctuarisée).
 /// - `ood1_scale` : 50 instances de passage à l'échelle, N=500, U(10, 80).
 /// - `ood2_powerlaw` : 50 instances de rupture de distribution (loi de puissance).
 #[derive(Debug, Clone)]
 pub struct OracleEvaluator {
     pub in_distribution: Dataset,
+    pub validation: Dataset,
     pub ood1_scale: Dataset,
     pub ood2_powerlaw: Dataset,
 }
 
 impl OracleEvaluator {
     /// Initialise l'évaluateur avec les jeux de données pré-enregistrés générés via une seed fixe.
+    ///
+    /// La variable d'environnement `NOMAD_BP_PROFILE=weibull` selectionne le profil Weibull
+    /// (longues instances, marge mesurable) a la place du profil uniforme historique.
     pub fn new(seed: u64) -> Self {
+        if std::env::var("NOMAD_BP_PROFILE").map(|v| v == "weibull").unwrap_or(false) {
+            return Self::new_weibull(seed);
+        }
+        Self::new_uniform(seed)
+    }
+
+    /// Profil Weibull : entrainement et validation Weibull(3, 45) ; OOD-1 = instances 5x plus
+    /// longues ; OOD-2 = changement de forme, Weibull(2, 40).
+    pub fn new_weibull(seed: u64) -> Self {
+        let n = |k: &str, d: usize| -> usize {
+            std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+        };
+        let inst = n("NOMAD_WB_INSTANCES", 10);
+        let items = n("NOMAD_WB_ITEMS", 1000);
+        Self {
+            in_distribution: Dataset::generate_weibull(seed, "weibull_train", inst, items, 3.0, 45.0),
+            validation: Dataset::generate_weibull(
+                seed ^ 0x005A_11DA_710E_u64,
+                "weibull_val",
+                inst,
+                items,
+                3.0,
+                45.0,
+            ),
+            ood1_scale: Dataset::generate_weibull(
+                seed ^ 0x00D1_5CA1E,
+                "weibull_ood1_scale",
+                5,
+                items * 5,
+                3.0,
+                45.0,
+            ),
+            ood2_powerlaw: Dataset::generate_weibull(
+                seed ^ 0x00D2_5E1F7,
+                "weibull_ood2_shape",
+                inst,
+                items,
+                2.0,
+                40.0,
+            ),
+        }
+    }
+
+    /// Profil uniforme historique U(10, 80).
+    pub fn new_uniform(seed: u64) -> Self {
         Self {
             in_distribution: Dataset::generate_in_distribution(seed),
+            validation: Dataset::generate_validation(seed),
             ood1_scale: Dataset::generate_ood1_scale(seed),
             ood2_powerlaw: Dataset::generate_ood2_distribution_shift(seed),
         }
@@ -141,6 +241,16 @@ impl OracleEvaluator {
         fuel_limit_per_call: u64,
     ) -> BenchmarkScore {
         self.evaluate_dataset(&self.in_distribution, capsule, sandbox, fuel_limit_per_call)
+    }
+
+    /// Évalue une capsule sur le jeu de validation In-Distribution (non utilisé pour la sélection ni MAP-Elites).
+    pub fn evaluate_validation(
+        &self,
+        capsule: &SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+    ) -> BenchmarkScore {
+        self.evaluate_dataset(&self.validation, capsule, sandbox, fuel_limit_per_call)
     }
 
     /// Évalue une capsule sur le benchmark hors-distribution OOD-1 (Échelle N=500).
@@ -175,6 +285,30 @@ impl OracleEvaluator {
         sandbox: &dyn HeuristicSandbox,
         fuel_limit_per_call: u64,
     ) -> BenchmarkScore {
+        self.evaluate_dataset_with_lookahead(dataset, capsule, sandbox, fuel_limit_per_call, true)
+    }
+
+    /// Évalue une capsule sur un dataset avec option d'activation ou masquage du lookahead (k=2).
+    pub fn evaluate_dataset_with_lookahead(
+        &self,
+        dataset: &Dataset,
+        capsule: &SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+        lookahead: bool,
+    ) -> BenchmarkScore {
+        self.evaluate_dataset_with_evals(dataset, capsule, sandbox, fuel_limit_per_call, lookahead).0
+    }
+
+    /// Évalue une capsule sur un dataset et retourne à la fois le BenchmarkScore et les évaluations d'instances.
+    pub fn evaluate_dataset_with_evals(
+        &self,
+        dataset: &Dataset,
+        capsule: &SkillCapsule,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+        lookahead: bool,
+    ) -> (BenchmarkScore, Vec<InstanceEvaluation>) {
         let mut total_bins = 0usize;
         let mut total_theoretical = 0usize;
         let mut total_fuel = 0u64;
@@ -191,16 +325,27 @@ impl OracleEvaluator {
         let mut sum_sigma_res = 0.0f64;
         let mut sample_prefix_waste = Vec::new();
 
-        for inst in &dataset.instances {
-            let (eval, behavior, traj_metrics) = self.evaluate_single_instance(
-                inst,
-                &capsule.logic_code,
-                sandbox,
-                fuel_limit_per_call,
-            );
+        let results: Vec<_> = dataset
+            .instances
+            .par_iter()
+            .map(|inst| {
+                self.evaluate_single_instance_with_lookahead(
+                    inst,
+                    &capsule.logic_code,
+                    sandbox,
+                    fuel_limit_per_call,
+                    lookahead,
+                )
+            })
+            .collect();
+
+        let mut instance_evals = Vec::with_capacity(results.len());
+
+        for (eval, behavior, traj_metrics) in results {
             if !eval.is_valid {
+                instance_evals.push(eval);
                 // Fatal penalty: Any failure disqualifies the entire run on this dataset
-                return BenchmarkScore::fatal_penalty(dataset.instances.len());
+                return (BenchmarkScore::fatal_penalty(dataset.instances.len()), instance_evals);
             }
 
             total_bins += eval.bins_used;
@@ -219,6 +364,7 @@ impl OracleEvaluator {
             sum_mean_fullness += behavior.mean_fullness;
             sum_dead_space_ratio += behavior.dead_space_ratio;
 
+            instance_evals.push(eval);
             solved_instances += 1;
         }
 
@@ -241,9 +387,21 @@ impl OracleEvaluator {
             dead_space_ratio: sum_dead_space_ratio / n,
         };
 
-        let mean_tldr = if solved_instances > 0 { sum_tldr / n } else { 0.0 };
-        let mean_beta1 = if solved_instances > 0 { sum_beta1 / n } else { 0.0 };
-        let mean_sigma_res = if solved_instances > 0 { sum_sigma_res / n } else { 0.0 };
+        let mean_tldr = if solved_instances > 0 {
+            sum_tldr / n
+        } else {
+            0.0
+        };
+        let mean_beta1 = if solved_instances > 0 {
+            sum_beta1 / n
+        } else {
+            0.0
+        };
+        let mean_sigma_res = if solved_instances > 0 {
+            sum_sigma_res / n
+        } else {
+            0.0
+        };
 
         let trajectory_metrics = TrajectoryMetrics {
             beta1_slope: mean_beta1,
@@ -252,7 +410,7 @@ impl OracleEvaluator {
             prefix_waste: sample_prefix_waste,
         };
 
-        BenchmarkScore {
+        let score = BenchmarkScore {
             is_valid: true,
             total_bins,
             total_theoretical_min_bins: total_theoretical,
@@ -264,7 +422,9 @@ impl OracleEvaluator {
             behavior: mean_behavior,
             tldr_score: mean_tldr,
             trajectory_metrics: Some(trajectory_metrics),
-        }
+        };
+
+        (score, instance_evals)
     }
 
     /// Evaluates a single online bin packing instance sequentially, computing trajectory, tLDR and behavior.
@@ -275,15 +435,42 @@ impl OracleEvaluator {
         sandbox: &dyn HeuristicSandbox,
         fuel_limit_per_call: u64,
     ) -> (InstanceEvaluation, BehaviorDescriptor, TrajectoryMetrics) {
+        self.evaluate_single_instance_with_lookahead(
+            instance,
+            logic_code,
+            sandbox,
+            fuel_limit_per_call,
+            true,
+        )
+    }
+
+    /// Evaluates a single online bin packing instance with configurable lookahead.
+    pub fn evaluate_single_instance_with_lookahead(
+        &self,
+        instance: &BinPackingInstance,
+        logic_code: &str,
+        sandbox: &dyn HeuristicSandbox,
+        fuel_limit_per_call: u64,
+        lookahead: bool,
+    ) -> (InstanceEvaluation, BehaviorDescriptor, TrajectoryMetrics) {
+        let fuel_limit_per_call = scaled_fuel_limit(fuel_limit_per_call, instance.items.len());
         let mut bin_levels: Vec<u32> = Vec::new();
+        let mut mid_levels: Vec<u32> = Vec::new();
+        let mid_course_step = instance.items.len() / 2;
         let mut total_fuel = 0u64;
         let mut trajectory = Vec::with_capacity(instance.items.len());
         let mut new_bins_opened = 0usize;
 
         for (step_idx, &item) in instance.items.iter().enumerate() {
-            let res = sandbox.execute_with_context(
+            let next_item = if lookahead {
+                instance.items.get(step_idx + 1).copied().unwrap_or(0)
+            } else {
+                0
+            };
+            let res = sandbox.execute_with_lookahead(
                 logic_code,
                 item,
+                next_item,
                 &bin_levels,
                 instance.capacity,
                 fuel_limit_per_call,
@@ -306,7 +493,7 @@ impl OracleEvaluator {
                                         fuel_consumed: total_fuel,
                                         error_message: Some(format!(
                                             "Invalid bin index {} for {} open bins",
-                                             idx,
+                                            idx,
                                             bin_levels.len()
                                         )),
                                         tldr_score: 0.0,
@@ -363,6 +550,9 @@ impl OracleEvaluator {
                     }
 
                     trajectory.push(bin_levels.len());
+                    if step_idx == mid_course_step {
+                        mid_levels = bin_levels.clone();
+                    }
                 }
                 Err(err) => {
                     return (
@@ -395,11 +585,7 @@ impl OracleEvaluator {
             .collect();
 
         let mean_residual: f64 = residuals.iter().sum::<f64>() / open_count as f64;
-        let residual_variance: f64 = residuals
-            .iter()
-            .map(|&r| (r - mean_residual).powi(2))
-            .sum::<f64>()
-            / open_count as f64;
+        let _ = mean_residual;
 
         let mean_fullness: f64 = bin_levels
             .iter()
@@ -407,16 +593,22 @@ impl OracleEvaluator {
             .sum::<f64>()
             / open_count as f64;
 
+        // Axe X : dead space dans la zone critique [1..15]
         let dead_space_count = bin_levels
             .iter()
             .filter(|&&lvl| {
                 let rem = instance.capacity - lvl;
-                rem > 0 && rem < 10
+                (1..=15).contains(&rem)
             })
             .count();
 
+        // Axe Y : Entropie de Shannon composite (mi-parcours & fin de parcours)
+        let entropy_mid = compute_residual_entropy(&mid_levels, instance.capacity);
+        let entropy_end = compute_residual_entropy(&bin_levels, instance.capacity);
+        let combined_entropy = 0.5 * entropy_mid + 0.5 * entropy_end;
+
         let behavior = BehaviorDescriptor {
-            residual_variance,
+            residual_variance: combined_entropy,
             new_bin_ratio: new_bins_opened as f64 / num_items as f64,
             mean_fullness,
             dead_space_ratio: dead_space_count as f64 / open_count as f64,
@@ -457,3 +649,16 @@ impl OracleEvaluator {
     }
 }
 
+#[cfg(test)]
+mod fuel_tests {
+    use super::scaled_fuel_limit;
+
+    #[test]
+    fn scaled_fuel_limit_is_proportional_to_instance_length() {
+        assert_eq!(scaled_fuel_limit(400_000, 50), 400_000);
+        assert_eq!(scaled_fuel_limit(400_000, 1_000), 400_000);
+        assert_eq!(scaled_fuel_limit(400_000, 1_001), 800_000);
+        assert_eq!(scaled_fuel_limit(400_000, 5_000), 2_000_000);
+        assert_eq!(scaled_fuel_limit(u64::MAX, 5_000), u64::MAX);
+    }
+}

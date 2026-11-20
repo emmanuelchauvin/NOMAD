@@ -1,0 +1,57 @@
+[2m2026-11-14T11:56:40.697114Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8085, Pop=1359, MaxGens=1
+[2m2026-11-14T14:58:08.267689Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 054ec15fcd1ae2f3 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8085 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4148 bins (excess: +132), Efficiency: 96.82%, Fuel: 52181038
+ Best In-Dist (w/o Lookahead) : 4199 bins (excess: +183), Efficiency: 95.64%
+ Dynamic Trajectory: tLDR = 3.5765
+ Behavior Profile : DeadSpaceRatio: 42.1%, NewBinRatio: 41.5%, ResVar: 1.05
+ MAP-Elites Niches: 19 active (19.0% coverage), QD-Score: 13.361
+ Validation Score : 4188 bins (excess: +151), Efficiency: 96.40%
+ OOD-1 Score      : 10503 bins (excess: +425), Efficiency: 95.95%
+ OOD-2 Score      : 3741 bins (excess: +162), Efficiency: 95.67%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-473
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Best-Fit Penalty: Minimize post_residual (Best Fit logic)
+    // We prioritize bins that result in the smallest remaining space.
+    
+    // 2. Lookahead Coupling:
+    // If the next item fits perfectly in the post_residual, drastically lower the score.
+    if next_item_size > 0 && next_item_size <= post_residual {
+        let fit_gap = (post_residual - next_item_size) as f64;
+        score -= (100.0 - fit_gap).powf(1.5);
+    }
+
+    // 3. Global Density Balancing:
+    // If we have many open bins, penalize creating a new bin unless the fit is very good.
+    if bin_residual == bin_capacity {
+        if open_bins_count > 0 {
+            score += 45.0 + (open_bins_count as f64 * 2.5);
+        }
+        // Penalize opening a new bin if we are near the end of the stream
+        let progress = step_index as f64 / total_items as f64;
+        score += progress * 10.0;
+    }
+
+    // 4. Mean Residual Awareness:
+    // Penalize bins that deviate significantly from the mean residual of currently open bins
+    // to keep the packing density uniform.
+    let residual_diff = (post_residual as f64 - mean_residual).abs();
+    score += residual_diff * 0.5;
+
+    // 5. Urgency Constraint:
+    // If this is the only bin that can fit the item, prioritize it heavily.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 50.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\tirage\run_seed_8085_tirage.json.tmp

@@ -1,0 +1,150 @@
+2026-11-13T09:59:59.744476Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4051, Pop=85, MaxGens=1
+2026-11-13T10:10:36.769886Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4d2b8bf9641f9b57 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4051 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4221 bins (excess: +185), Efficiency: 95.62%, Fuel: 32423870
+ Best In-Dist (w/o Lookahead) : 4228 bins (excess: +192), Efficiency: 95.46%
+ Dynamic Trajectory: tLDR = 0.2048
+ Behavior Profile : DeadSpaceRatio: 66.7%, NewBinRatio: 42.2%, ResVar: 0.51
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 6.286
+ Validation Score : 4208 bins (excess: +177), Efficiency: 95.80%
+ OOD-1 Score      : 10385 bins (excess: +388), Efficiency: 96.27%
+ OOD-2 Score      : 3637 bins (excess: +78), Efficiency: 97.86%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-016
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // ---- harmonic class decomposition of post_residual -------------------
+    // Items are integers in [1,100]; capacity 100. Residuals that fall in a
+    // "harmonic class" h = floor(100 / r) are mutually similar in how many
+    // future items of the current size class they can still accept.
+    let cap = bin_capacity.max(1) as f64;
+    let is_new = bin_residual >= bin_capacity;
+
+    // baseline: post_residual (the template seed), scaled so the terms below
+    // stay in the same numeric range as the raw residual.
+    let mut score = post_residual as f64;
+
+    // ---- class of the residual after placement -----------------------------
+    // h = floor(cap / post_residual)  (harmonic class of remaining space)
+    let h_post = if post_residual > 0 { (cap / post_residual as f64).floor() } else { cap };
+
+    // Harmonic classes of the *current* residual (before placement) and of the
+    // next lookahead item: an item fits in a residual r iff r >= next_item_size.
+    // The number of same-size items that still fit is floor(r / item_size).
+    let slots_now = if item_size > 0 { bin_residual / item_size } else { 0 };
+
+    // residue after placement: how many *next* items of size next_item_size
+    // would still fit into post_residual.
+    let next_slots = if next_item_size > 0 { post_residual / next_item_size } else { 0 };
+
+    // ---- dead space penalty (residual too small to be useful) --------------
+    // Small residuals are "dead": they can hardly host any future item.
+    // We penalize them with a harmonic, non-linear term.
+    let dead = if post_residual == 0 {
+        0.0
+    } else {
+        // ratio of residual to capacity: smaller => worse
+        let frac = post_residual as f64 / cap;
+        // harmonic step: the "class index" of the residual
+        let class_idx = 1.0 / frac.max(1.0 / cap);
+        // only penalize truly dead pieces (below ~ capacity/8) but taper off
+        let dead_frac = (1.0 / 8.0 - frac).max(0.0) / (1.0 / 8.0);
+        // class_idx is large for tiny residuals -> strong penalty, mild otherwise
+        (class_idx * dead_frac * 4.0).min(400.0)
+    };
+    score += dead;
+
+    // ---- reward keeping large residuals (bin stays flexible) --------------
+    if post_residual > 0 {
+        // harmonic bonus: bins whose residual sits in a low harmonic class
+        // (i.e. large residual, few multiples) are more flexible.
+        let flex = (1.0 / h_post.max(1.0)) * 30.0;
+        score -= flex;
+    }
+
+    // ---- exact-fit / perfect packing bonus --------------------------------
+    if post_residual == 0 {
+        // perfectly closing a bin is excellent (no dead space at all)
+        score -= 60.0;
+    } else if post_residual == item_size {
+        // residual equals the item we just placed -> symmetric fit
+        score -= 12.0;
+    }
+
+    // ---- look-ahead coupling ----------------------------------------------
+    if next_item_size > 0 {
+        // Does the next item still fit here? Strongly prefer yes.
+        if post_residual >= next_item_size {
+            // harmonic bonus proportional to how many next items fit
+            score -= 8.0 * (next_slots as f64).min(4.0);
+            // congruence bonus: residual modulo next_item_size small means
+            // we consume the next item's whole slot cleanly
+            let rem = post_residual % next_item_size;
+            if rem == 0 {
+                score -= 10.0;
+            } else {
+                // harmonic residue penalty scaled by class
+                score += 2.0 * (rem as f64) * (1.0 + 1.0 / h_post.max(1.0));
+            }
+        } else {
+            // next item does NOT fit -> this placement kills the bin for the
+            // immediate future. Penalty grows with how "fat" the leftover is
+            // relative to what we need (i.e. we nearly wasted space).
+            let shortfall = (next_item_size - post_residual) as f64;
+            let need_frac = shortfall / next_item_size as f64;
+            score += 25.0 * need_frac + 6.0 * (1.0 - need_frac);
+        }
+    }
+
+    // ---- multiple-slots / tight packing reward ----------------------------
+    // Prefer bins that will host many more same-size items (compact clusters).
+    if slots_now > 1 {
+        score -= 4.0 * ((slots_now - 1) as f64).min(5.0);
+    }
+
+    // ---- last-chance urgency (only one fitting bin) ------------------------
+    if fitting_bins_count <= 1 && !is_new {
+        // this is the last bin that can take the item: opening a new bin is
+        // relatively cheap, so we relax the penalty for imperfect fits
+        score -= 30.0;
+        // but if the placement is terrible (creates dead space) keep some pen
+        if post_residual > 0 && (post_residual as f64) < cap * 0.15 {
+            score += 20.0;
+        }
+    }
+
+    // ---- new-bin candidate treatment --------------------------------------
+    if is_new {
+        // Opening a new bin is costly: penalize the empty bin strongly,
+        // except very early in the stream (few bins open) where we must seed.
+        let progress = step_index as f64 / total_items.max(1) as f64;
+        let seed_allowance = if open_bins_count <= 1 { 120.0 } else { 0.0 };
+        score += 150.0 - seed_allowance - 20.0 * progress;
+        // an empty bin has full flexibility, but still costs a bin
+        score -= 5.0;
+    }
+
+    // ---- global residual pressure -----------------------------------------
+    // If open bins are on average very empty, we should keep using them
+    // (they represent sunk capacity) rather than opening new ones.
+    if mean_residual > 0.0 {
+        let mean_frac = (mean_residual / cap).min(1.0);
+        // harmonic-mean pressure: high mean residual => prefer existing bins
+        score -= 18.0 * mean_frac * mean_frac;
+    }
+
+    // ---- end-of-stream ----------------------------------------------------
+    if next_item_size == 0 {
+        // last item: fitting it anywhere is fine, closing a bin is best
+        if post_residual == 0 {
+            score -= 25.0;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\tirage\run_seed_4051_tirage.json.tmp

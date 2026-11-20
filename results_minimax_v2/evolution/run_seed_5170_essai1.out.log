@@ -1,0 +1,102 @@
+2026-11-13T16:45:24.374023Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5170, Pop=8, MaxGens=10
+2026-11-13T16:56:51.650927Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 461d99354472e20b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5170 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4171 bins (excess: +124), Efficiency: 97.03%, Fuel: 83616121
+ Best In-Dist (w/o Lookahead) : 4281 bins (excess: +234), Efficiency: 94.53%
+ Dynamic Trajectory: tLDR = 1.6899
+ Behavior Profile : DeadSpaceRatio: 2.1%, NewBinRatio: 41.7%, ResVar: 0.61
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 7.277
+ Validation Score : 4141 bins (excess: +124), Efficiency: 97.01%
+ OOD-1 Score      : 10101 bins (excess: +82), Efficiency: 99.19%
+ OOD-2 Score      : 3637 bins (excess: +91), Efficiency: 97.50%
+ Lineage Nodes    : 85, Transitions: 54
+ Best Heuristic   : LLM-Seed-017-mut-g4
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: u32) -> f64 {
+    let mut score = post_residual as f64;
+
+    let gap_penalty = if post_residual == 0 {
+        0.0
+    } else if post_residual < next_item_size && next_item_size != 0 {
+        35.0 + (next_item_size - post_residual) as f64 * 2.5
+    } else if post_residual <= 9 {
+        12.0 + (9 - post_residual) as f64 * 1.5
+    } else if post_residual <= 19 {
+        4.0 + (19 - post_residual) as f64 * 0.8
+    } else {
+        0.0
+    };
+    score += gap_penalty;
+
+    let fill_ratio = item_size as f64 / bin_capacity as f64;
+    let pressure = open_bins_count as f64 / (total_items as f64).sqrt().max(1.0);
+    score -= fill_ratio * 18.0 * pressure.min(4.0);
+
+    if fitting_bins_count == 1 {
+        score -= 22.0;
+    } else if fitting_bins_count > 1 {
+        score -= 4.0;
+    }
+
+    if bin_residual == bin_capacity {
+        score += 28.0;
+        score += (open_bins_count as f64).min(12.0) * 1.5;
+    }
+
+    if next_item_size != 0 {
+        let compatibility = if post_residual >= next_item_size {
+            (post_residual - next_item_size) as f64 / bin_capacity as f64
+        } else {
+            -(next_item_size - post_residual) as f64 / bin_capacity as f64
+        };
+        score -= compatibility * 20.0;
+    }
+
+    let mean_gap = (mean_residual - post_residual as f64).abs();
+    score += mean_gap * 0.35;
+
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        step_index as f64 / total_items as f64
+    };
+    score -= progress * fill_ratio * 3.0;
+
+    // New mutation: reward near-complete closure strongly, and penalize tiny
+    // unusable remainders more aggressively when alternatives are plentiful.
+    if post_residual == 0 {
+        score -= 14.0;
+    } else if post_residual < next_item_size && next_item_size != 0 {
+        let deficit = (next_item_size - post_residual) as f64;
+        let scarcity = if fitting_bins_count <= 1 { 1.0 } else { 0.65 };
+        score += deficit * 3.2 * scarcity;
+    }
+
+    // Favour bins whose residual is close to the population's typical gap,
+    // but only after the immediate item compatibility has been considered.
+    if fitting_bins_count > 1 {
+        let target = mean_residual.min(bin_capacity as f64 * 0.25);
+        score -= (post_residual as f64 - target).abs() * 0.18;
+    }
+
+    // A full bin creates a large amount of dead capacity; make opening a
+    // fresh bin less attractive once the stream is well advanced.
+    if bin_residual == bin_capacity {
+        let phase = if total_items == 0 {
+            0.0
+        } else {
+            step_index as f64 / total_items as f64
+        };
+        score += 11.0 * phase;
+        if next_item_size > bin_capacity / 2 {
+            score += 7.0;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5170_evolution.json.tmp

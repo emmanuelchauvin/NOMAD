@@ -1,0 +1,87 @@
+[2m2026-11-14T15:16:43.867871Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8119, Pop=8, MaxGens=192
+[2m2026-11-14T18:05:20.565069Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule f3a3d3dee8c00f4d on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8119 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4051 bins (excess: +45), Efficiency: 98.89%, Fuel: 103872510
+ Best In-Dist (w/o Lookahead) : 4069 bins (excess: +63), Efficiency: 98.45%
+ Dynamic Trajectory: tLDR = 4.2276
+ Behavior Profile : DeadSpaceRatio: 24.3%, NewBinRatio: 40.5%, ResVar: 0.47
+ MAP-Elites Niches: 29 active (29.0% coverage), QD-Score: 23.917
+ Validation Score : 4060 bins (excess: +48), Efficiency: 98.82%
+ OOD-1 Score      : 10251 bins (excess: +248), Efficiency: 97.58%
+ OOD-2 Score      : 3673 bins (excess: +134), Efficiency: 96.36%
+ Lineage Nodes    : 1359, Transitions: 851
+ Best Heuristic   : LLM-Seed-011-mut-g9-mut-g10-mut-g10-mut-g13-mut-g16-mut-g25-mut-g26-mut-g78
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    
+    // Base: Penalize slivers more aggressively to force dense packings
+    let mut score = post_residual as f64 * 1.4;
+    if post_residual == 0 {
+        score -= 280.0;
+    } else if post_residual < 38 {
+        score += (38.0 - post_residual as f64).powf(1.85) * 48.0;
+    }
+
+    // Lookahead: Refined weight for next_item_size anticipation
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Reward fits that leave exactly enough for the next item
+            let exact_match_bonus = if post_residual == next_item_size { 620.0 } else { 310.0 };
+            score -= exact_match_bonus + (progress * 150.0);
+        } else {
+            // Stronger penalty for blocking the next item
+            score += (next_item_size - post_residual) as f64 * (110.0 + (1.0 - progress) * 125.0);
+        }
+    }
+
+    // Bin Management: Dynamic cost to open, optimized for early vs late game
+    if is_new_bin {
+        // Increased cost for opening new bins when space is available
+        let new_bin_base_cost = 720.0 + (open_bins_count as f64 * 42.0) + (progress * 550.0);
+        score += if fitting_bins_count == 0 { 0.0 } else { new_bin_base_cost };
+    } else {
+        // Density Balancing: Use a tighter rolling mean window
+        let target_res = mean_residual * 0.68;
+        let deviation = (post_residual as f64 - target_res).abs();
+        score += deviation * (4.8 - (progress * 1.3));
+
+        // Tight-fit acceleration: Reward filling bins to near-capacity
+        if post_residual < 10 {
+            score -= (10.0 - post_residual as f64).powf(1.9) * 520.0;
+        }
+    }
+
+    // Global Pressure: Non-linear penalty for opening too many concurrent bins
+    if open_bins_count > 0 {
+        score += (open_bins_count as f64).powf(2.65) * 18.0;
+    }
+
+    // Constraint Satisfaction: Prioritize unique fits
+    if !is_new_bin {
+        if fitting_bins_count == 1 {
+            score -= 1100.0;
+        } else if fitting_bins_count > 1 {
+            score += (post_residual as f64).powf(1.6) * 15.0;
+        }
+    }
+
+    // Adaptive End-of-Stream: Aggressive compaction in the final 15%
+    if progress > 0.85 {
+        if post_residual == 0 {
+            score -= 800.0;
+        } else if post_residual <= 6 {
+            score -= 450.0;
+        } else {
+            score += (post_residual as f64).powf(2.8) * 12.0;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8119_evolution.json.tmp

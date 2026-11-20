@@ -1,0 +1,115 @@
+2026-11-13T11:56:13.914181Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4034, Pop=8, MaxGens=12
+2026-11-13T12:06:23.899365Z  INFO nomad_orchestrator::engine: Evaluating winning capsule f899b4cd8a8b9bd8 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4034 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4143 bins (excess: +117), Efficiency: 97.18%, Fuel: 75824852
+ Best In-Dist (w/o Lookahead) : 4300 bins (excess: +274), Efficiency: 93.63%
+ Dynamic Trajectory: tLDR = 1.5176
+ Behavior Profile : DeadSpaceRatio: 3.6%, NewBinRatio: 41.4%, ResVar: 0.62
+ MAP-Elites Niches: 18 active (18.0% coverage), QD-Score: 15.340
+ Validation Score : 4101 bins (excess: +106), Efficiency: 97.42%
+ OOD-1 Score      : 10111 bins (excess: +64), Efficiency: 99.37%
+ OOD-2 Score      : 3670 bins (excess: +82), Efficiency: 97.77%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-002-mut-g4-mut-g7-mut-g8-mut-g11
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let residual = bin_residual as f64;
+    let post = post_residual as f64;
+    let next = next_item_size.max(1) as f64;
+    let pressure = if total_items > 0 {
+        step_index as f64 / total_items as f64
+    } else {
+        0.0
+    };
+
+    let mut score = post;
+
+    // Reward the placement most when it leaves a residual compatible with
+    // plausible future items rather than merely fitting the current item.
+    let future_need = next.max(item.min(next));
+    if post > 0.0 {
+        if post < future_need {
+            let deficit = future_need - post;
+            score += 0.85 * deficit + 0.055 * deficit * deficit;
+        } else {
+            let excess = post - future_need;
+            score += 0.018 * excess.min(item * 1.5);
+        }
+    }
+
+    // Fragmented slack is costly, with a stronger penalty for bins whose
+    // remaining capacity cannot host a useful future placement.
+    let normalized_post = post / capacity;
+    let normalized_item = item / capacity;
+    let fragmentation = if post < future_need {
+        (future_need - post) / future_need
+    } else if post > future_need * 1.75 {
+        (post - future_need * 1.75) / capacity
+    } else {
+        0.0
+    };
+    score += fragmentation * (5.0 + 4.0 * pressure);
+
+    // Prefer residuals close to the typical residual, but do not let a noisy
+    // aggregate override the direct geometric consequences of the fit.
+    score += 0.028 * (residual - mean_residual).abs();
+
+    let fill_ratio = residual / capacity;
+    let target_ratio = normalized_item.min(1.0);
+    score -= 0.70 * (fill_ratio - target_ratio).abs();
+
+    // A nearly closed bin is highly desirable because it reduces bin count.
+    if post <= 0.5 {
+        score -= 8.5;
+    } else if post <= item * 0.08 {
+        score -= 3.0 + 2.0 * pressure;
+    }
+
+    // Preserve room for the immediately following item, with diminishing
+    // credit for slack beyond that item.
+    if post >= next {
+        let reusable_slack = post - next;
+        score -= 3.2 + 1.15 * reusable_slack.min(item);
+        if reusable_slack > item * 1.25 {
+            score += 0.65 * (reusable_slack - item * 1.25);
+        }
+    }
+
+    // Detect poor current fits and avoid opening another bin unless doing so
+    // has a clearly favorable alternative.
+    let poor_fit = post < item * 0.48 || residual > item * 1.85;
+    if fitting_bins_count <= 1 {
+        score -= 4.5 + 2.2 * pressure;
+    } else if poor_fit && fitting_bins_count <= 3 {
+        score += 1.7 * (fitting_bins_count as f64 - 1.0);
+    }
+
+    // The empty-bin candidate needs a calibrated surcharge: it should win only
+    // when the available open bins are substantially worse than opening fresh.
+    if bin_residual == bin_capacity {
+        score += 13.5 + 10.0 * pressure;
+        score -= 3.5 * (1.0 - pressure);
+
+        if fitting_bins_count == 0 {
+            score -= 9.5;
+        } else if fitting_bins_count == 1 {
+            score -= 2.8;
+        } else if fitting_bins_count == 2 {
+            score -= 0.8;
+        } else {
+            score += 0.7 * (fitting_bins_count as f64 - 2.0);
+        }
+    }
+
+    // A mild consolidation pressure becomes more relevant near the end.
+    score += 0.014 * open_bins_count as f64 * pressure;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4034_evolution.json.tmp

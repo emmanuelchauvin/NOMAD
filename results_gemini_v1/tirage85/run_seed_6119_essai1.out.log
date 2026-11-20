@@ -1,0 +1,64 @@
+2026-11-13T20:02:39.716760Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6119, Pop=85, MaxGens=1
+2026-11-13T20:09:54.590081Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 76b4a52bad4c57f4 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6119 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4229 bins (excess: +187), Efficiency: 95.58%, Fuel: 25851783
+ Best In-Dist (w/o Lookahead) : 4232 bins (excess: +190), Efficiency: 95.51%
+ Dynamic Trajectory: tLDR = 0.1830
+ Behavior Profile : DeadSpaceRatio: 67.9%, NewBinRatio: 42.3%, ResVar: 0.53
+ MAP-Elites Niches: 4 active (4.0% coverage), QD-Score: 3.327
+ Validation Score : 4185 bins (excess: +180), Efficiency: 95.70%
+ OOD-1 Score      : 10475 bins (excess: +412), Efficiency: 96.07%
+ OOD-2 Score      : 3640 bins (excess: +86), Efficiency: 97.64%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-074
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = step_index as f64 / (total_items as f64 + 1.0);
+
+    // 1. Best-Fit Penalty: Minimize post_residual (Best Fit logic)
+    // The current score is post_residual. We prioritize small post_residual.
+
+    // 2. Lookahead Integration: If the next item fits into the current post_residual, 
+    // prioritize this bin to prevent fragmentation.
+    if next_item_size > 0 && next_item_size <= post_residual {
+        score -= (next_item_size as f64) * 0.8;
+    }
+
+    // 3. New Bin Threshold: If we are forced to open a new bin, penalize it heavily 
+    // early in the process, but allow it if current bins are "too full" to be useful.
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            // Strong penalty for opening a new bin if an existing one works
+            score += 45.0 + (progress * 20.0);
+        } else {
+            // If no existing bin works, this is the baseline
+            score = 25.0;
+        }
+    }
+
+    // 4. Global State balancing:
+    // If we have many open bins, penalize creating more (force tighter fitting).
+    // If mean_residual is low, we are packing efficiently; maintain this.
+    if open_bins_count > 0 {
+        score += (open_bins_count as f64 * 2.5) * (1.0 - progress);
+        
+        // If this bin's post_residual is significantly worse than the mean, penalize it
+        if (post_residual as f64) > mean_residual {
+            score += (post_residual as f64 - mean_residual) * 0.5;
+        }
+    }
+
+    // 5. Criticality adjustment:
+    // If this is the only bin that can fit the item, prioritize it strongly.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 15.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage85\run_seed_6119_tirage85.json.tmp

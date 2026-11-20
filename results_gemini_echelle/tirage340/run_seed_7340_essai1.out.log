@@ -1,0 +1,65 @@
+2026-11-14T01:50:30.329055Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7340, Pop=340, MaxGens=1
+2026-11-14T02:22:46.593358Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 629b1ac5bd8178fd on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7340 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4214 bins (excess: +163), Efficiency: 96.13%, Fuel: 27134766
+ Best In-Dist (w/o Lookahead) : 4212 bins (excess: +161), Efficiency: 96.18%
+ Dynamic Trajectory: tLDR = 0.4054
+ Behavior Profile : DeadSpaceRatio: 57.2%, NewBinRatio: 42.1%, ResVar: 0.53
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 7.023
+ Validation Score : 4180 bins (excess: +161), Efficiency: 96.15%
+ OOD-1 Score      : 10344 bins (excess: +307), Efficiency: 97.03%
+ OOD-2 Score      : 3651 bins (excess: +73), Efficiency: 98.00%
+ Lineage Nodes    : 340, Transitions: 0
+ Best Heuristic   : LLM-Seed-336
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Harmonic Penalty: Heavily penalize residuals that are small but non-zero (fragments)
+    // if they cannot accommodate common item sizes.
+    if post_residual > 0 && post_residual < 20 {
+        score += 45.0;
+    }
+
+    // 2. Lookahead Logic: If next item exists, favor bins that can accommodate it.
+    // If current bin can fit the next item after the current one, reward this bin.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 25.0;
+    }
+
+    // 3. New Bin Thresholding: Discourage opening new bins unless the current 
+    // fit is extremely poor (Best-Fit approximation).
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            // Strong penalty for opening a new bin if an existing one is available
+            score += 60.0;
+        } else {
+            // Neutral score for forced new bin
+            score = 10.0;
+        }
+    }
+
+    // 4. Harmonic Alignment: Prefer bins with residuals that are multiples of 
+    // common item sizes (e.g., 20, 25, 33, 50) to minimize fragmentation.
+    let remainder = post_residual % 25;
+    if remainder == 0 {
+        score -= 10.0;
+    }
+
+    // 5. Global State Balancing: If we have many open bins, prioritize closing gaps.
+    // Scale by the ratio of current progression to favor tighter packing later.
+    let progress = step_index as f64 / total_items as f64;
+    score += (open_bins_count as f64) * 2.0 * progress;
+
+    // 6. Mean Residual Correction: Avoid bins that deviate significantly from 
+    // the average filling level to maintain bin homogeneity.
+    let deviation = (post_residual as f64 - mean_residual).abs();
+    score += deviation * 0.1;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\tirage340\run_seed_7340_tirage340.json.tmp

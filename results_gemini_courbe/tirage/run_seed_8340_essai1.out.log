@@ -1,0 +1,61 @@
+[2m2026-11-15T01:10:28.659981Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8340, Pop=1359, MaxGens=1
+[2m2026-11-15T04:11:33.077900Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule deed00cfdc96df52 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8340 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4162 bins (excess: +136), Efficiency: 96.74%, Fuel: 30322559
+ Best In-Dist (w/o Lookahead) : 4212 bins (excess: +186), Efficiency: 95.59%
+ Dynamic Trajectory: tLDR = 0.8118
+ Behavior Profile : DeadSpaceRatio: 54.3%, NewBinRatio: 41.6%, ResVar: 0.40
+ MAP-Elites Niches: 17 active (17.0% coverage), QD-Score: 11.771
+ Validation Score : 4177 bins (excess: +154), Efficiency: 96.33%
+ OOD-1 Score      : 10274 bins (excess: +246), Efficiency: 97.61%
+ OOD-2 Score      : 3607 bins (excess: +80), Efficiency: 97.79%
+ Lineage Nodes    : 1359, Transitions: 0
+ Best Heuristic   : LLM-Seed-1206
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Best-Fit logic: Penalize large post_residuals (wasted space)
+    // 2. Harmonic Class logic: Reward post_residuals that are multiples of common item sizes (e.g., 20, 25, 33)
+    // to keep bins "friendly" for future items.
+    let harmonic_penalty = if post_residual > 0 {
+        let mod_20 = (post_residual % 20) as f64;
+        let mod_25 = (post_residual % 25) as f64;
+        (mod_20 * 0.5).min(mod_25 * 0.5)
+    } else {
+        -50.0 // Huge reward for perfectly filling a bin
+    };
+
+    score += harmonic_penalty;
+
+    // 3. Lookahead logic: If the next item fits into this post_residual, prioritize this bin.
+    if next_item_size > 0 && next_item_size <= post_residual {
+        score -= 40.0;
+    }
+
+    // 4. New bin thresholding:
+    // If we are forced to create a new bin (bin_residual == bin_capacity), 
+    // evaluate whether the current state of open bins is "cluttered".
+    if bin_residual == bin_capacity {
+        // Penalty for opening a new bin if we have many bins with decent space
+        if open_bins_count < (total_items / 20).max(1) {
+            score += 30.0; 
+        }
+        // If many bins are almost full, opening a new one is better than fragmenting
+        if mean_residual < 15.0 {
+            score -= 20.0;
+        }
+    }
+
+    // 5. Urgency: If this is the only bin that fits the item (last chance), prioritize it.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 60.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\tirage\run_seed_8340_tirage.json.tmp

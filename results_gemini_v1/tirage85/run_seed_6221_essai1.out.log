@@ -1,0 +1,56 @@
+2026-11-13T19:16:24.046252Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6221, Pop=85, MaxGens=1
+2026-11-13T19:24:08.319178Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 7407b46695fc7706 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6221 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4177 bins (excess: +153), Efficiency: 96.34%, Fuel: 26306212
+ Best In-Dist (w/o Lookahead) : 4178 bins (excess: +154), Efficiency: 96.31%
+ Dynamic Trajectory: tLDR = 0.4996
+ Behavior Profile : DeadSpaceRatio: 55.4%, NewBinRatio: 41.8%, ResVar: 0.52
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 3.706
+ Validation Score : 4176 bins (excess: +155), Efficiency: 96.29%
+ OOD-1 Score      : 10370 bins (excess: +321), Efficiency: 96.90%
+ OOD-2 Score      : 3577 bins (excess: +65), Efficiency: 98.18%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-011
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Penalty for creating "dead space": small residuals that are unlikely to fit future items.
+    // We target residuals that are either 0 or large enough to accommodate common item sizes.
+    if post_residual > 0 && post_residual < 20 {
+        score += 45.0; 
+    }
+
+    // Harmonic logic: Reward placements that leave a residual that is a multiple of common item sizes (e.g., 25, 33, 50).
+    // This mimics the "Harmonic" bin packing approach by grouping items into capacity fractions.
+    let remainder = post_residual % 25;
+    if remainder == 0 {
+        score -= 15.0;
+    }
+
+    // Lookahead logic: If the next item can fit into the new post_residual, strongly favor this placement.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 30.0;
+    }
+
+    // If this is the only bin that can fit the item, we are forced to take it unless opening a new one is better.
+    // If fitting_bins_count is 1, penalize the "New Bin" option heavily to prevent unnecessary bin creation.
+    if bin_residual == bin_capacity && fitting_bins_count > 0 {
+        score += 50.0;
+    }
+
+    // Progression: As we approach the end of the stream, prioritize tight packing (Best Fit) 
+    // over keeping large residuals for potential lookahead.
+    let progress = step_index as f64 / total_items as f64;
+    score += progress * 20.0;
+
+    // Penalize high open_bins_count to encourage consolidation.
+    score += (open_bins_count as f64) * 2.0;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage85\run_seed_6221_tirage85.json.tmp

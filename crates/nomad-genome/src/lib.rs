@@ -1,16 +1,16 @@
 //! NOMAD Genome: Phylogenetic DAG modeling, AST representation, and genetic crossover operators.
 
-pub mod dag;
-pub mod ast;
-pub mod unit;
-pub mod crossover;
 pub mod anti_dead_code;
+pub mod ast;
+pub mod crossover;
+pub mod dag;
+pub mod unit;
 
-pub use dag::*;
-pub use ast::*;
-pub use unit::*;
-pub use crossover::*;
 pub use anti_dead_code::*;
+pub use ast::*;
+pub use crossover::*;
+pub use dag::*;
+pub use unit::*;
 
 #[cfg(test)]
 mod tests {
@@ -22,8 +22,10 @@ mod tests {
     fn test_phylogeny_dag_lineage_and_crossover() {
         let mut graph = PhylogenyGraph::new();
 
-        let parent_a = SkillCapsule::new("ParentA", "Root A", "FIRST_FIT", vec![], 0, HashMap::new());
-        let parent_b = SkillCapsule::new("ParentB", "Root B", "BEST_FIT", vec![], 0, HashMap::new());
+        let parent_a =
+            SkillCapsule::new("ParentA", "Root A", "FIRST_FIT", vec![], 0, HashMap::new());
+        let parent_b =
+            SkillCapsule::new("ParentB", "Root B", "BEST_FIT", vec![], 0, HashMap::new());
 
         let _idx_a = graph.insert_capsule(&parent_a);
         let _idx_b = graph.insert_capsule(&parent_b);

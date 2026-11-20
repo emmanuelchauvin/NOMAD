@@ -1,0 +1,74 @@
+2026-11-13T23:44:12.580162Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7000, Pop=8, MaxGens=37
+2026-11-14T00:18:28.765225Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 33db23101ad2c6af on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7000 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4168 bins (excess: +164), Efficiency: 96.07%, Fuel: 27222618
+ Best In-Dist (w/o Lookahead) : 4172 bins (excess: +168), Efficiency: 95.97%
+ Dynamic Trajectory: tLDR = 0.3137
+ Behavior Profile : DeadSpaceRatio: 61.4%, NewBinRatio: 41.7%, ResVar: 0.51
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.099
+ Validation Score : 4153 bins (excess: +155), Efficiency: 96.27%
+ OOD-1 Score      : 10361 bins (excess: +328), Efficiency: 96.83%
+ OOD-2 Score      : 3600 bins (excess: +73), Efficiency: 97.98%
+ Lineage Nodes    : 340, Transitions: 162
+ Best Heuristic   : LLM-Seed-028-mut-g3
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Adaptive Fragmentation Penalty:
+    // Increased range to avoid mid-sized gaps (1-24) which are notoriously inefficient.
+    if post_residual > 0 && post_residual < 25 {
+        score += 55.0 - (post_residual as f64 * 0.5);
+    }
+
+    // 2. Lookahead Synergy:
+    // If next_item fits perfectly or near-perfectly, prioritize this bin to enable chaining.
+    if next_item_size > 0 {
+        if next_item_size <= post_residual {
+            score -= 35.0;
+            if post_residual == next_item_size {
+                score -= 20.0;
+            }
+        }
+    }
+
+    // 3. Residual Entropy Reduction:
+    // Reward bins nearing "clean" thresholds to maintain higher average bin utilization.
+    if post_residual % 20 == 0 {
+        score -= 12.0;
+    }
+
+    // 4. Mean Residual Balancing:
+    // Prefer filling bins that are already below the mean to consolidate space.
+    if (bin_residual as f64) < mean_residual {
+        score -= 15.0;
+    }
+
+    // 5. New Bin Thresholding:
+    // Prevent premature bin opening by scaling penalty based on open_bins_count.
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            score += 75.0 + (open_bins_count as f64 * 0.5);
+        } else {
+            score -= 25.0;
+        }
+    }
+
+    // 6. Progressive Tightening:
+    // Increase focus on tight packing towards the end of the stream (step_index influence).
+    let progress = step_index as f64 / total_items as f64;
+    score += (1.0 - progress) * 15.0;
+
+    // 7. Density Constraint:
+    // Slight bias toward bins that are already partially filled to avoid scattered small bins.
+    if bin_residual < bin_capacity {
+        score -= (bin_capacity - bin_residual) as f64 * 0.05;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7000_evolution340.json.tmp

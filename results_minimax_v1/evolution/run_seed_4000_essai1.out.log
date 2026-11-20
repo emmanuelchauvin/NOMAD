@@ -1,0 +1,164 @@
+2026-11-13T11:31:26.477035Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4000, Pop=8, MaxGens=12
+2026-11-13T11:44:06.744288Z  INFO nomad_orchestrator::engine: Evaluating winning capsule b9e1333df9c860f6 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4000 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4143 bins (excess: +140), Efficiency: 96.62%, Fuel: 52995369
+ Best In-Dist (w/o Lookahead) : 4152 bins (excess: +149), Efficiency: 96.41%
+ Dynamic Trajectory: tLDR = 0.4369
+ Behavior Profile : DeadSpaceRatio: 66.4%, NewBinRatio: 41.4%, ResVar: 0.34
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.554
+ Validation Score : 4163 bins (excess: +142), Efficiency: 96.59%
+ OOD-1 Score      : 10319 bins (excess: +261), Efficiency: 97.47%
+ OOD-2 Score      : 3636 bins (excess: +86), Efficiency: 97.63%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-004-mut-g1-mut-g1-mut-g8-mut-g8-mut-g9-mut-g9-mut-g10-mut-g11
+ Logic Code       : pub fn score_bin(
+    item_size: u32,
+    bin_residual: u32,
+    bin_capacity: u32,
+    step_index: usize,
+    total_items: usize,
+    open_bins_count: usize,
+    mean_residual: f64,
+    next_item_size: u32,
+    post_residual: u32,
+    fitting_bins_count: usize,
+) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let residual = bin_residual as f64;
+    let post = post_residual as f64;
+    let next = next_item_size as f64;
+    let progress = (step_index as f64 / total_items.max(1) as f64).clamp(0.0, 1.0);
+    let open_bins = open_bins_count.max(1) as f64;
+    let mean = mean_residual.max(0.0);
+    let is_new_bin = bin_residual >= bin_capacity;
+
+    let fill_ratio = (1.0 - residual / capacity).clamp(0.0, 1.0);
+    let post_ratio = (post / capacity).clamp(0.0, 1.0);
+    let item_ratio = (item / capacity).clamp(0.0, 1.0);
+    let next_ratio = (next / capacity).clamp(0.0, 1.0);
+    let mean_ratio = (mean / capacity).clamp(0.0, 1.0);
+
+    // Primary objective: compact bins, with a steeper reward very near full.
+    let mut score = -112.0 * fill_ratio;
+    score -= 20.0 * fill_ratio * fill_ratio * (1.0 - fill_ratio);
+    score -= 48.0 * fill_ratio.powi(3);
+    score += 4.2 * progress * fill_ratio * (1.0 - fill_ratio);
+
+    // Prefer residuals that can immediately serve the next item, while making
+    // it slightly cheaper to retain useful capacity late in the stream.
+    if next > 0.0 {
+        if post + 1e-9 >= next {
+            score -= 17.0 + 11.0 * next_ratio;
+            let surplus = (post - next).min(next * 0.65) / capacity;
+            score += 8.0 * surplus;
+        } else {
+            let gap = (next - post) / capacity;
+            score += 9.0 * gap * (1.0 - 0.38 * progress);
+        }
+    }
+
+    // Penalize remnants that are already stranded, especially when the
+    // stream is ending and those remnants are unlikely to be consumed.
+    if next > 0.0 && post < next {
+        let unusable = (next - post).min(post).max(0.0) / capacity;
+        score += (12.0 + 24.0 * progress) * unusable;
+    }
+    if post_ratio < 0.20 {
+        score += (3.0 + 12.0 * progress) * post;
+    }
+
+    // Residual shaping around the population mean: excess remainder is
+    // penalized more than a below-average remainder.
+    let residual_delta = (post_ratio - mean_ratio).max(0.0);
+    score += 30.0 * residual_delta;
+    score += 10.0 * (mean_ratio - post_ratio).max(0.0);
+
+    // Dead-space ratio is the key secondary objective. The asymmetric cubic
+    // term strongly discourages leaving a nearly empty residual.
+    if residual > 0.0 {
+        let dead_ratio = (post / residual).clamp(0.0, 1.0);
+        score += 48.0 * dead_ratio * dead_ratio;
+        score += 21.0 * dead_ratio.powi(3);
+        if dead_ratio > 0.55 {
+            score += 23.0 * (dead_ratio - 0.55);
+        }
+    }
+
+    // Scarcity: when few placements exist, use an available bin unless it
+    // would strand the current item or make the next item impossible.
+    let scarcity = 1.0 / (fitting_bins_count.max(1) as f64).sqrt();
+    score += 6.0 * scarcity * (0.45 + 0.55 * progress);
+    if fitting_bins_count <= 1 {
+        score += 20.0 * (1.0 - progress);
+        if post < next && next > 0.0 {
+            score += 26.0 * progress;
+        }
+        if post < item {
+            score += 42.0;
+        }
+    }
+
+    // A new bin must beat every existing fit. Its hurdle eases slightly as
+    // the stream matures and when the current item is comparatively large.
+    if is_new_bin {
+        score += 58.0;
+        score -= 32.0 * progress;
+        score += 0.60 * (mean - item).max(0.0);
+        if fitting_bins_count <= 1 && post < next && next > 0.0 {
+            score += 36.0 * progress;
+        }
+        if post_ratio < 0.24 {
+            score += 11.0 * progress;
+        }
+        if item_ratio > 0.50 {
+            score += 14.0 * progress;
+        }
+    }
+
+    // Absolute leftover cost, normalized to avoid capacity bias.
+    score += 20.0 * post_ratio;
+
+    // Late-stream consolidation: favor nearly unusable remnants and bins
+    // with low residual uncertainty.
+    score += 10.0 * progress * (1.0 - item_ratio);
+    score += 5.5 * progress * fill_ratio * open_bins.ln().min(8.0);
+    if post_ratio < 0.26 {
+        let threshold = if next > 0.0 { 0.23 } else { 0.26 };
+        score += 21.0 * (threshold - post_ratio).max(0.0)
+            * (0.70 + 0.30 * progress);
+    }
+
+    // Best-fit tightness, weighted more strongly for large items.
+    if item > 0.0 {
+        let tightness = (post / item).clamp(0.0, 1.0);
+        score += 13.0 * (1.0 - tightness) * (0.55 + 0.45 * progress);
+    }
+
+    // Marginal residual cost: an existing bin is attractive when it closes
+    // a tight gap; a generous fit receives an additional late-stream charge.
+    if !is_new_bin && residual > item {
+        let excess = (post - mean).max(0.0) / capacity;
+        score += 16.0 * excess * (0.40 + 0.60 * progress);
+    }
+
+    // Refine residual-space selection using a smooth local dead-space
+    // measure. This favors remainders that are small relative to the space
+    // available before placement, without creating a hard bin-size cutoff.
+    if !is_new_bin && residual > 0.0 {
+        let room_fraction = (item / residual).clamp(0.0, 1.0);
+        let smooth_dead = 1.0 - room_fraction;
+        score += 7.0 * smooth_dead * smooth_dead;
+        if post < item {
+            score += 12.0;
+        }
+    }
+
+    score.clamp(-300.0, 300.0)
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4000_evolution.json.tmp

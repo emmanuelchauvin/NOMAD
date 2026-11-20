@@ -1,0 +1,61 @@
+2026-11-14T00:15:44.537326Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7289, Pop=340, MaxGens=1
+2026-11-14T00:46:47.794576Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 508dfd2175f2db89 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7289 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4177 bins (excess: +162), Efficiency: 96.12%, Fuel: 26242166
+ Best In-Dist (w/o Lookahead) : 4169 bins (excess: +154), Efficiency: 96.31%
+ Dynamic Trajectory: tLDR = 0.4507
+ Behavior Profile : DeadSpaceRatio: 55.8%, NewBinRatio: 41.8%, ResVar: 0.52
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 4.634
+ Validation Score : 4192 bins (excess: +162), Efficiency: 96.14%
+ OOD-1 Score      : 10389 bins (excess: +322), Efficiency: 96.90%
+ OOD-2 Score      : 3638 bins (excess: +68), Efficiency: 98.13%
+ Lineage Nodes    : 340, Transitions: 0
+ Best Heuristic   : LLM-Seed-241
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Best-Fit logic: Penalize large post_residuals (dead space)
+    // 2. Harmonic/Modulo logic: Favor residuals that align with common item sizes (factors of 100)
+    // 3. Lookahead: Penalize placements that leave too little room for the next item
+    
+    // Penalize creating "fragmented" space that is too small for common items (e.g., < 20)
+    if post_residual < 20 && post_residual > 0 {
+        score += 45.0;
+    }
+
+    // Favor bins that can accommodate the next item perfectly (Best Fit for Lookahead)
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            score -= (next_item_size as f64) * 0.8;
+        } else {
+            score += 15.0;
+        }
+    }
+
+    // If this is the only fitting bin, prioritize it to avoid opening a new bin unnecessarily
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 50.0;
+    }
+
+    // If proposing a new bin (bin_residual == bin_capacity), add a high penalty 
+    // unless the mean residual is very high (meaning we have plenty of fragmented space)
+    if bin_residual == bin_capacity {
+        score += 60.0 - (mean_residual * 0.5);
+    }
+
+    // Favor bins that are already "tight" (low residual) to keep open bin count minimized
+    score += (bin_capacity - bin_residual) as f64 * 0.1;
+
+    // Harmonic preference: Reward residuals that are multiples of 25 (e.g., 25, 50, 75)
+    if post_residual % 25 == 0 {
+        score -= 10.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\tirage340\run_seed_7289_tirage340.json.tmp

@@ -1,0 +1,46 @@
+2026-11-13T11:17:36.038182Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4187, Pop=85, MaxGens=1
+2026-11-13T11:26:55.253655Z  INFO nomad_orchestrator::engine: Evaluating winning capsule ea3414647f96f8ae on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4187 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4197 bins (excess: +182), Efficiency: 95.67%, Fuel: 25365390
+ Best In-Dist (w/o Lookahead) : 4310 bins (excess: +295), Efficiency: 93.16%
+ Dynamic Trajectory: tLDR = 0.2119
+ Behavior Profile : DeadSpaceRatio: 63.5%, NewBinRatio: 42.0%, ResVar: 0.60
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 6.080
+ Validation Score : 4191 bins (excess: +173), Efficiency: 95.87%
+ OOD-1 Score      : 10439 bins (excess: +382), Efficiency: 96.34%
+ OOD-2 Score      : 3657 bins (excess: +74), Efficiency: 97.98%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-052
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    if post_residual > 0 && post_residual < 10 {
+        score += 120.0;
+    } else if post_residual < 20 {
+        score += 35.0;
+    } else if post_residual < 30 {
+        score += 8.0;
+    }
+
+    if bin_residual == bin_capacity {
+        score += 28.0 * (open_bins_count as f64).min(12.0);
+    } else {
+        score -= 14.0 / (1.0 + mean_residual.max(0.0));
+        score -= 9.0 * (next_item_size as f64) / (post_residual as f64 + 1.0);
+
+        if fitting_bins_count == 1 {
+            score -= 18.0;
+        }
+
+        let progress = step_index as f64 / (total_items as f64).max(1.0);
+        score -= 7.0 * progress * (post_residual as f64 / bin_capacity as f64);
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\tirage\run_seed_4187_tirage.json.tmp

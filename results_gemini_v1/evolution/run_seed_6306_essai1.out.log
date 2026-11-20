@@ -1,0 +1,61 @@
+2026-11-13T20:04:36.275605Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6306, Pop=8, MaxGens=10
+2026-11-13T20:12:59.660040Z  INFO nomad_orchestrator::engine: Evaluating winning capsule fb0131b33b7c1f7e on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6306 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4196 bins (excess: +179), Efficiency: 95.74%, Fuel: 25751618
+ Best In-Dist (w/o Lookahead) : 4197 bins (excess: +180), Efficiency: 95.71%
+ Dynamic Trajectory: tLDR = 0.2236
+ Behavior Profile : DeadSpaceRatio: 67.8%, NewBinRatio: 42.0%, ResVar: 0.51
+ MAP-Elites Niches: 5 active (5.0% coverage), QD-Score: 4.361
+ Validation Score : 4184 bins (excess: +188), Efficiency: 95.51%
+ OOD-1 Score      : 10485 bins (excess: +417), Efficiency: 96.02%
+ OOD-2 Score      : 3636 bins (excess: +89), Efficiency: 97.55%
+ Lineage Nodes    : 85, Transitions: 48
+ Best Heuristic   : LLM-Seed-000-mut-g1
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let post = post_residual as f64;
+    let capacity = bin_capacity as f64;
+
+    // Use a non-linear objective: strongly minimize post_residual (Best Fit)
+    // but include a small bias for bins that are already well-utilized to reduce fragmentation.
+    let mut score = post * (1.0 + (capacity - bin_residual as f64) / capacity);
+
+    // Lookahead refinement: specifically target bins that can accommodate the next item
+    // while avoiding bins that would become "useless" (residual too small for common items).
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            // Reward bins that preserve space for the next item
+            score -= (next_item_size as f64) * 0.8;
+        } else if post < 15.0 && post > 0.0 {
+            // Penalize "micro-gaps" that are too small to be useful
+            score += 15.0 - post;
+        }
+    }
+
+    // Dynamic new-bin suppression: 
+    // The cost of a new bin should scale with the number of open bins and stream progress.
+    if bin_residual == bin_capacity {
+        // Base cost + density-dependent penalty
+        let open_penalty = (open_bins_count as f64).min(20.0) * 4.0;
+        let progress_penalty = progress * capacity * 0.8;
+        score += 30.0 + open_penalty + progress_penalty;
+    } else {
+        // Uniformity constraint: keep bin residuals close to the mean to avoid "orphan" bins
+        let residual_diff = (post - mean_residual).abs();
+        score += residual_diff * 0.4;
+    }
+
+    // Criticality override: If this is the only bin that fits the item, 
+    // provide a strong incentive to use it to prevent an unnecessary new bin.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 50.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6306_evolution.json.tmp

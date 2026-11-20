@@ -1,0 +1,94 @@
+[2m2026-11-14T12:23:54.445821Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8085, Pop=8, MaxGens=192
+[2m2026-11-14T16:28:16.922200Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 26285b9bed3f01b1 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8085 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4081 bins (excess: +65), Efficiency: 98.41%, Fuel: 79649246
+ Best In-Dist (w/o Lookahead) : 4206 bins (excess: +190), Efficiency: 95.48%
+ Dynamic Trajectory: tLDR = 3.1495
+ Behavior Profile : DeadSpaceRatio: 41.6%, NewBinRatio: 40.8%, ResVar: 0.45
+ MAP-Elites Niches: 25 active (25.0% coverage), QD-Score: 18.563
+ Validation Score : 4113 bins (excess: +76), Efficiency: 98.15%
+ OOD-1 Score      : 10385 bins (excess: +307), Efficiency: 97.04%
+ OOD-2 Score      : 3635 bins (excess: +56), Efficiency: 98.46%
+ Lineage Nodes    : 1359, Transitions: 824
+ Best Heuristic   : LLM-Seed-016-mut-g7-mut-g8-mut-g12-mut-g13-mut-g15-mut-g18-mut-g23-mut-g31-mut-g36-mut-g142-mut-g169
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let post_res = post_residual as f64;
+    let cap = bin_capacity as f64;
+    
+    // Mutation: Refined base weight, focusing on aggressive minimization of post-fit residual space.
+    // Adjusted coefficient to 1.78 to balance between tight fit and future-proofing.
+    let mut score = post_res * 1.78;
+
+    // 1. Refined Fragmentation Penalty:
+    // Tightened penalty window to 3-44 to avoid over-penalizing useful mid-range remnants.
+    if post_residual > 2 && post_residual < 45 {
+        score += 62.0 + (post_res * 1.48);
+    }
+    
+    // Quadratic penalty for residual bloat, tuned to favor higher local density.
+    score += (post_res * post_res) / (cap * 0.082);
+
+    // 2. Lookahead Coupling:
+    // Enhanced lookahead to prioritize "next-fit" scenarios.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            let fit_bonus = (next_item_size as f64) * (4.7 - (progress * 1.15));
+            score -= fit_bonus;
+            if post_residual == next_item_size {
+                score -= 105.0; // Higher incentive for exact-fit chains
+            }
+        } else if fitting_bins_count > 1 {
+            score += (open_bins_count as f64).sqrt() * 12.5;
+        }
+    }
+
+    // 3. Dynamic New Bin Threshold
+    // Stricter new-bin penalty to force consolidation as the stream progresses.
+    let new_bin_cost = 35.0 + (mean_residual * 1.8) + (progress * 175.0) + (open_bins_count as f64 * 0.40);
+    
+    if bin_residual == bin_capacity {
+        score = new_bin_cost;
+    } else if fitting_bins_count == 1 {
+        // Scarcity Logic: Strong incentive to use the final fitting bin to avoid new bin creation.
+        score -= 240.0;
+    }
+
+    // 4. Entropy Control:
+    // Non-linear penalty for bin count, scaled by progress to permit early expansion.
+    let fill_ratio = 1.0 - (mean_residual / cap);
+    let density_factor = (open_bins_count as f64).powf(1.5) * (2.15 - fill_ratio);
+    score += density_factor * 78.0;
+
+    // 5. Harmonic Alignment:
+    // Prioritize residuals that preserve common bin-size factors.
+    if post_residual > 0 {
+        if post_residual % 25 == 0 { score -= 65.0; }
+        else if post_residual % 20 == 0 { score -= 48.0; }
+        else if post_residual % 10 == 0 { score -= 32.0; }
+    }
+
+    // 6. Adaptive Item-Size Packing:
+    if item_size < 30 {
+        // Small items: focus on filling the most depleted bins to keep others empty.
+        let fullness = 1.0 - (bin_residual as f64 / cap);
+        score -= fullness * 65.0;
+        if bin_residual < 10 {
+            score -= 45.0;
+        }
+    } else {
+        // Large items: avoid tiny remainders, favor bins with large contiguous chunks.
+        if post_residual < 19 && post_residual > 0 {
+            score += 50.0;
+        }
+        score -= (1.0 - (post_res / cap)) * 40.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8085_evolution.json.tmp

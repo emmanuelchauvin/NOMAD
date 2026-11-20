@@ -1,0 +1,105 @@
+2026-11-13T14:18:47.609025Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4187, Pop=8, MaxGens=12
+2026-11-13T14:32:36.954769Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4f12c49f48b9e9ff on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4187 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4108 bins (excess: +93), Efficiency: 97.74%, Fuel: 70601484
+ Best In-Dist (w/o Lookahead) : 4274 bins (excess: +259), Efficiency: 93.94%
+ Dynamic Trajectory: tLDR = 1.2381
+ Behavior Profile : DeadSpaceRatio: 33.3%, NewBinRatio: 41.1%, ResVar: 0.35
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 9.559
+ Validation Score : 4129 bins (excess: +111), Efficiency: 97.32%
+ OOD-1 Score      : 10172 bins (excess: +115), Efficiency: 98.87%
+ OOD-2 Score      : 3644 bins (excess: +61), Efficiency: 98.33%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-007-mut-g1-mut-g2
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let current = item_size as f64;
+    let residual = post_residual as f64;
+    let next = next_item_size as f64;
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    };
+
+    let is_new_bin = bin_residual == bin_capacity;
+    let residual_ratio = (residual / capacity).clamp(0.0, 1.0);
+    let occupancy_before = (1.0 - bin_residual as f64 / capacity).clamp(0.0, 1.0);
+
+    // Reward compacting larger occupied bins, while favoring placements that
+    // make the remaining space easier to reuse.
+    let mut score = residual_ratio * residual_ratio * 34.0;
+
+    if residual == 0.0 {
+        score -= 15.0;
+    } else if residual < next {
+        let mismatch = (next - residual).min(residual).max(0.0);
+        score += mismatch * 3.8;
+    } else {
+        score -= (next / capacity) * 8.0;
+    }
+
+    // Very small gaps are useful only if the imminent item can exploit them.
+    if residual > 0.0 && residual < 12.0 {
+        let utility = if next <= residual {
+            1.9
+        } else if residual >= next * 0.5 {
+            0.85
+        } else {
+            0.22
+        };
+        score += (12.0 - residual) * utility;
+    }
+
+    score += occupancy_before * occupancy_before * 7.0;
+
+    // Penalize residuals that are simultaneously small and awkward: they tend
+    // to become unusable dead space across many bins.
+    if residual > 0.0 {
+        let deadness = (1.0 - (residual / 12.0).min(1.0))
+            * (1.0 - (residual / next.max(1.0)).min(1.0));
+        score += deadness * deadness * 4.5 * (0.35 + 0.65 * progress);
+    }
+
+    let stream_end = progress * progress * (3.0 - 2.0 * progress);
+    let pressure = (open_bins_count as f64).sqrt();
+    score -= pressure * (1.2 + 1.6 * stream_end);
+    score -= mean_residual.max(0.0) * (0.015 + 0.025 * stream_end);
+
+    if fitting_bins_count == 1 && !is_new_bin {
+        score -= 10.0 + 5.0 * stream_end;
+    }
+
+    // Opening a fresh bin is acceptable when existing residuals are poorly
+    // matched, but only with a calibrated penalty that keeps consolidation
+    // preferable in the common case.
+    if is_new_bin {
+        let mismatch = if next > 0.0 {
+            (next - residual).max(0.0) / next
+        } else {
+            0.0
+        };
+        score += 17.0 - 5.0 * mismatch * stream_end;
+    }
+
+    // Prefer exact or near-exact closure over leaving a conspicuous gap.
+    if residual > 0.0 && residual < current * 0.35 {
+        score += (current * 0.35 - residual) * 1.4;
+    }
+
+    // Late-stream consolidation bonus: a nearly closed bin is more valuable
+    // than a broadly empty one because it reduces fragmentation immediately.
+    if !is_new_bin && occupancy_before > 0.65 {
+        let consolidation = (occupancy_before - 0.65) / 0.35;
+        score -= consolidation * (2.0 + 3.0 * stream_end);
+    }
+
+    score *= 0.88 + 0.12 * (1.0 - progress);
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4187_evolution.json.tmp

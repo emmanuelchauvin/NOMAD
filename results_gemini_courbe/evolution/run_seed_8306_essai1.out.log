@@ -1,0 +1,78 @@
+[2m2026-11-15T01:10:28.186547Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8306, Pop=8, MaxGens=192
+[2m2026-11-15T05:28:35.799260Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule f418625902d0cc2a on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8306 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4131 bins (excess: +83), Efficiency: 97.99%, Fuel: 50034921
+ Best In-Dist (w/o Lookahead) : 4203 bins (excess: +155), Efficiency: 96.32%
+ Dynamic Trajectory: tLDR = 2.0800
+ Behavior Profile : DeadSpaceRatio: 32.0%, NewBinRatio: 41.3%, ResVar: 0.55
+ MAP-Elites Niches: 28 active (28.0% coverage), QD-Score: 23.946
+ Validation Score : 4120 bins (excess: +93), Efficiency: 97.74%
+ OOD-1 Score      : 12831 bins (excess: +2779), Efficiency: 78.34%
+ OOD-2 Score      : 3606 bins (excess: +62), Efficiency: 98.28%
+ Lineage Nodes    : 1359, Transitions: 845
+ Best Heuristic   : LLM-Seed-007-mut-g1-mut-g2-mut-g2-mut-g3-mut-g13-mut-g13-mut-g14-mut-g15-mut-g16-mut-g23-mut-g34-mut-g79-mut-g98
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    let progress = step_index as f64 / total_items as f64;
+
+    // 1. Enhanced Tight-Fit Reward: Exponential decay for near-perfect fits to prioritize high-density clusters.
+    if post_residual == 0 {
+        score -= 1280.0;
+    } else if post_residual < 8 {
+        score -= 920.0 - (post_residual as f64 * 85.0);
+    }
+
+    // 2. Predictive Lookahead: Non-linear coupling of future bin utilization.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            let slack = post_residual - next_item_size;
+            // Reward pairings that leave "buffer-safe" remainders (>20) or exact fits.
+            score -= 740.0 + (if slack == 0 { 620.0 } else if slack > 22 { 210.0 } else { -150.0 });
+        } else {
+            // Penalize stranding next item, scaling penalty by current bin count to discourage fragmentation.
+            score += 750.0 + (progress * 520.0) + (open_bins_count as f64 * 5.2);
+        }
+    }
+
+    // 3. Fragmentation Barrier: Target "dead zones" (1-28) with steeper cost curve.
+    if post_residual > 0 && post_residual < 29 {
+        score += 540.0 + (29.0 - post_residual as f64).powf(1.2) * 28.0;
+    }
+
+    // 4. Adaptive New Bin Control: Balancing density vs. opportunity cost.
+    if is_new_bin {
+        let density_factor = (open_bins_count as f64 / (step_index as f64 / 15.0 + 1.0)).sqrt();
+        // Shift weight toward conservation in the final 20% of the stream.
+        let late_game_multiplier = if progress > 0.8 { 2.2 } else { 1.0 };
+        score += (1100.0 + (mean_residual * 3.8) + (progress.powi(2) * 1600.0) + (density_factor * 400.0)) * late_game_multiplier;
+    } else {
+        // 5. Residual Balancing: Penalize divergence from mean_residual to prevent "Swiss cheese" bins.
+        let residual_diff = (post_residual as f64 - mean_residual).abs();
+        if residual_diff > (bin_capacity as f64 * 0.10) {
+            score += 380.0 + (residual_diff * 1.5);
+        }
+        // Early-game: preserve capacity for larger items by discouraging extremely tight packing.
+        if post_residual < 14 && progress < 0.40 {
+            score += 420.0 * (1.1 - progress * 2.5);
+        }
+    }
+
+    // 6. Necessity Logic: Strict consolidation.
+    if fitting_bins_count == 1 && !is_new_bin {
+        score -= 3600.0;
+    } else if fitting_bins_count == 0 && !is_new_bin {
+        score += 15000.0;
+    } else if fitting_bins_count > 3 && post_residual < 12 {
+        // Consolidate space in bins that are already partially filled.
+        score -= 580.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8306_evolution.json.tmp

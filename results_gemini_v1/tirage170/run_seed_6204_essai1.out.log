@@ -1,0 +1,60 @@
+2026-11-13T19:08:19.226444Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6204, Pop=170, MaxGens=1
+2026-11-13T19:22:53.868450Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 28925fed90bf4c18 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6204 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4174 bins (excess: +164), Efficiency: 96.07%, Fuel: 25442846
+ Best In-Dist (w/o Lookahead) : 4173 bins (excess: +163), Efficiency: 96.10%
+ Dynamic Trajectory: tLDR = 0.3580
+ Behavior Profile : DeadSpaceRatio: 65.2%, NewBinRatio: 41.7%, ResVar: 0.47
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 5.060
+ Validation Score : 4192 bins (excess: +167), Efficiency: 96.02%
+ OOD-1 Score      : 10369 bins (excess: +343), Efficiency: 96.69%
+ OOD-2 Score      : 3639 bins (excess: +77), Efficiency: 97.88%
+ Lineage Nodes    : 170, Transitions: 0
+ Best Heuristic   : LLM-Seed-039
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Basic Best-Fit strategy: prioritize smaller post_residual
+    let mut score = post_residual as f64;
+
+    // Penalty for creating a "fragmented" bin: if post_residual is too small to fit typical future items
+    // (assuming mean item size is ~40-50 based on range 10-80), penalize residuals < 20.
+    if post_residual > 0 && post_residual < 20 {
+        score += 35.0;
+    }
+
+    // Lookahead logic: if the next item fits into the current post_residual, prioritize this bin strongly.
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 25.0;
+    }
+
+    // Global state awareness: if we are late in the stream, be more aggressive about filling bins
+    // even if it creates small residuals, to avoid leaving too many bins partially empty.
+    let progress = step_index as f64 / total_items as f64;
+    score -= progress * 10.0;
+
+    // Penalty for opening a new bin: only open if the current fit is extremely poor 
+    // or if the item is large and we have high fragmentation.
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            // Penalize opening a new bin if other options exist, unless the bin is very large.
+            score += 45.0 + (item_size as f64 * 0.5);
+        }
+    }
+
+    // Balance the mean residual: discourage bins that deviate significantly from the current mean
+    // to keep the bin distribution uniform.
+    let deviation = (post_residual as f64 - mean_residual).abs();
+    score += deviation * 0.1;
+
+    // Final adjustment: prioritize bins that are "almost full" to clear them out
+    if post_residual < 10 {
+        score -= 15.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage170\run_seed_6204_tirage170.json.tmp

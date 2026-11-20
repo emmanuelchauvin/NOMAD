@@ -1,0 +1,60 @@
+2026-11-14T00:25:04.407804Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7017, Pop=455, MaxGens=1
+2026-11-14T01:06:13.219372Z  INFO nomad_orchestrator::engine: Evaluating winning capsule d05accd546efc722 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7017 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4183 bins (excess: +149), Efficiency: 96.44%, Fuel: 40999942
+ Best In-Dist (w/o Lookahead) : 4220 bins (excess: +186), Efficiency: 95.59%
+ Dynamic Trajectory: tLDR = 1.1324
+ Behavior Profile : DeadSpaceRatio: 5.9%, NewBinRatio: 41.8%, ResVar: 0.71
+ MAP-Elites Niches: 9 active (9.0% coverage), QD-Score: 7.727
+ Validation Score : 4193 bins (excess: +163), Efficiency: 96.11%
+ OOD-1 Score      : 10163 bins (excess: +114), Efficiency: 98.88%
+ OOD-2 Score      : 3599 bins (excess: +67), Efficiency: 98.14%
+ Lineage Nodes    : 455, Transitions: 0
+ Best Heuristic   : LLM-Seed-405
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let post = post_residual as f64;
+    
+    // Base score: prioritize Best Fit (lower post_residual is better)
+    let mut score = post;
+
+    // Penalty for creating "dead space": small residuals that are unlikely to fit future items.
+    // We penalize values below the expected next item size, scaled by progress to be more aggressive later.
+    if post > 0.0 && post < (next_item_size as f64 * 0.8) {
+        score += (next_item_size as f64 - post).powf(1.5) * (1.0 + progress);
+    }
+
+    // Heuristic: If this is the only bin that fits, we are forced to take it. 
+    // Otherwise, penalize opening a new bin (bin_residual == bin_capacity) 
+    // unless the current average residual is already very high.
+    if bin_residual == bin_capacity {
+        if fitting_bins_count > 0 {
+            // Heavily penalize opening a new bin if other options exist
+            score += 100.0 * (1.0 - progress);
+        } else {
+            // Opening a new bin is necessary; normalize the cost
+            score = 50.0;
+        }
+    }
+
+    // Reward bins that bring the bin closer to the global mean residual to keep packing density uniform
+    let deviation = (post - mean_residual).abs();
+    score += deviation * 0.25;
+
+    // Lookahead coupling: If next_item_size is large, avoid small post_residuals 
+    // that would force a new bin for the next item.
+    if next_item_size > 0 {
+        let fit_margin = post - (next_item_size as f64);
+        if fit_margin < 0.0 {
+            score += (fit_margin.abs()) * 0.5;
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\tirageDepense\run_seed_7017_tirageDepense.json.tmp

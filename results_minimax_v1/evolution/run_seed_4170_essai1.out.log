@@ -1,0 +1,151 @@
+2026-11-13T13:57:37.300250Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4170, Pop=8, MaxGens=12
+2026-11-13T14:17:42.275409Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 40c0a3870b4e5a7e on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4170 | Generations: 12
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4077 bins (excess: +70), Efficiency: 98.28%, Fuel: 917138709
+ Best In-Dist (w/o Lookahead) : 9223372036854775807 bins (excess: +9223372036854775807), Efficiency: 0.00%
+ Dynamic Trajectory: tLDR = 5.4316
+ Behavior Profile : DeadSpaceRatio: 36.8%, NewBinRatio: 40.8%, ResVar: 0.98
+ MAP-Elites Niches: 4 active (4.0% coverage), QD-Score: 3.895
+ Validation Score : 4076 bins (excess: +74), Efficiency: 98.19%
+ OOD-1 Score      : 9223372036854775807 bins (excess: +9223372036854775807), Efficiency: 0.00%
+ OOD-2 Score      : 3587 bins (excess: +44), Efficiency: 98.77%
+ Lineage Nodes    : 85, Transitions: 77
+ Best Heuristic   : LLM-Seed-000-mut-g2-mut-g4-mut-g4-mut-g5-mut-g5-mut-g5-mut-g7-mut-g10-mut-g11-mut-g11-mut-g11
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let residual = bin_residual as f64;
+    let post = post_residual as f64;
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        (step_index as f64 / total_items as f64).clamp(0.0, 1.0)
+    };
+
+    let normalized_post = (post / capacity).clamp(0.0, 1.0);
+    let normalized_item = (item / capacity).clamp(0.0, 1.0);
+    let normalized_residual = (residual / capacity).clamp(0.0, 1.0);
+    let normalized_next = if next_item_size > 0 {
+        (next_item_size as f64 / capacity).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let empty_bin = (residual + 1e-9 >= capacity) as i32 as f64;
+    let horizon = 1.0 - progress;
+    let mean_norm = (mean_residual / capacity).clamp(0.0, 1.0);
+
+    let next = next_item_size as f64;
+    let has_next = (next_item_size > 0) as i32 as f64;
+    let next_norm = normalized_next;
+    let immediate_fit = has_next * (post + 1e-9 >= next) as i32 as f64;
+    let useful_gap = has_next * (post >= next * 0.72 && post <= next * 1.85) as i32 as f64;
+    let dead_space = (normalized_post * (1.0 - useful_gap)).max(0.0);
+
+    let target_gap = (0.070 + 0.045 * horizon + 0.030 * next_norm
+        + 0.030 * (next_norm - 0.5).abs()).min(0.22);
+    let gap_deviation = (normalized_post - target_gap).abs();
+    let gap_quality = (1.0 - (gap_deviation / 0.30).min(1.0)).max(0.0);
+
+    let mut score = post;
+
+    score -= 13.0 * gap_quality * horizon;
+    score -= 18.0 * dead_space * horizon;
+    score -= 24.0 * (normalized_post < 0.035) as i32 as f64 * horizon;
+    score -= 12.0 * (normalized_post > 0.38) as i32 as f64 * horizon;
+
+    let below_band = ((target_gap - normalized_post) / target_gap.max(0.01)).max(0.0);
+    let above_band = ((normalized_post - target_gap) / (1.0 - target_gap).max(0.01)).max(0.0);
+    score -= 14.0 * below_band * below_band * horizon;
+    score -= 8.0 * above_band * above_band * horizon;
+
+    if next_item_size > 0 {
+        let exact_fit = (post - next).abs() < 1e-9;
+        let near_limit = 0.024 * capacity + 0.5;
+        let near_fit = ((post - next).abs() <= near_limit) as i32 as f64;
+        let scarcity = (fitting_bins_count as f64).min(6.0) / 6.0;
+        let exact_reward = 27.0 + 7.0 * (1.0 - scarcity);
+        let near_reward = 23.0 + 9.0 * (1.0 - scarcity);
+
+        score -= exact_reward * exact_fit as i32 as f64;
+        score -= near_reward * near_fit * (1.0 - 0.30 * scarcity);
+        score += 20.0 * (1.0 - immediate_fit) * horizon;
+        score += 10.0 * immediate_fit * (1.0 - normalized_post);
+    }
+
+    if fitting_bins_count <= 1 {
+        let scarcity = horizon * horizon;
+        score += 30.0 * scarcity;
+        score -= 20.0 * normalized_post * scarcity;
+        if normalized_post < 0.10 && normalized_item > 0.25 {
+            score += 28.0 * scarcity;
+        }
+    } else if fitting_bins_count == 2 {
+        score += 9.0 * horizon * (1.0 - normalized_post);
+    }
+
+    let residual_dispersion = (mean_norm - 0.5).abs();
+    let fragmented = (mean_norm > 0.07 && mean_norm < 0.69) as i32 as f64;
+    let many_open = (open_bins_count >= 3) as i32 as f64;
+    let empty_base = 1.0 + 4.0 * horizon;
+    let fragmentation_penalty = 25.0 * fragmented * many_open * horizon;
+    let large_item_bonus = 21.0 * (normalized_item > 0.25) as i32 as f64;
+    let small_item_penalty = 30.0 * (normalized_item < 0.10) as i32 as f64;
+    score += empty_bin * (empty_base - fragmentation_penalty - large_item_bonus);
+    score -= empty_bin * small_item_penalty;
+    score -= empty_bin * 18.0 * residual_dispersion * (1.0 - horizon);
+
+    let closure = progress * progress;
+    score -= 40.0 * closure * (normalized_post < 0.030) as i32 as f64;
+    score -= 20.0 * closure * normalized_post * (1.0 - normalized_post);
+    score += 12.0 * closure * (normalized_post - normalized_item).abs();
+
+    let open_factor = (open_bins_count as f64).sqrt();
+    score -= 8.0 * open_factor * normalized_post * horizon;
+    score += 7.0 * (mean_norm - 0.5).abs() * horizon;
+
+    let clustered_gap = ((normalized_post - 0.145) / 0.12).abs();
+    score -= 7.0 * clustered_gap * horizon
+        * (fitting_bins_count as f64 <= 3) as i32 as f64;
+    score -= 11.0 * (normalized_post < 0.060 && immediate_fit < 0.5) as i32 as f64 * horizon;
+
+    if next_item_size > 0 {
+        let blocked_next = (post + 1e-9 < next) as i32 as f64;
+        score += 16.0 * blocked_next * horizon;
+        if fitting_bins_count <= 1 {
+            score += 18.0 * blocked_next * horizon;
+        }
+        if post > next * 0.82 && post < next {
+            score += 11.0 * horizon;
+        }
+
+        let stranded = (post < next && post < 0.095 * capacity) as i32 as f64;
+        let reusable = (post >= next && post <= 0.28 * capacity) as i32 as f64;
+        score += 20.0 * stranded * horizon;
+        score += 8.0 * reusable * horizon;
+    }
+
+    let negligible = (normalized_post < 0.014) as i32 as f64;
+    let very_reusable = (normalized_post >= 0.10 && normalized_post <= 0.29) as i32 as f64;
+    score -= 25.0 * negligible * (1.0 - very_reusable) * horizon;
+
+    score += 0.0022 * capacity * (normalized_post * normalized_post);
+
+    let residual_scale = (normalized_residual - normalized_post).abs();
+    let residual_pressure = (1.0 - normalized_residual).min(1.0);
+    let dead_zone = (normalized_post < 0.085 || normalized_post > 0.34) as i32 as f64;
+    score += 0.0040 * capacity * residual_scale * horizon;
+    score -= 0.0060 * capacity * dead_zone * residual_pressure * horizon;
+    score += 0.0030 * capacity * (normalized_post * (1.0 - normalized_post)).abs() * horizon;
+
+    let next_gap = (normalized_next - normalized_post).abs();
+    let next_alignment = 1.0 - (next_gap / 0.24).min(1.0);
+    score -= 0.018 * capacity * next_alignment * horizon * immediate_fit;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\evolution\run_seed_4170_evolution.json.tmp

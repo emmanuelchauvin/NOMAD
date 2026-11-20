@@ -1,0 +1,174 @@
+2026-11-13T15:45:09.337615Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=5102, Pop=8, MaxGens=10
+2026-11-13T15:58:44.241291Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 065f2e75574aecbe on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 5102 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4200 bins (excess: +185), Efficiency: 95.60%, Fuel: 47802205
+ Best In-Dist (w/o Lookahead) : 4206 bins (excess: +191), Efficiency: 95.46%
+ Dynamic Trajectory: tLDR = 0.2115
+ Behavior Profile : DeadSpaceRatio: 68.3%, NewBinRatio: 42.0%, ResVar: 0.53
+ MAP-Elites Niches: 3 active (3.0% coverage), QD-Score: 2.813
+ Validation Score : 4209 bins (excess: +183), Efficiency: 95.66%
+ OOD-1 Score      : 10471 bins (excess: +420), Efficiency: 95.99%
+ OOD-2 Score      : 3668 bins (excess: +91), Efficiency: 97.52%
+ Lineage Nodes    : 85, Transitions: 63
+ Best Heuristic   : LLM-Seed-002-mut-g2-mut-g2-mut-g4-mut-g5-mut-g8
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let capacity = bin_capacity.max(1) as f64;
+    let item = item_size as f64;
+    let next = next_item_size.max(1.0);
+    let residual = bin_residual as f64;
+    let post = post_residual as f64;
+    let progress = if total_items == 0 {
+        0.0
+    } else {
+        (step_index as f64 / total_items as f64).min(1.0)
+    };
+
+    let mut score = post;
+
+    let gap_ratio = (post / capacity).clamp(0.0, 1.0);
+    let item_ratio = (item / capacity).clamp(0.0, 1.0);
+    let next_ratio = (next / capacity).clamp(0.0, 1.0);
+    let is_new = bin_residual == bin_capacity;
+    let scarce_fit = fitting_bins_count <= 1;
+
+    let next_fits = post + 0.5 >= next;
+    let next_shortfall = (next - post).max(0.0) / capacity;
+    let item_shortfall = (item - post).max(0.0) / capacity;
+
+    if post > 0.0 && post < 10.0 {
+        score += 4.2 * (1.0 - gap_ratio);
+    }
+    if post < item.min(next).max(1.0) {
+        score += 12.0 + 18.0 * gap_ratio;
+    }
+    if post <= 0.5 {
+        score -= 18.0;
+    }
+
+    if residual > item {
+        let slack = residual - item;
+        let slack_ratio = slack / capacity;
+        score += 2.2 * slack_ratio;
+
+        if next_fits {
+            score -= 10.5 * next_ratio;
+        } else {
+            score += 3.4 * next_shortfall * (1.0 - progress);
+        }
+
+        if slack < next {
+            let shortage = (next - slack) / capacity;
+            score += 6.2 * shortage * (1.0 - 0.6 * progress);
+        }
+    } else if residual < item {
+        score += 24.0 + 34.0 * item_shortfall;
+    }
+
+    if scarce_fit {
+        score += 21.0;
+        if is_new {
+            score -= 23.0;
+        }
+    }
+
+    let pressure = (open_bins_count as f64).sqrt();
+    score += 2.8 * pressure * gap_ratio;
+    score += 0.5 * pressure * (1.0 - progress);
+
+    let mean_gap = ((mean_residual - item).max(0.0) / capacity).sqrt();
+    score += 3.5 * mean_gap * (1.0 - progress);
+
+    if !is_new && post >= item && post < next && post < 25.0 {
+        score += 3.0 * (1.0 - progress);
+    }
+
+    if is_new {
+        score += 10.0 + 3.1 * pressure;
+        if fitting_bins_count == 0 {
+            score -= 27.0;
+        }
+    }
+
+    score += (mean_residual - post).abs() * 0.045;
+
+    let effective_gap = post.max(0.0);
+    let useful_floor = item.min(next).max(1.0);
+    let dead_gap = (effective_gap - useful_floor).max(0.0);
+    let dead_ratio = (dead_gap / capacity).min(1.0);
+    let occupancy_gain = (item / capacity).clamp(0.0, 1.0);
+
+    if !is_new {
+        score += 5.4 * dead_ratio * (1.0 - 0.25 * progress);
+        score -= 2.4 * occupancy_gain * (1.0 - progress);
+    } else {
+        score += 5.8 * dead_ratio;
+        score += 0.8 * (1.0 - progress);
+    }
+
+    if !is_new && post >= item {
+        let band = (next - item).abs() / capacity;
+        let compatibility = (1.0 - band).clamp(0.0, 1.0);
+        score += 2.3 * compatibility * (1.0 - progress);
+    }
+
+    // Reward residuals that can be closed by the imminent item and mildly
+    // favor larger items over similar small-item placements.
+    if !is_new && next_fits {
+        let closure = (next - post).max(0.0) / capacity;
+        score -= 2.8 * closure * (1.0 - progress);
+    }
+    if !is_new {
+        score -= 1.1 * item_ratio * (1.0 - 0.5 * progress);
+    }
+
+    // Refine residual-space allocation: distinguish a genuinely useful gap
+    // from one that is merely large, and favor bins whose remaining space
+    // has a realistic chance of receiving a compatible upcoming item.
+    if !is_new {
+        let next_window = (next + 1.0).min(capacity);
+        let compatible_gap = (next_window - post).max(0.0);
+        let stranded_gap = (post - next_window).max(0.0);
+        let stranded_ratio = (stranded_gap / capacity).min(1.0);
+
+        score += 7.8 * stranded_ratio * (1.0 - 0.35 * progress);
+
+        if post >= item && next_fits {
+            let absorb = ((next - post).max(0.0) / capacity).clamp(0.0, 1.0);
+            let near_match = 1.0 - (next - item).abs() / capacity.max(1.0);
+            score -= 3.6 * absorb * (0.55 + 0.45 * near_match.clamp(0.0, 1.0));
+        } else if post >= item {
+            score += 1.8 * (compatible_gap / capacity).min(1.0);
+        }
+
+        // Small residual fragments are valuable only when they are close to
+        // the current or next item; otherwise they create fragmented dead space.
+        if post < 12.0 && post >= item {
+            let granularity = if next <= post + 3.0 { 1.0 } else { 0.45 };
+            score -= 2.4 * granularity * (1.0 - progress);
+        }
+
+        // Penalize leaving a gap just above the next item when the next item
+        // could otherwise have closed it completely.
+        if next_fits {
+            let waste = (post - item).max(0.0);
+            score += 2.5 * (waste / capacity) * (1.0 - progress);
+        }
+    } else {
+        // Opening is comparatively attractive only when existing candidates
+        // are numerous but collectively leave fragmented, incompatible gaps.
+        let fragment_penalty = if fitting_bins_count > 2 {
+            1.8 * (fitting_bins_count as f64).sqrt() * (1.0 - progress)
+        } else {
+            0.0
+        };
+        score += fragment_penalty;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v2\evolution\run_seed_5102_evolution.json.tmp

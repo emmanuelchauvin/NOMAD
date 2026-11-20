@@ -1,0 +1,92 @@
+[2m2026-11-15T05:21:02.484543Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8255, Pop=8, MaxGens=192
+[2m2026-11-15T09:43:30.948055Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 7eafe7863a8b5c46 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8255 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4059 bins (excess: +26), Efficiency: 99.36%, Fuel: 94578352
+ Best In-Dist (w/o Lookahead) : 4200 bins (excess: +167), Efficiency: 96.03%
+ Dynamic Trajectory: tLDR = 2.5559
+ Behavior Profile : DeadSpaceRatio: 15.0%, NewBinRatio: 40.6%, ResVar: 0.42
+ MAP-Elites Niches: 34 active (34.0% coverage), QD-Score: 27.584
+ Validation Score : 4047 bins (excess: +38), Efficiency: 99.06%
+ OOD-1 Score      : 10089 bins (excess: +64), Efficiency: 99.37%
+ OOD-2 Score      : 3625 bins (excess: +27), Efficiency: 99.26%
+ Lineage Nodes    : 1359, Transitions: 923
+ Best Heuristic   : LLM-Seed-009-mut-g1-mut-g1-mut-g2-mut-g4-mut-g5-mut-g6-mut-g19-mut-g19-mut-g32-mut-g40-mut-g41-mut-g42-mut-g43-mut-g44-mut-g45-mut-g49-mut-g53-mut-g63-mut-g119-mut-g184
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let mut score = post_residual as f64;
+
+    // 1. Adaptive New Bin Penalty: Increased resistance for better compaction
+    if bin_residual == bin_capacity && fitting_bins_count > 0 {
+        let base_penalty = 1250.0; 
+        score += base_penalty * (5.5 - progress.powf(0.08));
+    }
+
+    // 2. Predictive Lookahead Optimization: Higher weight for matching next_item_size
+    if next_item_size > 0 {
+        if post_residual == next_item_size {
+            score -= 3200.0; 
+        } else if post_residual > 0 && post_residual < next_item_size {
+            score += (next_item_size - post_residual) as f64 * 550.0; 
+        } else if post_residual > next_item_size {
+            score -= (next_item_size as f64 * 9.5) * (1.2 - progress.powf(0.4));
+        }
+    }
+
+    // 3. Dynamic Consolidation: Aggressive density scaling
+    if open_bins_count > 0 {
+        let density_factor = (open_bins_count as f64 / (total_items as f64 * 0.0002 + 2.0)).clamp(0.6, 30.0);
+        score += (bin_capacity - post_residual) as f64 * 4.8 * density_factor;
+    }
+
+    // 4. Hierarchical Tight-Fit Reward: Deeper rewards for near-zero residuals
+    if post_residual == 0 {
+        score -= 7500.0;
+    } else if post_residual <= 2 {
+        score -= 4800.0;
+    } else if post_residual <= 6 {
+        score -= 2800.0;
+    }
+
+    // 5. Residual Variance Balancing: Penalize divergence from mean, prioritize deep fills
+    let fill = (bin_capacity - post_residual) as f64;
+    let target = (bin_capacity as f64 - mean_residual).max(bin_capacity as f64 * 0.7);
+    score += (fill - target).abs() * 15.0;
+
+    // 6. Terminal Phase Heuristics: Forced compaction
+    if progress > 0.88 {
+        if bin_residual != bin_capacity {
+            score -= 22000.0 * (1.0 - (post_residual as f64 / bin_capacity as f64).powf(0.5)); 
+        } else {
+            score += 45000.0; 
+        }
+    } else if progress < 0.08 {
+        score += (bin_capacity - post_residual) as f64 * 9.5;
+    }
+
+    // 7. Small-Item Packing Logic: Stricter orphaned space penalty
+    if item_size < 22 && post_residual > (bin_capacity / 4) {
+        score += 2800.0 * (1.0 - progress.powf(0.2));
+    }
+
+    // 8. Global Entropy Mitigation: Non-linear penalty for deviation
+    let deviation = (bin_capacity - post_residual) as f64 - (bin_capacity as f64 - mean_residual);
+    score += deviation.powi(2) * 0.45;
+
+    // 9. Targeted low-residual bonus
+    if post_residual > 0 && post_residual <= 5 {
+        score -= (6 - post_residual) as f64 * 1400.0;
+    }
+
+    // 10. Lookahead parity correction
+    if next_item_size > 0 && post_residual < next_item_size && post_residual > 0 {
+        score += (next_item_size - post_residual) as f64 * 12.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8255_evolution.json.tmp

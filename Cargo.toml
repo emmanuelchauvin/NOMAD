@@ -31,10 +31,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4.5", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
-ureq = { version = "2.9", features = ["json"] }
+ureq = { version = "2.9", features = ["json", "native-certs"] }
 syn = { version = "2.0", features = ["full", "extra-traits", "visit", "visit-mut", "fold"] }
 quote = "1.0"
 proc-macro2 = "1.0"
+rayon = "1.10"
 
 # Internal workspace crates
 nomad-core = { path = "crates/nomad-core" }
@@ -43,4 +44,8 @@ nomad-sandbox = { path = "crates/nomad-sandbox" }
 nomad-evaluator = { path = "crates/nomad-evaluator" }
 nomad-operator = { path = "crates/nomad-operator" }
 nomad-orchestrator = { path = "crates/nomad-orchestrator" }
+
+[profile.test]
+opt-level = 2
+
 

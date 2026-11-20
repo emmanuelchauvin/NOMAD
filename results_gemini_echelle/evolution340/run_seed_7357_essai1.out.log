@@ -1,0 +1,88 @@
+2026-11-14T04:55:59.892084Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7357, Pop=8, MaxGens=37
+2026-11-14T05:16:14.532022Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 781bb2d831d850e4 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7357 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4074 bins (excess: +65), Efficiency: 98.40%, Fuel: 61494082
+ Best In-Dist (w/o Lookahead) : 4218 bins (excess: +209), Efficiency: 95.05%
+ Dynamic Trajectory: tLDR = 1.5106
+ Behavior Profile : DeadSpaceRatio: 22.7%, NewBinRatio: 40.7%, ResVar: 0.48
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 8.445
+ Validation Score : 4125 bins (excess: +72), Efficiency: 98.26%
+ OOD-1 Score      : 10155 bins (excess: +107), Efficiency: 98.95%
+ OOD-2 Score      : 3546 bins (excess: +28), Efficiency: 99.21%
+ Lineage Nodes    : 340, Transitions: 198
+ Best Heuristic   : LLM-Seed-001-mut-g27-mut-g29-mut-g30-mut-g30-mut-g30-mut-g31
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Refined Sliver Penalty: Focus on values that are unusable for large items (1-40)
+    if post_residual > 0 && post_residual < 41 {
+        score += 135.0 + (41.0 - post_residual as f64) * 9.2;
+    }
+
+    // 2. Lookahead Synergy: Exponential reward for fitting the next item
+    if next_item_size > 0 && next_item_size <= post_residual {
+        score -= 125.0;
+        let remaining = post_residual - next_item_size;
+        if remaining == 0 {
+            score -= 110.0;
+        } else if remaining >= 10 && remaining <= 45 {
+            score -= 85.0;
+        }
+    }
+
+    // 3. Dynamic New Bin Pressure: Penalize expansion unless forced
+    if bin_residual == bin_capacity {
+        let density_factor = (open_bins_count as f64 * bin_capacity as f64) / (step_index as f64 + 1.0).max(1.0);
+        score += 185.0 + (density_factor * 1.4);
+        if fitting_bins_count == 0 {
+            score -= 225.0;
+        }
+    }
+
+    // 4. Harmonic Alignment: Shifted focus to 25 and 50 as primary anchors
+    if post_residual % 25 == 0 {
+        score -= 85.0;
+    } else if post_residual % 20 == 0 {
+        score -= 45.0;
+    }
+
+    // 5. Entropy & Balance: Adaptive threshold based on the mean
+    if (bin_residual as f64) > mean_residual {
+        score += ((bin_residual as f64 - mean_residual) * 1.5).min(110.0);
+    } else {
+        score -= (mean_residual - bin_residual as f64) * 0.25;
+    }
+
+    // 6. Terminal Compaction: Aggressive endgame consolidation
+    let progress = step_index as f64 / total_items as f64;
+    if progress > 0.92 {
+        score += post_residual as f64 * 45.0;
+    }
+
+    // 7. Forced Fit: Prioritize keeping open bins active
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 240.0;
+    }
+
+    // 8. Capacity Utilization Scaling: Non-linear reward for high-density fills
+    let post_fill_ratio = (bin_capacity - post_residual) as f64 / bin_capacity as f64;
+    if post_fill_ratio > 0.85 {
+        score -= 80.0 * (post_fill_ratio.powi(2) * 2.0);
+    }
+
+    // 9. Parity & Symmetry: Favor even residuals to maximize fit combinations
+    if post_residual % 2 != 0 {
+        score += 18.0;
+    }
+
+    // 10. Global Density Regulation: Penalty for bin sprawl
+    score += (open_bins_count as f64 * 0.65).min(50.0);
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7357_evolution340.json.tmp

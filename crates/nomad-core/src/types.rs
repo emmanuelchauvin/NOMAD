@@ -41,6 +41,41 @@ pub enum PackingDecision {
 }
 
 /// ============================================================================
+/// SchedulingDecision : Décision d'Allocation de Ressource Cloud
+/// ============================================================================
+/// Décision discrète produite par une heuristique pour affecter une tâche (Job)
+/// à un nœud de calcul (Node) ou allouer une nouvelle machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SchedulingDecision {
+    /// Placer la tâche sur le nœud existant à l'indice spécifié (0-indexé).
+    PlaceOnNode(usize),
+    /// Allouer une nouvelle machine (Node) pour y démarrer la tâche.
+    OpenNewNode,
+}
+
+/// ============================================================================
+/// ProblemDomain : Domaine Combinatoire Traité par NOMAD
+/// ============================================================================
+/// Spécifie la nature du problème d'optimisation abordé par les organismes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum ProblemDomain {
+    /// 1D Online Bin Packing canonique (minimisation de bacs).
+    #[default]
+    BinPacking1D,
+    /// Multi-Resource Cloud Job Scheduling (CPU / RAM multi-dimensionnel).
+    MultiResourceScheduling,
+}
+
+impl ProblemDomain {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::BinPacking1D => "1D Online Bin Packing",
+            Self::MultiResourceScheduling => "Multi-Resource Cloud Job Scheduling (CPU/RAM)",
+        }
+    }
+}
+
+/// ============================================================================
 /// ExperimentalGroup : Groupes d'Expérimentation NOMAD
 /// ============================================================================
 /// Désignation des groupes de l'étude scientifique pré-enregistrée (Section 3).
@@ -83,20 +118,15 @@ impl fmt::Display for ExperimentalGroup {
 /// PolicyKind : Nature de l'Interface de Politique
 /// ============================================================================
 /// Type de représentation de politique régissant le code d'une compétence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum PolicyKind {
     /// ScorePolicy V2 canonique : fonction `score_bin(...) -> f64` manipulable par AST.
+    #[default]
     ScorePolicy,
     /// StrategyPolicy : politique avec état interne pour décisions complexes (extensions futures).
     StrategyPolicy,
     /// LegacyFormula V1 : formule textuelle paramétrique rétrocompatible (`SCORE: alpha=...`).
     LegacyFormula,
-}
-
-impl Default for PolicyKind {
-    fn default() -> Self {
-        Self::ScorePolicy
-    }
 }
 
 /// ============================================================================
@@ -107,6 +137,9 @@ impl Default for PolicyKind {
 pub struct ScoreBinInputs {
     /// Taille de l'objet à insérer (ex: entre 10 et 80).
     pub item_size: u32,
+    /// Taille du prochain objet dans le flux (Lookahead borné k=2, ou 0 si dernier objet).
+    #[serde(default)]
+    pub next_item_size: u32,
     /// Espace résiduel disponible dans le bac candidat (capacité - niveau actuel).
     pub bin_residual: u32,
     /// Capacité maximale d'un bac (généralement C = 100).
@@ -119,6 +152,48 @@ pub struct ScoreBinInputs {
     pub open_bins_count: usize,
     /// Espace résiduel moyen parmi l'ensemble des bacs ouverts.
     pub mean_residual: f64,
+    /// Espace résiduel après insertion de l'objet (bin_residual - item_size).
+    #[serde(default)]
+    pub post_residual: u32,
+    /// Nombre total de bacs ouverts pouvant accueillir l'objet courant (si == 1, dernière chance).
+    #[serde(default)]
+    pub fitting_bins_count: usize,
+}
+
+/// ============================================================================
+/// SchedulingInputs : Paramètres d'Entrée de `score_node`
+/// ============================================================================
+/// Ensemble des paramètres passés à la fonction canonique de scoring pour chaque nœud candidat.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SchedulingInputs {
+    /// CPU requis par la tâche courante (cores).
+    pub job_cpu: u32,
+    /// RAM requise par la tâche courante (GB).
+    pub job_ram: u32,
+    /// CPU requis par la prochaine tâche dans le flux (Lookahead k=2, ou 0).
+    #[serde(default)]
+    pub next_job_cpu: u32,
+    /// RAM requise par la prochaine tâche dans le flux (Lookahead k=2, ou 0).
+    #[serde(default)]
+    pub next_job_ram: u32,
+    /// CPU résiduel disponible sur le nœud candidat.
+    pub node_residual_cpu: u32,
+    /// RAM résiduelle disponible sur le nœud candidat.
+    pub node_residual_ram: u32,
+    /// Capacité totale CPU du nœud.
+    pub node_capacity_cpu: u32,
+    /// Capacité totale RAM du nœud.
+    pub node_capacity_ram: u32,
+    /// Indice séquentiel de la tâche dans la séquence (0-indexé).
+    pub step_index: usize,
+    /// Nombre total de tâches dans l'instance.
+    pub total_jobs: usize,
+    /// Nombre actuel de nœuds actifs alloués.
+    pub active_nodes_count: usize,
+    /// Moyenne d'espace CPU résiduel parmi les nœuds actifs.
+    pub mean_cpu_residual: f64,
+    /// Moyenne d'espace RAM résiduel parmi les nœuds actifs.
+    pub mean_ram_residual: f64,
 }
 
 /// ============================================================================
@@ -126,23 +201,37 @@ pub struct ScoreBinInputs {
 /// ============================================================================
 /// Statut du protocole de validation à 3 niveaux garantissant qu'un fragment greffé
 /// n'est ni du code mort, ni une altération inopérante (Section 4.8).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ValidationStatus {
     /// Non encore validé.
+    #[default]
     Unvalidated,
     /// Niveau 1 validé : présence et intégrité structurelle du fragment dans l'AST.
     PassedLevel1Structural,
     /// Niveau 2 validé : activation effective et calcul dynamique lors de l'évaluation.
     PassedLevel2Computational,
-    /// Niveau 3 validé : impact comportemental causal prouvé par ablation différentielle C_null.
+    /// Niveau 3 validé : impact comportemental causal prouvé par ablation différentielle C_null (dégradation à la suppression).
     PassedLevel3Behavioral,
+    /// Statut non évaluable : l'ablation C_null est invalide, a planté ou le fragment est introuvable.
+    NotEvaluable(String),
+    /// Statut greffe nocive : l'ablation a amélioré la performance (la greffe dégradait l'heuristique).
+    GraftHarmful(String),
     /// Échec de validation avec description explicite de la cause du rejet.
     Failed(String),
 }
 
-impl Default for ValidationStatus {
-    fn default() -> Self {
-        Self::Unvalidated
+impl ValidationStatus {
+    /// Indique si la capsule a validé rigoureusement le Niveau 3 (survie comportementale causale).
+    pub fn is_passed_level3(&self) -> bool {
+        matches!(self, Self::PassedLevel3Behavioral)
+    }
+
+    /// Indique si la capsule a validé au moins le Niveau 2 (survie computationnelle effective).
+    pub fn is_passed_at_least_level2(&self) -> bool {
+        matches!(
+            self,
+            Self::PassedLevel2Computational | Self::PassedLevel3Behavioral
+        )
     }
 }
 
@@ -215,20 +304,15 @@ pub struct BehaviorDescriptor {
 /// ============================================================================
 /// Décision d'ajustement dynamique de trajectoire proposée par la boucle de rétroaction
 /// d'AgentPSO après évaluation d'un croisement ou d'une mutation (Section 5.4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MomentumAction {
     /// Poursuivre dans la direction sémantique actuelle (gain observé).
+    #[default]
     ContinueDirection,
     /// Pivoter vers une nouvelle direction (stagnation ou régression constatée).
     Pivot,
     /// Combiner plusieurs mécanismes découverts dans des niches complémentaires.
     Combine,
-}
-
-impl Default for MomentumAction {
-    fn default() -> Self {
-        Self::ContinueDirection
-    }
 }
 
 /// ============================================================================
@@ -270,5 +354,3 @@ pub struct LineageEvolutionState {
     /// Journal textuel des étapes majeures d'évolution de la lignée.
     pub evolution_history: Vec<String>,
 }
-
-

@@ -1,0 +1,56 @@
+2026-11-13T19:38:13.319418Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6034, Pop=170, MaxGens=1
+2026-11-13T19:53:48.414841Z  INFO nomad_orchestrator::engine: Evaluating winning capsule aa4a751f70f80130 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6034 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4167 bins (excess: +167), Efficiency: 95.99%, Fuel: 24921836
+ Best In-Dist (w/o Lookahead) : 4177 bins (excess: +177), Efficiency: 95.76%
+ Dynamic Trajectory: tLDR = 0.3248
+ Behavior Profile : DeadSpaceRatio: 65.8%, NewBinRatio: 41.7%, ResVar: 0.51
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 5.507
+ Validation Score : 4205 bins (excess: +163), Efficiency: 96.13%
+ OOD-1 Score      : 10391 bins (excess: +368), Efficiency: 96.46%
+ OOD-2 Score      : 3635 bins (excess: +91), Efficiency: 97.50%
+ Lineage Nodes    : 170, Transitions: 0
+ Best Heuristic   : LLM-Seed-068
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Objective: Minimize score.
+    // Heuristic: Best-Fit Decreasing logic combined with lookahead-based space preservation.
+    
+    let mut score = post_residual as f64;
+
+    // 1. Penalize opening a new bin heavily unless necessary
+    if bin_residual == bin_capacity {
+        if open_bins_count > 0 {
+            score += 50.0; // Resistance to opening new bins
+        }
+    }
+
+    // 2. Lookahead: If next_item_size fits in the remaining space, prioritize this bin
+    if next_item_size > 0 && next_item_size <= post_residual {
+        score -= 25.0; // Strong reward for preserving space for the next item
+    }
+
+    // 3. Penalty for "fragmentation": If post_residual is small but > 0, it's often unusable.
+    // We prefer post_residual to be either 0 or large enough to fit future items.
+    if post_residual > 0 && post_residual < 20 {
+        score += 15.0; 
+    }
+
+    // 4. If this is the only bin that fits, we must take it (lower score)
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 40.0;
+    }
+
+    // 5. Dynamic balancing: If we are late in the stream, favor tighter packing (lower mean_residual)
+    let progress = step_index as f64 / total_items as f64;
+    if post_residual < (mean_residual as u32) {
+        score -= 5.0 * progress;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\tirage170\run_seed_6034_tirage170.json.tmp

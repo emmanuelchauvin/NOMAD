@@ -1,0 +1,87 @@
+[2m2026-11-14T08:58:07.052843Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8170, Pop=8, MaxGens=192
+[2m2026-11-14T13:43:33.129373Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 1d7c045d3cbeae26 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8170 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4053 bins (excess: +36), Efficiency: 99.11%, Fuel: 102085973
+ Best In-Dist (w/o Lookahead) : 4206 bins (excess: +189), Efficiency: 95.51%
+ Dynamic Trajectory: tLDR = 2.0515
+ Behavior Profile : DeadSpaceRatio: 12.9%, NewBinRatio: 40.5%, ResVar: 0.49
+ MAP-Elites Niches: 15 active (15.0% coverage), QD-Score: 13.186
+ Validation Score : 4059 bins (excess: +48), Efficiency: 98.82%
+ OOD-1 Score      : 10058 bins (excess: +44), Efficiency: 99.56%
+ OOD-2 Score      : 3588 bins (excess: +27), Efficiency: 99.25%
+ Lineage Nodes    : 1359, Transitions: 938
+ Best Heuristic   : LLM-Seed-003-mut-g2-mut-g3-mut-g5-mut-g88-mut-g93-mut-g98-mut-g98-mut-g104-mut-g106-mut-g107-mut-g111-mut-g112-mut-g115-mut-g169
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let progress = step_index as f64 / total_items as f64;
+    let is_new_bin = bin_residual == bin_capacity;
+    let mut score = post_residual as f64;
+
+    // 1. Predictive Lookahead: Focused on minimizing mid-bin "stranded" capacity
+    if next_item_size > 0 {
+        if post_residual == 0 {
+            score -= 525.0; 
+        } else if post_residual >= next_item_size {
+            let slack = (post_residual - next_item_size) as f64;
+            score -= 455.0 / (1.0 + slack.powf(0.75) * 0.18);
+        } else if !is_new_bin {
+            score += 540.0 * (1.0 - progress).sqrt() * (1.0 + (open_bins_count as f64 * 0.25));
+        }
+    }
+
+    // 2. Adaptive New-Bin Thresholding: Aggressively defer new bins by scaling penalty with open bin count
+    if is_new_bin {
+        let utilization = 1.0 - (mean_residual / bin_capacity as f64);
+        score += 680.0 + (utilization * 920.0) + (progress * 520.0) + (open_bins_count as f64 * 8.5);
+    } else if post_residual < (bin_capacity / 6) {
+        score -= 620.0 * (1.0 - (post_residual as f64 / (bin_capacity as f64 / 6.0)).powi(2));
+    }
+
+    // 3. Residual Balancing: Penalize drift from tighter packing target
+    let residual_diff = post_residual as f64 - (mean_residual * 0.65);
+    score += residual_diff.powi(2) * 0.48;
+
+    // 4. Scarcity & Entropy: Prioritize existing bins when options are scarce
+    if fitting_bins_count <= 3 && !is_new_bin {
+        score -= 1050.0;
+    }
+
+    // 5. Temporal Compaction: Tighten constraints as the stream concludes
+    if progress > 0.92 {
+        score += (post_residual as f64).powf(1.3) * 280.0;
+    } else {
+        score -= (post_residual as f64) * 14.2;
+    }
+
+    // 6. Sliver Mitigation: Target gaps that force future sub-optimal placements
+    if post_residual > 0 && post_residual <= 28 {
+        score += 840.0 * (1.0 - (post_residual as f64 / 28.0)).powf(2.0);
+    }
+
+    // 7. Density Constraint: Target a lower residual baseline
+    let target_residual = bin_capacity as f64 * 0.04;
+    score += (post_residual as f64 - target_residual).abs() * 16.5;
+
+    // 8. Small Item Consolidation: Reward filling tiny gaps with flexible items
+    if item_size < 22 && post_residual < 30 {
+        score -= 710.0 * (1.0 + (item_size as f64 / 35.0));
+    }
+    
+    // 9. High-Fill Reward: Exponential reward for near-full bins
+    let fill_ratio = (bin_capacity - post_residual) as f64 / bin_capacity as f64;
+    if fill_ratio > 0.94 {
+        score -= 1600.0 * fill_ratio.powi(12);
+    }
+
+    // 10. Anti-Fragmentation: Dynamic penalty for bins that exceed mean residual, preventing clustering spread
+    if mean_residual > bin_capacity as f64 * 0.24 {
+        score += post_residual as f64 * 18.2;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8170_evolution.json.tmp

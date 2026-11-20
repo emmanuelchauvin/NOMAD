@@ -1,0 +1,69 @@
+2026-11-13T09:26:44.878261Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4000, Pop=85, MaxGens=1
+2026-11-13T09:37:10.785408Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 3d6272bfc2443a73 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4000 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4156 bins (excess: +153), Efficiency: 96.33%, Fuel: 52801422
+ Best In-Dist (w/o Lookahead) : 4192 bins (excess: +189), Efficiency: 95.49%
+ Dynamic Trajectory: tLDR = 1.3107
+ Behavior Profile : DeadSpaceRatio: 2.8%, NewBinRatio: 41.6%, ResVar: 0.63
+ MAP-Elites Niches: 10 active (10.0% coverage), QD-Score: 7.280
+ Validation Score : 4173 bins (excess: +152), Efficiency: 96.37%
+ OOD-1 Score      : 10139 bins (excess: +81), Efficiency: 99.20%
+ OOD-2 Score      : 3628 bins (excess: +78), Efficiency: 97.85%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-052
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    let dead_space_penalty = if post_residual == 0 {
+        0.0
+    } else if post_residual < next_item_size && next_item_size > 0 {
+        (next_item_size - post_residual) as f64 * 4.0
+    } else if post_residual < 10 {
+        12.0
+    } else if post_residual < 20 {
+        6.0
+    } else {
+        (post_residual as f64 - 20.0).max(0.0) * 0.35
+    };
+
+    score += dead_space_penalty;
+
+    let fit_scarcity = if fitting_bins_count == 0 {
+        1000.0
+    } else if fitting_bins_count == 1 {
+        18.0
+    } else {
+        0.0
+    };
+    score += fit_scarcity;
+
+    let pressure = if open_bins_count == 0 {
+        0.0
+    } else {
+        (open_bins_count as f64).ln() * 2.0
+    };
+    score += pressure;
+
+    let mean_gap_penalty = if mean_residual < 20.0 {
+        (20.0 - mean_residual) * 0.8
+    } else {
+        0.0
+    };
+    score += mean_gap_penalty;
+
+    if step_index + 1 >= total_items && next_item_size == 0 {
+        score += (post_residual as f64) * 0.15;
+    }
+
+    if bin_residual == bin_capacity {
+        score -= 14.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\tirage\run_seed_4000_tirage.json.tmp

@@ -1,0 +1,77 @@
+2026-11-14T02:39:34.373159Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7085, Pop=8, MaxGens=37
+2026-11-14T03:13:35.904319Z  INFO nomad_orchestrator::engine: Evaluating winning capsule b1e8fda836252a7b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7085 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4111 bins (excess: +103), Efficiency: 97.50%, Fuel: 39613674
+ Best In-Dist (w/o Lookahead) : 4194 bins (excess: +186), Efficiency: 95.57%
+ Dynamic Trajectory: tLDR = 1.6194
+ Behavior Profile : DeadSpaceRatio: 48.1%, NewBinRatio: 41.1%, ResVar: 0.43
+ MAP-Elites Niches: 13 active (13.0% coverage), QD-Score: 10.552
+ Validation Score : 4150 bins (excess: +113), Efficiency: 97.29%
+ OOD-1 Score      : 10379 bins (excess: +347), Efficiency: 96.66%
+ OOD-2 Score      : 3591 bins (excess: +64), Efficiency: 98.22%
+ Lineage Nodes    : 340, Transitions: 189
+ Best Heuristic   : LLM-Seed-001-mut-g1-mut-g17-mut-g17-mut-g18-mut-g24-mut-g25
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // 1. Base Score: Heavy reward for exact fits, now with a tighter bias towards high-fill levels.
+    let mut score = if post_residual == 0 { -880.0 } else { post_residual as f64 * 1.35 };
+
+    // 2. Lookahead-Awareness: Refined to prioritize mid-range flexibility and buffer for late-game.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            let tight_fit = (post_residual - next_item_size) as f64;
+            // Enhanced reward for leaving space for exactly one more item, with a non-linear decay.
+            score -= 310.0 + (100.0 - tight_fit).powf(1.05) * 0.85;
+            if tight_fit > 15.0 && tight_fit < 50.0 { score -= 95.0; }
+        } else if post_residual > 0 && post_residual < 32 {
+            // Increased penalty for dead zones that prevent fitting common item clusters.
+            score += 220.0;
+        }
+    }
+
+    // 3. Dynamic New Bin Gatekeeping:
+    // Adaptive penalty for opening new bins based on residual variance and global progress.
+    if bin_residual == bin_capacity {
+        let progress = step_index as f64 / total_items as f64;
+        let new_bin_penalty = 250.0 + (progress.powf(1.8) * 400.0);
+        
+        if fitting_bins_count > 0 {
+            // Discourage new bin creation if current mean density allows for consolidation.
+            score += if mean_residual > 18.0 { new_bin_penalty * 2.1 } else { 160.0 };
+        } else {
+            score -= 620.0; // Stronger incentive to open new bin when no alternatives exist.
+        }
+    }
+
+    // 4. Entropy & Fragmentation:
+    // Penalize deviation from mean_residual to force uniform bin filling across the stream.
+    let residual_diff = post_residual as f64 - mean_residual;
+    score += if residual_diff > 0.0 { residual_diff * 1.1 } else { residual_diff.abs() * 0.35 };
+
+    // 5. Scarcity adjustment:
+    // Protect the last viable bin to prevent premature fragmentation.
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 420.0;
+    }
+
+    // 6. Global Density Pressure:
+    // Logarithmic pressure on open_bins_count, scaled by the ratio of current waste to total capacity.
+    if open_bins_count > 2 {
+        score += (open_bins_count as f64).ln() * (post_residual as f64 / bin_capacity as f64) * 110.0;
+    }
+
+    // 7. Geometric Divisibility Bias:
+    // Bias towards common item sizes (25, 20, 10) to minimize fragmentation on standard distributions.
+    let remainder_penalty = if post_residual % 25 == 0 { -55.0 } 
+                            else if post_residual % 20 == 0 { -35.0 } 
+                            else if post_residual % 10 == 0 { -10.0 } 
+                            else { 30.0 };
+    score += remainder_penalty;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7085_evolution340.json.tmp

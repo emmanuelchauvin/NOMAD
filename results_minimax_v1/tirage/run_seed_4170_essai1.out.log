@@ -1,0 +1,98 @@
+2026-11-13T11:08:10.948755Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=4170, Pop=85, MaxGens=1
+2026-11-13T11:17:28.508069Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 4a2947a34f6eda4b on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 4170 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4181 bins (excess: +174), Efficiency: 95.84%, Fuel: 29795511
+ Best In-Dist (w/o Lookahead) : 4191 bins (excess: +184), Efficiency: 95.61%
+ Dynamic Trajectory: tLDR = 0.1830
+ Behavior Profile : DeadSpaceRatio: 69.0%, NewBinRatio: 41.8%, ResVar: 0.50
+ MAP-Elites Niches: 9 active (9.0% coverage), QD-Score: 6.617
+ Validation Score : 4194 bins (excess: +192), Efficiency: 95.43%
+ OOD-1 Score      : 10466 bins (excess: +407), Efficiency: 96.11%
+ OOD-2 Score      : 3631 bins (excess: +88), Efficiency: 97.58%
+ Lineage Nodes    : 85, Transitions: 0
+ Best Heuristic   : LLM-Seed-058
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Aggressive 2-step lookahead: prefer placements whose leftover exactly
+    // matches (or nearly matches) the upcoming item, and prefer tight fills.
+    let mut score = post_residual as f64;
+
+    // 1) Lookahead affinity: how well does the leftover slot match next_item_size?
+    if next_item_size > 0 {
+        let gap = post_residual as f64 - next_item_size as f64;
+        let abs_gap = gap.abs();
+        // Exact / near-exact match of the remaining space with the next item is ideal.
+        score -= 60.0 * (-abs_gap / 12.0).exp();
+        // A leftover clearly smaller than the next item means the slot will be wasted.
+        if post_residual < next_item_size {
+            // waste severity scales with how much of the next item cannot fit
+            let deficit = (next_item_size - post_residual) as f64;
+            score += 1.4 * deficit.min(40.0);
+        } else {
+            // Leftover bigger than the next item: mild penalty, the surplus may stay useful
+            let surplus = (post_residual - next_item_size) as f64;
+            score += 0.35 * surplus.min(30.0);
+        }
+    } else {
+        // No lookahead available: reward tight, well-utilized placements.
+        score += 0.55 * post_residual as f64;
+    }
+
+    // 2) Relative residual vs mean residual across open bins: opening a bin that
+    // ends up above-average empty is wasteful; ending below average is good.
+    let mr = if mean_residual > 1.0 { mean_residual } else { 1.0 };
+    score += 0.85 * (post_residual as f64 - mr);
+
+    // 3) Fill ratio reward: denser bins are better (fewer bins overall).
+    let fill = 1.0 - post_residual as f64 / bin_capacity as f64;
+    score -= 26.0 * fill * fill;
+
+    // 4) Dead space penalty: leftover that cannot plausibly host any future item
+    //    (small items exist in the stream) is nearly unusable.
+    if post_residual > 0 {
+        let dead = if post_residual < 10 { 1.0 } else { 0.0 };
+        score += 14.0 * dead * (post_residual as f64 / 10.0);
+        // Leftover just barely too small for a typical mid-size item.
+        if post_residual >= 10 && post_residual < 20 {
+            score += 4.0;
+        }
+    }
+
+    // 5) Last chance: if this is the only bin that fits the item, we must take it
+    //    (avoid opening a new bin) unless the fit is catastrophically bad.
+    if fitting_bins_count <= 1 {
+        score -= 45.0;
+        if post_residual > 0 && post_residual < 10 {
+            score += 12.0;
+        }
+    }
+
+    // 6) New-bin candidate: an empty bin is a last resort; heavily penalize it
+    //    unless the stream is nearly exhausted or existing bins are hopeless.
+    if bin_residual == bin_capacity {
+        score += 120.0;
+        if open_bins_count > 0 {
+            // extra penalty scaled by congestion
+            score += 8.0 * (open_bins_count as f64).min(12.0);
+        }
+        if total_items > 0 {
+            let progress = step_index as f64 / total_items as f64;
+            // late in the stream, an empty bin is less costly
+            score -= 30.0 * progress;
+        }
+    }
+
+    // 7) Mild preference for filling a bin that is already relatively empty
+    //    (keeps residuals balanced) but only when it does not create dead space.
+    if bin_residual < bin_capacity {
+        let ratio = post_residual as f64 / mr;
+        score += 6.0 * (ratio - 1.0);
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_minimax_v1\tirage\run_seed_4170_tirage.json.tmp

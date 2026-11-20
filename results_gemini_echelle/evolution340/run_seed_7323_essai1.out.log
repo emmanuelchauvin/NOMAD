@@ -1,0 +1,82 @@
+2026-11-14T04:14:24.687541Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7323, Pop=8, MaxGens=37
+2026-11-14T04:34:26.190984Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 710de20c4f023c25 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7323 | Generations: 37
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4154 bins (excess: +144), Efficiency: 96.53%, Fuel: 28464783
+ Best In-Dist (w/o Lookahead) : 4159 bins (excess: +149), Efficiency: 96.42%
+ Dynamic Trajectory: tLDR = 0.4403
+ Behavior Profile : DeadSpaceRatio: 61.6%, NewBinRatio: 41.5%, ResVar: 0.47
+ MAP-Elites Niches: 6 active (6.0% coverage), QD-Score: 4.687
+ Validation Score : 4162 bins (excess: +148), Efficiency: 96.45%
+ OOD-1 Score      : 10417 bins (excess: +328), Efficiency: 96.85%
+ OOD-2 Score      : 3610 bins (excess: +75), Efficiency: 97.92%
+ Lineage Nodes    : 340, Transitions: 207
+ Best Heuristic   : LLM-Seed-091-mut-g20
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    // Start with a tighter base weight on post_residual to favor tight packing
+    let mut score = post_residual as f64 * 0.95;
+
+    // 1. Fragment Avoidance: Increased penalty for "dead zones" (1-21), 
+    // scaling with the severity of the fragmentation.
+    if post_residual > 0 && post_residual < 22 {
+        score += 60.0 - (post_residual as f64 * 0.8);
+    }
+
+    // 2. Harmonic logic: Reward perfect fits or large multiples.
+    if post_residual == 0 {
+        score -= 85.0;
+    } else if post_residual % 25 == 0 {
+        score -= 30.0;
+    }
+
+    // 3. Lookahead integration: Prioritize bins that can swallow the next item,
+    // but scale by the fitness of the fit (the tighter the better).
+    if next_item_size > 0 && next_item_size <= post_residual {
+        let slack = (post_residual - next_item_size) as f64;
+        score -= 70.0 + (slack * 0.5);
+    }
+
+    // 4. Strategic Bin Opening: 
+    // Discourage new bins (bin_residual == bin_capacity) if existing bins can fit the item.
+    // Dynamic threshold: If mean_residual is already low, we are running out of space,
+    // so we raise the cost of opening a new bin to force better utilization of existing ones.
+    let is_new_bin = bin_residual == bin_capacity;
+    if is_new_bin {
+        if fitting_bins_count > 0 {
+            score += 125.0 + (mean_residual * 0.75);
+        } else {
+            score -= 15.0; // Encourage starting a new bin if nothing else fits
+        }
+    }
+
+    // 5. Progression scaling: Shift from "Flexibility" to "Density"
+    // Apply a steeper curve towards the end of the stream (last 20%)
+    let progress = step_index as f64 / total_items as f64;
+    if progress > 0.8 {
+        score += post_residual as f64 * 1.5;
+    }
+    score += progress * 30.0;
+
+    // 6. Global load balancing: Use a non-linear penalty for variance.
+    // Penalize bins that are significantly emptier than the mean, 
+    // as they indicate poor packing strategy.
+    let dev = (bin_residual as f64 - mean_residual);
+    if dev > 0.0 {
+        score += dev * 0.4;
+    } else {
+        score += dev.abs() * 0.15;
+    }
+
+    // 7. Open Bin Overflow: If we have many open bins, prioritize filling the 
+    // emptiest ones to reduce the total count of active bins.
+    if open_bins_count > 5 {
+        score += (bin_residual as f64) * 0.2;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\evolution340\run_seed_7323_evolution340.json.tmp

@@ -1,12 +1,19 @@
-use serde::{Deserialize, Serialize};
-use nomad_core::PackingDecision;
 use crate::error::SandboxError;
 use crate::eval_ast::{AstInterpreter, ScorePolicyContext};
+use nomad_core::{PackingDecision, SchedulingDecision, SchedulingInputs};
+use serde::{Deserialize, Serialize};
 
 /// Outcome of a single heuristic execution step.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionOutcome {
     pub decision: PackingDecision,
+    pub fuel_consumed: u64,
+}
+
+/// Outcome of a single scheduling heuristic execution step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SchedulingExecutionOutcome {
+    pub decision: SchedulingDecision,
     pub fuel_consumed: u64,
 }
 
@@ -31,6 +38,7 @@ pub trait HeuristicSandbox: Send + Sync {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_with_context(
         &self,
         logic_code: &str,
@@ -40,7 +48,106 @@ pub trait HeuristicSandbox: Send + Sync {
         fuel_limit: u64,
         step_index: usize,
         total_items: usize,
+    ) -> Result<ExecutionOutcome, SandboxError> {
+        self.execute_with_lookahead(
+            logic_code,
+            item_weight,
+            0,
+            bin_levels,
+            bin_capacity,
+            fuel_limit,
+            step_index,
+            total_items,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_with_lookahead(
+        &self,
+        logic_code: &str,
+        item_weight: u32,
+        next_item_weight: u32,
+        bin_levels: &[u32],
+        bin_capacity: u32,
+        fuel_limit: u64,
+        step_index: usize,
+        total_items: usize,
     ) -> Result<ExecutionOutcome, SandboxError>;
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_scheduling(
+        &self,
+        logic_code: &str,
+        job_cpu: u32,
+        job_ram: u32,
+        node_levels: &[(u32, u32)],
+        node_capacity: (u32, u32),
+        fuel_limit: u64,
+        step_index: usize,
+        total_jobs: usize,
+    ) -> Result<SchedulingExecutionOutcome, SandboxError> {
+        self.execute_scheduling_with_lookahead(
+            logic_code,
+            job_cpu,
+            job_ram,
+            0,
+            0,
+            node_levels,
+            node_capacity,
+            fuel_limit,
+            step_index,
+            total_jobs,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    fn execute_scheduling_with_lookahead(
+        &self,
+        logic_code: &str,
+        job_cpu: u32,
+        job_ram: u32,
+        next_job_cpu: u32,
+        next_job_ram: u32,
+        node_levels: &[(u32, u32)],
+        node_capacity: (u32, u32),
+        fuel_limit: u64,
+        step_index: usize,
+        total_jobs: usize,
+    ) -> Result<SchedulingExecutionOutcome, SandboxError>;
+}
+
+/// Heuristiques classiques de référence pour le 1D Bin Packing,
+/// strictement identifiées par comparaison exacte (évite l'interception accidentelle de code synthétisé).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassicalBinPackingBaseline {
+    FirstFit,
+    BestFit,
+    BestFitLookahead,
+    WorstFit,
+    Harmonic,
+}
+
+impl ClassicalBinPackingBaseline {
+    pub fn parse_exact(code: &str) -> Option<Self> {
+        let trimmed = code.trim();
+        if trimmed.eq_ignore_ascii_case("FIRST_FIT") || trimmed == "first_fit" || trimmed == "FirstFit" {
+            Some(Self::FirstFit)
+        } else if trimmed.eq_ignore_ascii_case("BEST_FIT") || trimmed == "best_fit" || trimmed == "BestFit" {
+            Some(Self::BestFit)
+        } else if trimmed.eq_ignore_ascii_case("BEST_FIT_LOOKAHEAD")
+            || trimmed == "best_fit_lookahead"
+            || trimmed == "BestFitLookahead"
+        {
+            Some(Self::BestFitLookahead)
+        } else if trimmed.eq_ignore_ascii_case("WORST_FIT") || trimmed == "worst_fit" || trimmed == "WorstFit" {
+            Some(Self::WorstFit)
+        } else if trimmed.eq_ignore_ascii_case("HARMONIC") || trimmed == "harmonic" || trimmed == "Harmonic" {
+            Some(Self::Harmonic)
+        } else {
+            None
+        }
+    }
 }
 
 /// Deterministic, zero-dependency sandboxed evaluation engine with instruction-level fuel metering.
@@ -54,10 +161,12 @@ impl DeterministicSandbox {
 }
 
 impl HeuristicSandbox for DeterministicSandbox {
-    fn execute_with_context(
+    #[allow(clippy::too_many_arguments)]
+    fn execute_with_lookahead(
         &self,
         logic_code: &str,
         item_weight: u32,
+        next_item_weight: u32,
         bin_levels: &[u32],
         bin_capacity: u32,
         fuel_limit: u64,
@@ -76,7 +185,8 @@ impl HeuristicSandbox for DeterministicSandbox {
         let trimmed_code = logic_code.trim();
 
         // 0. Check for V2 Rust AST score_bin function
-        let is_score_bin = trimmed_code.contains("fn score_bin") || trimmed_code.contains("score_bin(");
+        let is_score_bin =
+            trimmed_code.contains("fn score_bin") || trimmed_code.contains("score_bin(");
         let parsed_fn = if is_score_bin {
             syn::parse_str::<syn::ItemFn>(trimmed_code)
                 .or_else(|_| {
@@ -118,6 +228,10 @@ impl HeuristicSandbox for DeterministicSandbox {
 
             let mut best_idx = None;
             let mut best_score = f64::MAX;
+            let fitting_bins_count = bin_levels
+                .iter()
+                .filter(|&&lvl| lvl + item_weight <= bin_capacity)
+                .count();
 
             for (idx, &level) in bin_levels.iter().enumerate() {
                 fuel_consumed += 10;
@@ -129,15 +243,19 @@ impl HeuristicSandbox for DeterministicSandbox {
                 }
 
                 if level + item_weight <= bin_capacity {
-                    let residual = bin_capacity - (level + item_weight);
+                    let current_residual = bin_capacity - level;
+                    let post_residual = bin_capacity - (level + item_weight);
                     let ctx = ScorePolicyContext {
                         item_size: item_weight,
-                        bin_residual: residual,
+                        next_item_size: next_item_weight,
+                        bin_residual: current_residual,
                         bin_capacity,
                         step_index,
                         total_items,
                         open_bins_count: bin_levels.len(),
                         mean_residual,
+                        post_residual,
+                        fitting_bins_count,
                     };
                     let outcome = interpreter
                         .eval(&ctx)
@@ -157,117 +275,175 @@ impl HeuristicSandbox for DeterministicSandbox {
                 }
             }
 
+            // Option "bac vide candidat" : l'heuristique note aussi un bac neuf virtuel et peut
+            // donc choisir d'ouvrir un bac plutot que d'accepter un mauvais ajustement.
+            // Sans cette option, toute heuristique est confinee a la famille Any-Fit.
+            if best_idx.is_some() && allow_open_new_bin() {
+                let ctx = ScorePolicyContext {
+                    item_size: item_weight,
+                    next_item_size: next_item_weight,
+                    bin_residual: bin_capacity,
+                    bin_capacity,
+                    step_index,
+                    total_items,
+                    open_bins_count: bin_levels.len(),
+                    mean_residual,
+                    post_residual: bin_capacity - item_weight,
+                    fitting_bins_count,
+                };
+                let outcome = interpreter
+                    .eval(&ctx)
+                    .map_err(|e| SandboxError::ExecutionCrash(e.to_string()))?;
+                fuel_consumed += outcome.fuel_consumed;
+                if outcome.score < best_score {
+                    best_idx = None;
+                }
+            }
+
             match best_idx {
                 Some(idx) => PackingDecision::PlaceInExisting(idx),
                 None => PackingDecision::OpenNewBin,
             }
-        } else if trimmed_code.eq_ignore_ascii_case("FIRST_FIT")
-            || trimmed_code.contains("first_fit")
-            || trimmed_code.contains("FirstFit")
-        {
-            // First Fit: first bin where item fits
-            let mut chosen = None;
-            for (idx, &level) in bin_levels.iter().enumerate() {
-                fuel_consumed += 10;
-                if fuel_consumed > fuel_limit {
-                    return Err(SandboxError::FuelLimitExceeded {
-                        fuel_consumed,
-                        fuel_limit,
-                    });
-                }
-                if level + item_weight <= bin_capacity {
-                    chosen = Some(idx);
-                    break;
-                }
-            }
-            match chosen {
-                Some(idx) => PackingDecision::PlaceInExisting(idx),
-                None => PackingDecision::OpenNewBin,
-            }
-        } else if trimmed_code.eq_ignore_ascii_case("BEST_FIT")
-            || trimmed_code.contains("best_fit")
-            || trimmed_code.contains("BestFit")
-        {
-            // Best Fit: bin with minimum remaining space that fits item
-            let mut best_idx = None;
-            let mut min_remaining = u32::MAX;
-
-            for (idx, &level) in bin_levels.iter().enumerate() {
-                fuel_consumed += 15;
-                if fuel_consumed > fuel_limit {
-                    return Err(SandboxError::FuelLimitExceeded {
-                        fuel_consumed,
-                        fuel_limit,
-                    });
-                }
-                if level + item_weight <= bin_capacity {
-                    let remaining = bin_capacity - (level + item_weight);
-                    if remaining < min_remaining {
-                        min_remaining = remaining;
-                        best_idx = Some(idx);
+        } else if let Some(baseline) = ClassicalBinPackingBaseline::parse_exact(trimmed_code) {
+            match baseline {
+                ClassicalBinPackingBaseline::FirstFit => {
+                    // First Fit: first bin where item fits
+                    let mut chosen = None;
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 10;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            chosen = Some(idx);
+                            break;
+                        }
+                    }
+                    match chosen {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
                     }
                 }
-            }
-            match best_idx {
-                Some(idx) => PackingDecision::PlaceInExisting(idx),
-                None => PackingDecision::OpenNewBin,
-            }
-        } else if trimmed_code.eq_ignore_ascii_case("WORST_FIT")
-            || trimmed_code.contains("worst_fit")
-            || trimmed_code.contains("WorstFit")
-        {
-            // Worst Fit: bin with maximum remaining space that fits item
-            let mut worst_idx = None;
-            let mut max_remaining = 0u32;
+                ClassicalBinPackingBaseline::BestFit => {
+                    // Best Fit: bin with minimum remaining space that fits item
+                    let mut best_idx = None;
+                    let mut min_remaining = u32::MAX;
 
-            for (idx, &level) in bin_levels.iter().enumerate() {
-                fuel_consumed += 15;
-                if fuel_consumed > fuel_limit {
-                    return Err(SandboxError::FuelLimitExceeded {
-                        fuel_consumed,
-                        fuel_limit,
-                    });
-                }
-                if level + item_weight <= bin_capacity {
-                    let remaining = bin_capacity - (level + item_weight);
-                    if remaining >= max_remaining {
-                        max_remaining = remaining;
-                        worst_idx = Some(idx);
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 15;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            let remaining = bin_capacity - (level + item_weight);
+                            if remaining < min_remaining {
+                                min_remaining = remaining;
+                                best_idx = Some(idx);
+                            }
+                        }
+                    }
+                    match best_idx {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
                     }
                 }
-            }
-            match worst_idx {
-                Some(idx) => PackingDecision::PlaceInExisting(idx),
-                None => PackingDecision::OpenNewBin,
-            }
-        } else if trimmed_code.contains("HARMONIC") || trimmed_code.contains("harmonic") {
-            // Harmonic grouping: item size intervals
-            let is_large = item_weight > bin_capacity / 2;
-            let mut selected = None;
+                ClassicalBinPackingBaseline::BestFitLookahead => {
+                    // Best Fit with lookahead k=2:
+                    // Evaluates placing item in bin `idx`.
+                    // If next_item_weight > 0 and placement leaves exact space for next item (post_residual == next_item_weight),
+                    // grants strong exact-closure bonus (-1000.0) ensuring a 100% full bin.
+                    // Otherwise scores purely by remaining space (Best Fit).
+                    let mut best_idx = None;
+                    let mut best_score = f64::MAX;
 
-            for (idx, &level) in bin_levels.iter().enumerate() {
-                fuel_consumed += 20;
-                if fuel_consumed > fuel_limit {
-                    return Err(SandboxError::FuelLimitExceeded {
-                        fuel_consumed,
-                        fuel_limit,
-                    });
-                }
-                if level + item_weight <= bin_capacity {
-                    if is_large && level == 0 {
-                        selected = Some(idx);
-                        break;
-                    } else if !is_large && (level + item_weight) >= (bin_capacity * 8 / 10) {
-                        selected = Some(idx);
-                        break;
-                    } else if selected.is_none() {
-                        selected = Some(idx);
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 18;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            let post_residual = bin_capacity - (level + item_weight);
+                            let bonus = if next_item_weight > 0 && post_residual == next_item_weight {
+                                1000.0
+                            } else {
+                                0.0
+                            };
+                            let score = (post_residual as f64) - bonus;
+                            if score < best_score {
+                                best_score = score;
+                                best_idx = Some(idx);
+                            }
+                        }
+                    }
+                    match best_idx {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
                     }
                 }
-            }
-            match selected {
-                Some(idx) => PackingDecision::PlaceInExisting(idx),
-                None => PackingDecision::OpenNewBin,
+                ClassicalBinPackingBaseline::WorstFit => {
+                    // Worst Fit: bin with maximum remaining space that fits item
+                    let mut worst_idx = None;
+                    let mut max_remaining = 0u32;
+
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 15;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            let remaining = bin_capacity - (level + item_weight);
+                            if remaining >= max_remaining {
+                                max_remaining = remaining;
+                                worst_idx = Some(idx);
+                            }
+                        }
+                    }
+                    match worst_idx {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
+                    }
+                }
+                ClassicalBinPackingBaseline::Harmonic => {
+                    // Harmonic grouping: item size intervals
+                    let is_large = item_weight > bin_capacity / 2;
+                    let mut selected = None;
+
+                    for (idx, &level) in bin_levels.iter().enumerate() {
+                        fuel_consumed += 20;
+                        if fuel_consumed > fuel_limit {
+                            return Err(SandboxError::FuelLimitExceeded {
+                                fuel_consumed,
+                                fuel_limit,
+                            });
+                        }
+                        if level + item_weight <= bin_capacity {
+                            if (is_large && level == 0)
+                                || (!is_large && (level + item_weight) >= (bin_capacity * 8 / 10))
+                            {
+                                selected = Some(idx);
+                                break;
+                            } else if selected.is_none() {
+                                selected = Some(idx);
+                            }
+                        }
+                    }
+                    match selected {
+                        Some(idx) => PackingDecision::PlaceInExisting(idx),
+                        None => PackingDecision::OpenNewBin,
+                    }
+                }
             }
         } else {
             // Parameterized scoring function parser
@@ -312,11 +488,9 @@ impl HeuristicSandbox for DeterministicSandbox {
                             best_score = score;
                             best_idx = Some(idx);
                         }
-                    } else {
-                        if score > best_score {
-                            best_score = score;
-                            best_idx = Some(idx);
-                        }
+                    } else if score > best_score {
+                        best_score = score;
+                        best_idx = Some(idx);
                     }
                 }
             }
@@ -350,6 +524,247 @@ impl HeuristicSandbox for DeterministicSandbox {
         }
 
         Ok(ExecutionOutcome {
+            decision,
+            fuel_consumed,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_scheduling_with_lookahead(
+        &self,
+        logic_code: &str,
+        job_cpu: u32,
+        job_ram: u32,
+        next_job_cpu: u32,
+        next_job_ram: u32,
+        node_levels: &[(u32, u32)],
+        node_capacity: (u32, u32),
+        fuel_limit: u64,
+        step_index: usize,
+        total_jobs: usize,
+    ) -> Result<SchedulingExecutionOutcome, SandboxError> {
+        let mut fuel_consumed = 0u64;
+
+        if job_cpu > node_capacity.0 || job_ram > node_capacity.1 {
+            return Err(SandboxError::ItemExceedsCapacity {
+                weight: job_cpu.max(job_ram),
+                capacity: node_capacity.0.max(node_capacity.1),
+            });
+        }
+
+        let trimmed_code = logic_code.trim();
+
+        // 1. Classical baseline shortcuts
+        if trimmed_code == "FIRST_FIT_NODE" {
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 5;
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    return Ok(SchedulingExecutionOutcome {
+                        decision: SchedulingDecision::PlaceOnNode(idx),
+                        fuel_consumed,
+                    });
+                }
+            }
+            return Ok(SchedulingExecutionOutcome {
+                decision: SchedulingDecision::OpenNewNode,
+                fuel_consumed,
+            });
+        }
+
+        if trimmed_code == "BEST_FIT_CPU" {
+            let mut best_idx = None;
+            let mut min_res_cpu = u32::MAX;
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 5;
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    let res_cpu = node_capacity.0 - (used_cpu + job_cpu);
+                    if res_cpu < min_res_cpu {
+                        min_res_cpu = res_cpu;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+            let decision = best_idx
+                .map(SchedulingDecision::PlaceOnNode)
+                .unwrap_or(SchedulingDecision::OpenNewNode);
+            return Ok(SchedulingExecutionOutcome {
+                decision,
+                fuel_consumed,
+            });
+        }
+
+        if trimmed_code == "BEST_FIT_RAM" {
+            let mut best_idx = None;
+            let mut min_res_ram = u32::MAX;
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 5;
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    let res_ram = node_capacity.1 - (used_ram + job_ram);
+                    if res_ram < min_res_ram {
+                        min_res_ram = res_ram;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+            let decision = best_idx
+                .map(SchedulingDecision::PlaceOnNode)
+                .unwrap_or(SchedulingDecision::OpenNewNode);
+            return Ok(SchedulingExecutionOutcome {
+                decision,
+                fuel_consumed,
+            });
+        }
+
+        if trimmed_code == "BALANCED_FIT" {
+            let mut best_idx = None;
+            let mut min_norm = f64::MAX;
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 10;
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    let res_cpu_norm =
+                        (node_capacity.0 - (used_cpu + job_cpu)) as f64 / node_capacity.0 as f64;
+                    let res_ram_norm =
+                        (node_capacity.1 - (used_ram + job_ram)) as f64 / node_capacity.1 as f64;
+                    let norm = (res_cpu_norm * res_cpu_norm + res_ram_norm * res_ram_norm).sqrt();
+                    if norm < min_norm {
+                        min_norm = norm;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+            let decision = best_idx
+                .map(SchedulingDecision::PlaceOnNode)
+                .unwrap_or(SchedulingDecision::OpenNewNode);
+            return Ok(SchedulingExecutionOutcome {
+                decision,
+                fuel_consumed,
+            });
+        }
+
+        // 2. Synthesized AST evaluation via score_node
+        let parsed_fn = syn::parse_str::<syn::ItemFn>(trimmed_code)
+            .or_else(|_| {
+                syn::parse_file(trimmed_code).map(|f| {
+                    for item in f.items {
+                        if let syn::Item::Fn(func) = item {
+                            if func.sig.ident == "score_node" {
+                                return func;
+                            }
+                        }
+                    }
+                    syn::ItemFn {
+                        attrs: Vec::new(),
+                        vis: syn::Visibility::Inherited,
+                        sig: syn::parse_str("fn score_node()").unwrap(),
+                        block: Box::new(syn::Block {
+                            brace_token: Default::default(),
+                            stmts: Vec::new(),
+                        }),
+                    }
+                })
+            })
+            .ok();
+
+        let decision = if let Some(item_fn) = parsed_fn.filter(|f| f.sig.ident == "score_node") {
+            let interpreter = AstInterpreter::new(&item_fn, fuel_limit);
+            let total_res_cpu: u32 = node_levels
+                .iter()
+                .map(|&(u, _)| node_capacity.0.saturating_sub(u))
+                .sum();
+            let total_res_ram: u32 = node_levels
+                .iter()
+                .map(|&(_, r)| node_capacity.1.saturating_sub(r))
+                .sum();
+            let n_nodes = node_levels.len().max(1) as f64;
+            let mean_cpu_residual = total_res_cpu as f64 / n_nodes;
+            let mean_ram_residual = total_res_ram as f64 / n_nodes;
+
+            let mut best_idx = None;
+            let mut best_score = f64::MAX;
+
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                fuel_consumed += 10;
+                if fuel_consumed > fuel_limit {
+                    return Err(SandboxError::FuelLimitExceeded {
+                        fuel_consumed,
+                        fuel_limit,
+                    });
+                }
+
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    let res_cpu = node_capacity.0 - (used_cpu + job_cpu);
+                    let res_ram = node_capacity.1 - (used_ram + job_ram);
+                    let ctx = SchedulingInputs {
+                        job_cpu,
+                        job_ram,
+                        next_job_cpu,
+                        next_job_ram,
+                        node_residual_cpu: res_cpu,
+                        node_residual_ram: res_ram,
+                        node_capacity_cpu: node_capacity.0,
+                        node_capacity_ram: node_capacity.1,
+                        step_index,
+                        total_jobs,
+                        active_nodes_count: node_levels.len(),
+                        mean_cpu_residual,
+                        mean_ram_residual,
+                    };
+                    let outcome = interpreter
+                        .eval_scheduling(&ctx)
+                        .map_err(|e| SandboxError::ExecutionCrash(e.to_string()))?;
+                    fuel_consumed += outcome.fuel_consumed;
+                    if fuel_consumed > fuel_limit {
+                        return Err(SandboxError::FuelLimitExceeded {
+                            fuel_consumed,
+                            fuel_limit,
+                        });
+                    }
+                    if outcome.score < best_score {
+                        best_score = outcome.score;
+                        best_idx = Some(idx);
+                    }
+                }
+            }
+
+            match best_idx {
+                Some(idx) => SchedulingDecision::PlaceOnNode(idx),
+                None => SchedulingDecision::OpenNewNode,
+            }
+        } else {
+            // Fallback: first fit
+            let mut found = None;
+            for (idx, &(used_cpu, used_ram)) in node_levels.iter().enumerate() {
+                if used_cpu + job_cpu <= node_capacity.0 && used_ram + job_ram <= node_capacity.1 {
+                    found = Some(idx);
+                    break;
+                }
+            }
+            match found {
+                Some(idx) => SchedulingDecision::PlaceOnNode(idx),
+                None => SchedulingDecision::OpenNewNode,
+            }
+        };
+
+        // Safety verification
+        if let SchedulingDecision::PlaceOnNode(idx) = decision {
+            if idx >= node_levels.len() {
+                return Err(SandboxError::InvalidBinIndex {
+                    index: idx,
+                    open_bins: node_levels.len(),
+                });
+            }
+            let (u_cpu, u_ram) = node_levels[idx];
+            if u_cpu + job_cpu > node_capacity.0 || u_ram + job_ram > node_capacity.1 {
+                return Err(SandboxError::CapacityOverflow {
+                    index: idx,
+                    current_level: u_cpu.max(u_ram),
+                    weight: job_cpu.max(job_ram),
+                    capacity: node_capacity.0.max(node_capacity.1),
+                });
+            }
+        }
+
+        Ok(SchedulingExecutionOutcome {
             decision,
             fuel_consumed,
         })
@@ -390,3 +805,16 @@ fn extract_bool_param(text: &str, param_name: &str) -> Option<bool> {
     None
 }
 
+/// Indique si le bac vide virtuel fait partie des candidats notes par `score_bin`.
+/// Active par `NOMAD_BP_ALLOW_OPEN=1` ou par le profil `NOMAD_BP_PROFILE=weibull`.
+/// Lu une seule fois par processus.
+pub fn allow_open_new_bin() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| {
+        let on = |k: &str, v: &str| std::env::var(k).map(|x| x == v).unwrap_or(false);
+        if on("NOMAD_BP_ALLOW_OPEN", "0") {
+            return false;
+        }
+        on("NOMAD_BP_ALLOW_OPEN", "1") || on("NOMAD_BP_PROFILE", "weibull")
+    })
+}

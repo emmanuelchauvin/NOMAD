@@ -1,0 +1,83 @@
+[2m2026-11-14T08:58:07.046579Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8034, Pop=8, MaxGens=192
+[2m2026-11-14T12:57:15.357831Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule fc7e27ef02e8be77 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8034 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4127 bins (excess: +98), Efficiency: 97.63%, Fuel: 75217656
+ Best In-Dist (w/o Lookahead) : 4157 bins (excess: +128), Efficiency: 96.92%
+ Dynamic Trajectory: tLDR = 1.8906
+ Behavior Profile : DeadSpaceRatio: 1.3%, NewBinRatio: 41.3%, ResVar: 0.63
+ MAP-Elites Niches: 31 active (31.0% coverage), QD-Score: 27.719
+ Validation Score : 4184 bins (excess: +119), Efficiency: 97.16%
+ OOD-1 Score      : 10068 bins (excess: +67), Efficiency: 99.33%
+ OOD-2 Score      : 3591 bins (excess: +73), Efficiency: 97.97%
+ Lineage Nodes    : 1359, Transitions: 854
+ Best Heuristic   : LLM-Seed-091-mut-g56-mut-g63-mut-g80-mut-g80-mut-g81-mut-g98-mut-g111-mut-g135-mut-g136-mut-g136-mut-g144-mut-g146-mut-g148-mut-g175-mut-g178
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+    let progress = step_index as f64 / total_items as f64;
+
+    // 1. Refined Harmonic Penalty: Adjusted range to 42 for smoother decay.
+    if post_residual > 0 && post_residual < 42 {
+        score += (260.0 - (post_residual as f64 * 4.6)) * (1.22 + progress * 0.92);
+    }
+
+    // 2. Lookahead Synergy: Strengthened future-fit reward by coupling slack with density.
+    if next_item_size > 0 {
+        if post_residual >= next_item_size {
+            let slack = (post_residual - next_item_size) as f64;
+            score -= (430.0 / (1.0 + slack.powf(1.42))) * (1.42 - progress * 0.22);
+        } else if post_residual > 0 {
+            score += 385.0 * (1.15 - progress) * (1.0 + (open_bins_count as f64 / 28.0));
+        }
+    }
+
+    // 3. Fragmentation Avoidance: Targets micro-voids; adjusted threshold.
+    if post_residual > 0 && post_residual < 16 {
+        score += 920.0 * (1.0 + progress * 0.65);
+    }
+
+    // 4. Dynamic New Bin Thresholding: Exponential cost curve to discourage early sprawl.
+    if bin_residual == bin_capacity {
+        let mut new_bin_cost = 580.0 + (mean_residual * 8.0);
+        if progress > 0.02 {
+            new_bin_cost += 2400.0 * (progress - 0.02).powf(3.1);
+        }
+        score += new_bin_cost;
+    } else {
+        let dev = (bin_residual as f64 - mean_residual).abs();
+        score += dev * 3.7;
+        if post_residual < 20 {
+            score -= 280.0 * (1.0 - progress * 0.28);
+        }
+    }
+
+    // 5. Global Density Momentum: Increased weight on capacity utilization.
+    score -= (bin_capacity - bin_residual) as f64 * 1.35;
+
+    // 6. Mid-Range Sink: Targeted consolidation for higher-frequency item clusters.
+    if post_residual >= 20 && post_residual <= 58 {
+        score -= 260.0 * (1.0 + progress * 0.35);
+    }
+
+    // 7. Fitting Pressure: Elevated penalty for early-stage waste when open bin count is low.
+    if fitting_bins_count <= 5 && bin_residual >= item_size {
+        score -= 900.0 * (1.15 - progress * 0.35);
+    }
+
+    // 8. Adaptive Consolidation: Non-linear penalty for excessive open bin sprawl.
+    if open_bins_count > 2 {
+        score += (open_bins_count as f64 * 12.5) * (1.0 + progress.powf(2.5));
+    }
+
+    // 9. Residual Parity: Stronger reward for zero-residual bins.
+    if post_residual == 0 {
+        score -= 180.0 * (1.0 + progress * 2.1);
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8034_evolution.json.tmp

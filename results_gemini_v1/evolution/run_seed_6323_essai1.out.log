@@ -1,0 +1,79 @@
+2026-11-13T20:13:14.491499Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=6323, Pop=8, MaxGens=10
+2026-11-13T20:21:00.920230Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 03c7fc6a306bd276 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 6323 | Generations: 10
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4164 bins (excess: +162), Efficiency: 96.11%, Fuel: 26145300
+ Best In-Dist (w/o Lookahead) : 4159 bins (excess: +157), Efficiency: 96.23%
+ Dynamic Trajectory: tLDR = 0.3411
+ Behavior Profile : DeadSpaceRatio: 62.3%, NewBinRatio: 41.6%, ResVar: 0.47
+ MAP-Elites Niches: 7 active (7.0% coverage), QD-Score: 5.317
+ Validation Score : 4184 bins (excess: +150), Efficiency: 96.42%
+ OOD-1 Score      : 10378 bins (excess: +342), Efficiency: 96.71%
+ OOD-2 Score      : 3618 bins (excess: +74), Efficiency: 97.96%
+ Lineage Nodes    : 85, Transitions: 54
+ Best Heuristic   : LLM-Seed-017-mut-g2-mut-g2-mut-g2-mut-g3
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let is_new_bin = bin_residual == bin_capacity;
+    let progress = step_index as f64 / total_items as f64;
+    let fill_ratio = (bin_capacity - bin_residual) as f64 / bin_capacity as f64;
+    
+    let mut score = post_residual as f64;
+
+    if is_new_bin {
+        // Aggressive scaling of new bin penalty based on progress and current fragmentation
+        // We use mean_residual as a proxy for global fragmentation to throttle new bin creation
+        let dynamic_penalty = (open_bins_count as f64 * 32.0) * (1.15 + progress.powi(3)) + (mean_residual * 1.5);
+        score += dynamic_penalty;
+    } else {
+        // Refined micro-fragmentation penalty: 
+        // Penalize residuals that fall in the "dead zone" (1-22), slightly expanded 
+        // because smaller items are often better packed in groups.
+        if post_residual > 0 && post_residual < 23 {
+            score += 92.0 - (post_residual as f64 * 0.75);
+        }
+
+        // Lookahead Synergy:
+        // Reward bins that can accommodate the next item.
+        if next_item_size > 0 {
+            if post_residual >= next_item_size {
+                score -= 64.0;
+                if post_residual == next_item_size {
+                    score -= 56.0; 
+                }
+            } else {
+                // Heavier penalty for blocking the next item early in the stream
+                score += 44.0 * (1.0 - progress.sqrt());
+            }
+        }
+
+        // Fitting Scarcity: 
+        // If this is the only bin that fits, it is non-negotiable.
+        if fitting_bins_count == 1 {
+            score -= 150.0;
+        }
+
+        // Adaptive Compaction:
+        // Reward bins that pull the residual closer to the global mean, 
+        // but penalize bins that are significantly below average efficiency.
+        let residual_diff = post_residual as f64 - mean_residual;
+        if residual_diff < 0.0 {
+            score -= 42.0 * fill_ratio;
+        } else {
+            score += residual_diff * 0.65;
+        }
+
+        // Efficiency Floor: 
+        // Penalize bins that remain < 60% full more aggressively 
+        // to prevent the accumulation of "low-density" bins.
+        if fill_ratio < 0.60 {
+            score += 35.0 * (0.60 - fill_ratio);
+        }
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_v1\evolution\run_seed_6323_evolution.json.tmp

@@ -1,0 +1,92 @@
+[2m2026-11-14T13:53:04.338472Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Starting NOMAD Experiment: Group=GroupD, Seed=8187, Pop=8, MaxGens=192
+[2m2026-11-14T17:12:14.085937Z[0m [32m INFO[0m [2mnomad_orchestrator::engine[0m[2m:[0m Evaluating winning capsule 816ee22f843947dc on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 8187 | Generations: 192
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4055 bins (excess: +34), Efficiency: 99.16%, Fuel: 77162662
+ Best In-Dist (w/o Lookahead) : 4190 bins (excess: +169), Efficiency: 95.97%
+ Dynamic Trajectory: tLDR = 1.5679
+ Behavior Profile : DeadSpaceRatio: 10.3%, NewBinRatio: 40.6%, ResVar: 0.43
+ MAP-Elites Niches: 18 active (18.0% coverage), QD-Score: 14.296
+ Validation Score : 4045 bins (excess: +32), Efficiency: 99.21%
+ OOD-1 Score      : 10131 bins (excess: +51), Efficiency: 99.50%
+ OOD-2 Score      : 3566 bins (excess: +34), Efficiency: 99.05%
+ Lineage Nodes    : 1359, Transitions: 902
+ Best Heuristic   : LLM-Seed-011-mut-g5-mut-g8-mut-g12-mut-g51-mut-g54-mut-g56-mut-g58-mut-g60-mut-g66-mut-g92-mut-g92-mut-g149-mut-g154-mut-g183
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64 * 2.15;
+    let progress = (step_index as f64 / total_items as f64).clamp(0.0, 1.0);
+    let is_new_bin = bin_residual == bin_capacity;
+
+    // 1. Enhanced Predictive Lookahead: Refined penalty for blocking immediate next item.
+    if next_item_size > 0 && post_residual > 0 {
+        if post_residual < next_item_size {
+            score += (next_item_size - post_residual) as f64 * 880.0;
+        } else if post_residual == next_item_size {
+            score -= 1550.0;
+        } else {
+            score -= (380.0 - ((post_residual - next_item_size) as f64 * 4.5)).clamp(0.0, 380.0);
+        }
+    }
+
+    // 2. Non-linear Utilization: Power law increased for tighter space-filling density.
+    let utilization = (bin_capacity - post_residual) as f64 / bin_capacity as f64;
+    score -= (utilization.powf(21.5) * 5100.0);
+
+    // 3. Adaptive New Bin Gate: Stricter gating to minimize bin proliferation.
+    if is_new_bin {
+        let density_factor = (open_bins_count as f64 / (total_items as f64 / 96.0 + 5.0)).min(6.2);
+        score += 2400.0 + (density_factor * 2800.0) * (1.1 - progress);
+    } else {
+        score -= (bin_capacity - bin_residual) as f64 * 6.4;
+    }
+
+    // 4. Anti-Fragmentation: Aggressive suppression of "sliver" residuals (1-22 range).
+    if post_residual > 0 && post_residual <= 22 {
+        score += 4800.0 - (post_residual as f64 * 215.0);
+    } else if post_residual > 22 && post_residual <= 30 {
+        score += 950.0;
+    } else if post_residual > 30 {
+        score -= 1050.0 * (post_residual as f64 / bin_capacity as f64);
+    }
+
+    // 5. Global Mean Coupling: Weighted variance penalty with increased sensitivity.
+    score += (post_residual as f64 - mean_residual).abs() * (32.0 + progress * 28.0);
+
+    // 6. Late-stage Compaction: Exponentially aggressive finalization.
+    if progress > 0.92 {
+        if is_new_bin {
+            score += 95000.0 * progress.powi(48); 
+        } else {
+            score -= (bin_capacity - post_residual) as f64 * 1450.0;
+            if post_residual < 9 { score -= 8800.0; }
+        }
+    }
+
+    // 7. Fitting Bin Density Bonus: Encourages consolidation based on remaining potential.
+    if fitting_bins_count > 0 {
+        score -= (fitting_bins_count as f64).sqrt() * 520.0 * (1.0 - progress.powf(0.9));
+    }
+
+    // 8. Lookahead Coupling: Increased penalty for fragmentation-prone bin choices.
+    if !is_new_bin && next_item_size > 0 && post_residual < next_item_size {
+        score += 3100.0;
+    }
+
+    // 9. Harmonic Alignment: Modular preference for common sub-capacities to reduce entropy.
+    if post_residual != 0 {
+        let align = if post_residual % 25 == 0 { 950.0 }
+                    else if post_residual % 20 == 0 { 750.0 }
+                    else if post_residual % 10 == 0 { 550.0 }
+                    else if post_residual % 5 == 0 { 400.0 }
+                    else if post_residual % 2 == 0 { 220.0 }
+                    else { 0.0 };
+        score -= align;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_courbe\evolution\run_seed_8187_evolution.json.tmp

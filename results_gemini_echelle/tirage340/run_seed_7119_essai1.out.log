@@ -1,0 +1,58 @@
+2026-11-14T03:29:19.073460Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7119, Pop=340, MaxGens=1
+2026-11-14T04:01:17.409834Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 1888575babc6c26d on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7119 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4166 bins (excess: +152), Efficiency: 96.36%, Fuel: 42686746
+ Best In-Dist (w/o Lookahead) : 4307 bins (excess: +293), Efficiency: 93.20%
+ Dynamic Trajectory: tLDR = 1.3114
+ Behavior Profile : DeadSpaceRatio: 12.8%, NewBinRatio: 41.7%, ResVar: 0.78
+ MAP-Elites Niches: 8 active (8.0% coverage), QD-Score: 5.653
+ Validation Score : 4194 bins (excess: +164), Efficiency: 96.10%
+ OOD-1 Score      : 10237 bins (excess: +183), Efficiency: 98.21%
+ OOD-2 Score      : 3658 bins (excess: +93), Efficiency: 97.46%
+ Lineage Nodes    : 340, Transitions: 0
+ Best Heuristic   : LLM-Seed-212
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // 1. Dead Space Penalty: If the post_residual is small (1..9), it creates "slivers" 
+    // that are unusable for future items (min size 10). Penalize heavily.
+    if post_residual > 0 && post_residual < 10 {
+        score += 500.0 / (post_residual as f64);
+    }
+
+    // 2. Lookahead Synergy: If the next item fits into the remaining space, favor this bin.
+    if next_item_size > 0 && next_item_size <= post_residual {
+        score -= 200.0;
+    }
+
+    // 3. Open Bin Pressure: If we have many open bins, penalize opening a new one.
+    // If fitting_bins_count is 0, we are evaluating the "New Bin" option.
+    if fitting_bins_count == 0 {
+        score += (open_bins_count as f64) * 15.0;
+    } else {
+        // If we have options, prefer bins that are closer to the mean residual to keep
+        // the packing density uniform across active bins.
+        let diff = (post_residual as f64 - mean_residual).abs();
+        score += diff * 0.5;
+    }
+
+    // 4. Tightness Reward: Favor bins that result in a perfectly filled bin (0 residual).
+    if post_residual == 0 {
+        score -= 300.0;
+    }
+
+    // 5. Progression Scaling: As we reach the end of the stream, prioritize 
+    // closing bins over opening new ones.
+    let progress = step_index as f64 / total_items as f64;
+    if fitting_bins_count == 0 {
+        score += progress * 100.0;
+    }
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\tirage340\run_seed_7119_tirage340.json.tmp

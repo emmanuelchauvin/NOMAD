@@ -1,0 +1,60 @@
+2026-11-14T02:54:21.074368Z  INFO nomad_orchestrator::engine: Starting NOMAD Experiment: Group=GroupD, Seed=7374, Pop=340, MaxGens=1
+2026-11-14T03:27:18.699784Z  INFO nomad_orchestrator::engine: Evaluating winning capsule 23305015a6402248 on validation and OOD benchmarks...
+
+============================================================
+ Run Completed: Group D (Mutation-Only Selection)
+ Seed: 7374 | Generations: 1
+------------------------------------------------------------
+ Best In-Dist (w/ Lookahead)  : 4168 bins (excess: +147), Efficiency: 96.47%, Fuel: 26379922
+ Best In-Dist (w/o Lookahead) : 4168 bins (excess: +147), Efficiency: 96.47%
+ Dynamic Trajectory: tLDR = 0.4993
+ Behavior Profile : DeadSpaceRatio: 58.1%, NewBinRatio: 41.7%, ResVar: 0.48
+ MAP-Elites Niches: 11 active (11.0% coverage), QD-Score: 7.182
+ Validation Score : 4190 bins (excess: +160), Efficiency: 96.18%
+ OOD-1 Score      : 10395 bins (excess: +317), Efficiency: 96.95%
+ OOD-2 Score      : 3616 bins (excess: +73), Efficiency: 97.98%
+ Lineage Nodes    : 340, Transitions: 0
+ Best Heuristic   : LLM-Seed-286
+ Logic Code       : pub fn score_bin(item_size: u32, bin_residual: u32, bin_capacity: u32, step_index: usize, total_items: usize, open_bins_count: usize, mean_residual: f64, next_item_size: u32, post_residual: u32, fitting_bins_count: usize) -> f64 {
+    let mut score = post_residual as f64;
+
+    // Penalty for creating a "sliver" (fragmentation) that is too small for common items
+    if post_residual > 0 && post_residual < 20 {
+        score += 45.0;
+    }
+
+    // Encourage filling bins that are already partially full (Best Fit logic)
+    // We prioritize bins where the post_residual is low, but avoid the 1-9 sliver range.
+    if post_residual == 0 {
+        score -= 20.0;
+    }
+
+    // Lookahead logic: if the next item can fit in the post_residual, reward this placement
+    if next_item_size > 0 && post_residual >= next_item_size {
+        score -= 30.0;
+    }
+
+    // Harmonic/Modulo logic: prioritize leaving space that is a multiple of 25 (e.g., 25, 50, 75)
+    // as these are common divisors for items in typical bin packing distributions
+    if post_residual % 25 == 0 && post_residual > 0 {
+        score -= 15.0;
+    }
+
+    // Penalty for opening a new bin if other bins are available
+    if bin_residual == bin_capacity && open_bins_count > 0 {
+        score += 35.0;
+    }
+
+    // If this is the last chance for this item, reduce penalty to prevent unnecessary new bin creation
+    if fitting_bins_count == 1 && bin_residual != bin_capacity {
+        score -= 25.0;
+    }
+
+    // Progression weight: as we near the end of the stream, prioritize tight fitting
+    let progress = step_index as f64 / total_items as f64;
+    score += progress * 10.0;
+
+    score
+}
+============================================================
+Report written to G:\devs\Antigravity\NOMAD\results_gemini_echelle\tirage340\run_seed_7374_tirage340.json.tmp

@@ -1,0 +1,1236 @@
+{
+  "group": "GroupD",
+  "rng_seed": 1000,
+  "total_generations": 5,
+  "best_in_distribution_score": {
+    "is_valid": true,
+    "total_bins": 397,
+    "total_theoretical_min_bins": 384,
+    "total_excess_bins": 13,
+    "mean_efficiency": 0.9680555555555556,
+    "total_fuel": 305340,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 13.194723462301589,
+      "new_bin_ratio": 0.1588,
+      "mean_fullness": 0.9680555555555556,
+      "dead_space_ratio": 0.16305555555555556
+    },
+    "tldr_score": -0.13194723462301589,
+    "trajectory_metrics": null
+  },
+  "best_score_without_lookahead": {
+    "is_valid": true,
+    "total_bins": 397,
+    "total_theoretical_min_bins": 384,
+    "total_excess_bins": 13,
+    "mean_efficiency": 0.9680555555555556,
+    "total_fuel": 305340,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 13.194723462301589,
+      "new_bin_ratio": 0.1588,
+      "mean_fullness": 0.9680555555555556,
+      "dead_space_ratio": 0.16305555555555556
+    },
+    "tldr_score": -0.13194723462301589,
+    "trajectory_metrics": null
+  },
+  "best_validation_score": {
+    "is_valid": true,
+    "total_bins": 391,
+    "total_theoretical_min_bins": 378,
+    "total_excess_bins": 13,
+    "mean_efficiency": 0.9680555555555554,
+    "total_fuel": 305845,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 11.135044642857142,
+      "new_bin_ratio": 0.1564,
+      "mean_fullness": 0.9680555555555554,
+      "dead_space_ratio": 0.15857142857142856
+    },
+    "tldr_score": -0.11135044642857142,
+    "trajectory_metrics": null
+  },
+  "best_ood1_score": {
+    "is_valid": true,
+    "total_bins": 2200,
+    "total_theoretical_min_bins": 2121,
+    "total_excess_bins": 79,
+    "mean_efficiency": 0.9641246817444995,
+    "total_fuel": 4766700,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 10.385174251041764,
+      "new_bin_ratio": 0.88,
+      "mean_fullness": 0.9641246817444995,
+      "dead_space_ratio": 0.300880265897455
+    },
+    "tldr_score": -0.10385174251041765,
+    "trajectory_metrics": null
+  },
+  "best_ood2_score": {
+    "is_valid": true,
+    "total_bins": 1810,
+    "total_theoretical_min_bins": 1522,
+    "total_excess_bins": 288,
+    "mean_efficiency": 0.842489147629628,
+    "total_fuel": 1840260,
+    "solved_instances": 50,
+    "total_instances": 50,
+    "behavior": {
+      "residual_variance": 19.66253339437931,
+      "new_bin_ratio": 0.724,
+      "mean_fullness": 0.842489147629628,
+      "dead_space_ratio": 0.03993683755254961
+    },
+    "tldr_score": -0.19662533394379308,
+    "trajectory_metrics": null
+  },
+  "best_capsule": {
+    "id": "c3839f5dd9548bd3",
+    "name": "LLM-Seed-001",
+    "semantic_interface": "AST Seed synthesized by qwen2.5-coder:7b",
+    "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, _node_capacity_cpu: u32, _node_capacity_ram: u32, step_index: usize, total_jobs: usize, _active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = (node_residual_cpu as f64 - job_cpu as f64) / mean_cpu_residual;\n    let ram_norm = (node_residual_ram as f64 - job_ram as f64) / mean_ram_residual;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let score = imbalance.powi(2); // Non-linear penalty for imbalance\n    score\n}",
+    "parent_ids": [],
+    "generation": 0,
+    "content_hash": "c3839f5dd9548bd30198406f8c999f7b6fa738a1cc6b7a689434ef45f9bd88c9",
+    "created_at": "2026-11-11T09:35:49.613978900Z",
+    "metadata": {
+      "seed": "17712111878484182906",
+      "operator": "HttpLlamaOperator"
+    },
+    "interface_version": "ScorePolicyV1",
+    "policy_kind": "ScorePolicy",
+    "ast_fingerprint": {
+      "max_depth": 5,
+      "branch_count": 0,
+      "op_count": 5,
+      "statement_count": 5,
+      "ast_hash": "da3ce70bceca09583f978e67f2a7fde48423c2da21eb10e684729febc2bb7228"
+    },
+    "dependencies": [],
+    "validation": "PassedLevel2Computational",
+    "graft_manifest": null
+  },
+  "generations_history": [
+    {
+      "generation": 1,
+      "best_bins": 397,
+      "best_efficiency": 0.9680555555555556,
+      "best_fuel": 305340,
+      "best_capsule_id": "c3839f5dd9548bd3",
+      "best_capsule_name": "LLM-Seed-001",
+      "llm_calls_consumed": 10,
+      "executions_consumed": 500,
+      "qd_score": 1.9058333333333333,
+      "archive_coverage": 0.02,
+      "occupied_niches": 2,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    },
+    {
+      "generation": 2,
+      "best_bins": 397,
+      "best_efficiency": 0.9680555555555556,
+      "best_fuel": 305340,
+      "best_capsule_id": "c3839f5dd9548bd3",
+      "best_capsule_name": "LLM-Seed-001",
+      "llm_calls_consumed": 19,
+      "executions_consumed": 950,
+      "qd_score": 1.9058333333333333,
+      "archive_coverage": 0.02,
+      "occupied_niches": 2,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    },
+    {
+      "generation": 3,
+      "best_bins": 397,
+      "best_efficiency": 0.9680555555555556,
+      "best_fuel": 305340,
+      "best_capsule_id": "c3839f5dd9548bd3",
+      "best_capsule_name": "LLM-Seed-001",
+      "llm_calls_consumed": 28,
+      "executions_consumed": 1400,
+      "qd_score": 1.9058333333333333,
+      "archive_coverage": 0.02,
+      "occupied_niches": 2,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    },
+    {
+      "generation": 4,
+      "best_bins": 397,
+      "best_efficiency": 0.9680555555555556,
+      "best_fuel": 305340,
+      "best_capsule_id": "c3839f5dd9548bd3",
+      "best_capsule_name": "LLM-Seed-001",
+      "llm_calls_consumed": 37,
+      "executions_consumed": 1850,
+      "qd_score": 3.837222222222222,
+      "archive_coverage": 0.04,
+      "occupied_niches": 4,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    },
+    {
+      "generation": 5,
+      "best_bins": 397,
+      "best_efficiency": 0.9680555555555556,
+      "best_fuel": 305340,
+      "best_capsule_id": "c3839f5dd9548bd3",
+      "best_capsule_name": "LLM-Seed-001",
+      "llm_calls_consumed": 46,
+      "executions_consumed": 2300,
+      "qd_score": 3.837222222222222,
+      "archive_coverage": 0.04,
+      "occupied_niches": 4,
+      "crossover_rate": 0.0,
+      "crossover_not_evaluable_count": 0,
+      "crossover_rejected_count": 0
+    }
+  ],
+  "budget_consumed": {
+    "llm_calls_consumed": 46,
+    "executions_consumed": 2300
+  },
+  "total_lineage_nodes": 46,
+  "total_lineage_edges": 36,
+  "phylogeny": {
+    "graph": {
+      "nodes": [
+        {
+          "id": "82ebfab3cdf96bae",
+          "name": "LLM-Seed-000",
+          "generation": 0,
+          "content_hash": "82ebfab3cdf96bae661e2fa2d5e26d8df6c7f3cae94ac9bde0ca9a0407439ecb",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:35:47.543532300Z"
+        },
+        {
+          "id": "c3839f5dd9548bd3",
+          "name": "LLM-Seed-001",
+          "generation": 0,
+          "content_hash": "c3839f5dd9548bd30198406f8c999f7b6fa738a1cc6b7a689434ef45f9bd88c9",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:35:49.613978900Z"
+        },
+        {
+          "id": "f20595045f8ba9ce",
+          "name": "LLM-Seed-002",
+          "generation": 0,
+          "content_hash": "f20595045f8ba9cef0cfd4ab01512b3f896f399cdc0de4bb196598ffae79f8c7",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:35:52.023042600Z"
+        },
+        {
+          "id": "93a9ca9b7336542b",
+          "name": "LLM-Seed-003",
+          "generation": 0,
+          "content_hash": "93a9ca9b7336542bc6f0ba53fe8e0c72f04af62b4a1117c526ad7ab7f845fdb2",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:35:54.947103300Z"
+        },
+        {
+          "id": "baea81245308a82e",
+          "name": "LLM-Seed-004",
+          "generation": 0,
+          "content_hash": "baea81245308a82e1098a111720c04d61aeb4a1cea30a2efdbe21dc2fe362afe",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:35:58.831522Z"
+        },
+        {
+          "id": "d699ca9eeed35bd9",
+          "name": "LLM-Seed-005",
+          "generation": 0,
+          "content_hash": "d699ca9eeed35bd951fbcb7570a19b889baa488120d2ef810713419373adba77",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:02.253601700Z"
+        },
+        {
+          "id": "132970223ffe01af",
+          "name": "LLM-Seed-006",
+          "generation": 0,
+          "content_hash": "132970223ffe01af21b26a80120120df38ff159f14de068f679f5f7651e71650",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:05.037007700Z"
+        },
+        {
+          "id": "fee2796698122474",
+          "name": "LLM-Seed-007",
+          "generation": 0,
+          "content_hash": "fee2796698122474b5a19b579df8b64bde03fcb986e3f85632476250e488e662",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:07.614654800Z"
+        },
+        {
+          "id": "f4a29ca4029c88b6",
+          "name": "LLM-Seed-008",
+          "generation": 0,
+          "content_hash": "f4a29ca4029c88b6eadb7bcf66f6f031ec841c93855a74d0d840ce386b480c40",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:10.793674200Z"
+        },
+        {
+          "id": "9a7f2d7681f28e56",
+          "name": "LLM-Seed-009",
+          "generation": 0,
+          "content_hash": "9a7f2d7681f28e56f70a78a3704c0a1af4201dc619f432647dfcadef0b48ce13",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:14.077171200Z"
+        },
+        {
+          "id": "21cc84d203a78a8d",
+          "name": "LLM-Seed-001-mut-g1",
+          "generation": 1,
+          "content_hash": "21cc84d203a78a8d3dd25c98d9163512eeb775ee18db9e90bdc8b16fccb71261",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:16.819948200Z"
+        },
+        {
+          "id": "e9a9ce9e4eb64485",
+          "name": "LLM-Seed-005-mut-g1",
+          "generation": 1,
+          "content_hash": "e9a9ce9e4eb64485b9245bd883fd83d65ba33cb6f197f642779fbddbc62ea1a2",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:20.736573600Z"
+        },
+        {
+          "id": "3504e218967a07b1",
+          "name": "LLM-Seed-001-mut-g1",
+          "generation": 1,
+          "content_hash": "3504e218967a07b1b9b11da5f1ca344867d0613a3ee86aa609306239c906446d",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:23.785017200Z"
+        },
+        {
+          "id": "bb99806992c2ba42",
+          "name": "LLM-Seed-005-mut-g1",
+          "generation": 1,
+          "content_hash": "bb99806992c2ba4293c6deae29bc7ce32ee82d4232a9da49b17ea86373b72b63",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:27.916775800Z"
+        },
+        {
+          "id": "19d65a66723d5810",
+          "name": "LLM-Seed-001-mut-g1",
+          "generation": 1,
+          "content_hash": "19d65a66723d58107cfdd0d13995e68d8a38aadbff129366ba7f5e010c22baf6",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:31.430561500Z"
+        },
+        {
+          "id": "fdcbfc32b0caba90",
+          "name": "LLM-Seed-005-mut-g1",
+          "generation": 1,
+          "content_hash": "fdcbfc32b0caba90ecb5ef5b12b33a52255613b8d49f47a73cf8a18f20bc495b",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:35.912056900Z"
+        },
+        {
+          "id": "08f035363d02aec9",
+          "name": "LLM-Seed-001-mut-g1",
+          "generation": 1,
+          "content_hash": "08f035363d02aec963707ed99d430243cfab2b3b70ce7a65ff0f112de293878f",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:39.301182200Z"
+        },
+        {
+          "id": "6dd615acc55fb40e",
+          "name": "LLM-Seed-005-mut-g1",
+          "generation": 1,
+          "content_hash": "6dd615acc55fb40e3eee8bc150d9fd70e165bd407478f51c8a2432154f24fec0",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:43.228683300Z"
+        },
+        {
+          "id": "cd0f9591b96574c0",
+          "name": "LLM-Seed-001-mut-g1",
+          "generation": 1,
+          "content_hash": "cd0f9591b96574c066314f7f8693181bf2c2f03135f11af0c9b5039327d040c6",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:46.219811400Z"
+        },
+        {
+          "id": "5fb242613a557d2a",
+          "name": "LLM-Seed-005-mut-g2",
+          "generation": 2,
+          "content_hash": "5fb242613a557d2a0262744ceedcb01dd4f1c9288966a0c3de5c3c01beede38a",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:50.515965900Z"
+        },
+        {
+          "id": "ff449713569fad2e",
+          "name": "LLM-Seed-001-mut-g2",
+          "generation": 2,
+          "content_hash": "ff449713569fad2e281766a17fbfe4ac38b4326417572b34bb16ce1f2390059e",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:53.576744700Z"
+        },
+        {
+          "id": "470a301e970cbc3d",
+          "name": "LLM-Seed-005-mut-g2",
+          "generation": 2,
+          "content_hash": "470a301e970cbc3dafe02d38e4c21275c028f23329e43ab3688a34f81e916d3a",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:36:57.493681800Z"
+        },
+        {
+          "id": "d4625bd0f9eed365",
+          "name": "LLM-Seed-001-mut-g2",
+          "generation": 2,
+          "content_hash": "d4625bd0f9eed36556d4d1c02ba7723109431eef551ba043a216bfa8ecf73934",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:00.847421300Z"
+        },
+        {
+          "id": "307eafb3c0e89005",
+          "name": "LLM-Seed-005-mut-g2",
+          "generation": 2,
+          "content_hash": "307eafb3c0e890058b0bb32c821f2edaaa7081fa51783720805370ea6718b36d",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:05.048537100Z"
+        },
+        {
+          "id": "099bc3c55fc0a21d",
+          "name": "LLM-Seed-001-mut-g2",
+          "generation": 2,
+          "content_hash": "099bc3c55fc0a21d9a939a823130a29c3d55726ba02b2d47345ccb7c4ca75141",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:08.093120100Z"
+        },
+        {
+          "id": "17f8a43fc3cff29c",
+          "name": "LLM-Seed-005-mut-g2",
+          "generation": 2,
+          "content_hash": "17f8a43fc3cff29c4996fb190a43888e3f70f360880a305344676b104253a333",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:11.996897900Z"
+        },
+        {
+          "id": "a164e0c80f13e05d",
+          "name": "LLM-Seed-001-mut-g2",
+          "generation": 2,
+          "content_hash": "a164e0c80f13e05d1dc21a2e8ce0cc095b9971689a55cd9d2f5e2334b26612d6",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:16.192517700Z"
+        },
+        {
+          "id": "8675e5ecb92476dc",
+          "name": "LLM-Seed-005-mut-g2",
+          "generation": 2,
+          "content_hash": "8675e5ecb92476dc2d567992cd49b4e71f40cccc97727c703b9aa2b6717940c1",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:20.899176800Z"
+        },
+        {
+          "id": "65d88e4751fd4478",
+          "name": "LLM-Seed-001-mut-g3",
+          "generation": 3,
+          "content_hash": "65d88e4751fd447865cf917e7bc782b5a948c920b2792ed6b6c3ef0f99f759c6",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:25.064060100Z"
+        },
+        {
+          "id": "8413e3342313ba30",
+          "name": "LLM-Seed-001-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "8413e3342313ba3018f33ae98d8cfcdce470eec7b3a77c00d9b0e419a0a7e3a9",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:30.264168200Z"
+        },
+        {
+          "id": "cf13129484ee6ff0",
+          "name": "LLM-Seed-001-mut-g3-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "cf13129484ee6ff07282a77815198688066dbe8197abc56c402803b27778ee47",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:35.636024400Z"
+        },
+        {
+          "id": "9a183aabf935e08c",
+          "name": "LLM-Seed-001-mut-g3-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "9a183aabf935e08c241a30a1da7bb285550d738cbd81604243b4ed3cb5c6a712",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:41.278136Z"
+        },
+        {
+          "id": "f86992d13c34b4d2",
+          "name": "LLM-Seed-001-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "f86992d13c34b4d24c9c10558623bfb3c6abf2542239042a94523d75855360f4",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:46.268329300Z"
+        },
+        {
+          "id": "36269dc39f92f586",
+          "name": "LLM-Seed-001-mut-g3-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "36269dc39f92f586ff1432678248965bb07aeba34680584ecaa0566af47608d9",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:51.717805100Z"
+        },
+        {
+          "id": "cdd3cb034601bb06",
+          "name": "LLM-Seed-001-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "cdd3cb034601bb06252c6121ebed75e98564bc7cc33b684476ad0cf600c79b5e",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:37:56.868569200Z"
+        },
+        {
+          "id": "f5a40dfa50c5eb70",
+          "name": "LLM-Seed-001-mut-g3-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "f5a40dfa50c5eb7051176efd3f59482fee208b40686abf5c10e2ee3cf6fb421e",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:02.230996800Z"
+        },
+        {
+          "id": "cf542f7950644ce0",
+          "name": "LLM-Seed-001-mut-g3-mut-g3",
+          "generation": 3,
+          "content_hash": "cf542f7950644ce015658f25e8e3b7f21286ed6521ee439ae53a124f22a34e33",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:07.363563700Z"
+        },
+        {
+          "id": "afc8c5bb743ea69a",
+          "name": "LLM-Seed-001-mut-g3-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "afc8c5bb743ea69a11fd04b44c06952494c8e792ca1711e616d034d43ffa3a4b",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:13.258645400Z"
+        },
+        {
+          "id": "1118bfa68a9d5878",
+          "name": "LLM-Seed-001-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "1118bfa68a9d587822e935d82f75959da4e341c1ce9bf19c4fdc9923385c1a3e",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:18.339965400Z"
+        },
+        {
+          "id": "1f5c42cfe8c7694a",
+          "name": "LLM-Seed-001-mut-g3-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "1f5c42cfe8c7694a0ced4e6a2ac9c78dc263f09f5eedd666481d2215c21c53a1",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:24.116412900Z"
+        },
+        {
+          "id": "aec6da5d1f64fe91",
+          "name": "LLM-Seed-001-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "aec6da5d1f64fe91a6e96947effe1bc10989f5527b106f5ef1f15cbcfb289380",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:29.445720500Z"
+        },
+        {
+          "id": "e9687555d2c001ca",
+          "name": "LLM-Seed-001-mut-g3-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "e9687555d2c001ca6c1386abca91f3b57294f708e47d65a56958b50b5c119250",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:35.795458900Z"
+        },
+        {
+          "id": "a570b9609eb3bcef",
+          "name": "LLM-Seed-001-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "a570b9609eb3bcef4a5b3da1b49626539da3abb1088fe1921c5e1bb00fa960c0",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:41.081845Z"
+        },
+        {
+          "id": "e8cde115613eeb41",
+          "name": "LLM-Seed-001-mut-g3-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "e8cde115613eeb416dd32a93849f1c7ad85754b3908107450af930fe299dddc7",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:46.920017400Z"
+        },
+        {
+          "id": "fed2574f5416a377",
+          "name": "LLM-Seed-001-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "fed2574f5416a377ef131569aefa29054ccc827c2d5d517661eb0b3612924c9b",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:51.807535300Z"
+        },
+        {
+          "id": "a9ee4d96218b73e7",
+          "name": "LLM-Seed-001-mut-g3-mut-g3-mut-g4",
+          "generation": 4,
+          "content_hash": "a9ee4d96218b73e7f9a35cb3969c720c0d0631a59fc0529b1f73f52c46c25052",
+          "is_crossover": false,
+          "created_at": "2026-11-11T09:38:57.816620900Z"
+        }
+      ],
+      "node_holes": [],
+      "edge_property": "directed",
+      "edges": [
+        [
+          1,
+          10,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          5,
+          11,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          1,
+          12,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          5,
+          13,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          1,
+          14,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          5,
+          15,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          1,
+          16,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          5,
+          17,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          1,
+          18,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          5,
+          19,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          1,
+          20,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          5,
+          21,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          1,
+          22,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          5,
+          23,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          1,
+          24,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          5,
+          25,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          1,
+          26,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          5,
+          27,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          1,
+          28,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          29,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          29,
+          30,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          29,
+          31,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          32,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          29,
+          33,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          34,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          29,
+          35,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          36,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          29,
+          37,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          38,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          29,
+          39,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          40,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          29,
+          41,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          42,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          29,
+          43,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          28,
+          44,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ],
+        [
+          29,
+          45,
+          {
+            "Mutation": {
+              "details": "Single-parent mutation"
+            }
+          }
+        ]
+      ]
+    },
+    "node_indices": {
+      "6dd615acc55fb40e": 17,
+      "099bc3c55fc0a21d": 24,
+      "8675e5ecb92476dc": 27,
+      "fdcbfc32b0caba90": 15,
+      "82ebfab3cdf96bae": 0,
+      "132970223ffe01af": 6,
+      "e8cde115613eeb41": 43,
+      "e9a9ce9e4eb64485": 11,
+      "fee2796698122474": 7,
+      "9a183aabf935e08c": 31,
+      "f86992d13c34b4d2": 32,
+      "f20595045f8ba9ce": 2,
+      "08f035363d02aec9": 16,
+      "cd0f9591b96574c0": 18,
+      "8413e3342313ba30": 29,
+      "f5a40dfa50c5eb70": 35,
+      "afc8c5bb743ea69a": 37,
+      "d699ca9eeed35bd9": 5,
+      "307eafb3c0e89005": 23,
+      "fed2574f5416a377": 44,
+      "470a301e970cbc3d": 21,
+      "cdd3cb034601bb06": 34,
+      "21cc84d203a78a8d": 10,
+      "a9ee4d96218b73e7": 45,
+      "d4625bd0f9eed365": 22,
+      "9a7f2d7681f28e56": 9,
+      "ff449713569fad2e": 20,
+      "93a9ca9b7336542b": 3,
+      "baea81245308a82e": 4,
+      "19d65a66723d5810": 14,
+      "a164e0c80f13e05d": 26,
+      "f4a29ca4029c88b6": 8,
+      "cf13129484ee6ff0": 30,
+      "36269dc39f92f586": 33,
+      "65d88e4751fd4478": 28,
+      "cf542f7950644ce0": 36,
+      "1118bfa68a9d5878": 38,
+      "5fb242613a557d2a": 19,
+      "3504e218967a07b1": 12,
+      "1f5c42cfe8c7694a": 39,
+      "e9687555d2c001ca": 41,
+      "bb99806992c2ba42": 13,
+      "17f8a43fc3cff29c": 25,
+      "a570b9609eb3bcef": 42,
+      "c3839f5dd9548bd3": 1,
+      "aec6da5d1f64fe91": 40
+    }
+  },
+  "archive": {
+    "dim_x": 10,
+    "dim_y": 10,
+    "grid": {
+      "5,5": {
+        "capsule": {
+          "id": "8413e3342313ba30",
+          "name": "LLM-Seed-001-mut-g3-mut-g3",
+          "semantic_interface": "Mutated from parent 65d88e4751fd4478 at gen 3",
+          "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = (node_residual_cpu as f64 - job_cpu as f64) / mean_cpu_residual;\n    let ram_norm = (node_residual_ram as f64 - job_ram as f64) / mean_ram_residual;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    \n    // Non-linear penalty for imbalance\n    let imbalance_penalty = imbalance.powi(2);\n    \n    // Lookahead packing bonus\n    let lookahead_bonus = if next_job_cpu <= node_capacity_cpu && next_job_ram <= node_capacity_ram { 0.1 } else { 0.0 };\n    \n    // Horizon-aware placement logic\n    let horizon_factor = step_index as f64 / total_jobs as f64;\n    let horizon_bonus = if horizon_factor < 0.25 { 0.5 } else if horizon_factor < 0.75 { 0.3 } else { 0.1 };\n    \n    // Node capacity utilization\n    let cpu_utilization = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_utilization = node_residual_ram as f64 / node_capacity_ram as f64;\n    let capacity_bonus = if cpu_utilization < 0.5 && ram_utilization < 0.5 { 0.2 } else { 0.1 };\n    \n    // Fine-grained residual fitting bonus\n    let residual_cpu_fit = (node_residual_cpu as f64 / node_capacity_cpu as f64).abs();\n    let residual_ram_fit = (node_residual_ram as f64 / node_capacity_ram as f64).abs();\n    let fine_grained_bonus = (1.0 - (residual_cpu_fit + residual_ram_fit) / 2.0).powi(3);\n    \n    // Final score calculation\n    let score = imbalance_penalty - lookahead_bonus + horizon_bonus - capacity_bonus + fine_grained_bonus;\n    score\n}",
+          "parent_ids": [
+            "65d88e4751fd4478"
+          ],
+          "generation": 3,
+          "content_hash": "8413e3342313ba3018f33ae98d8cfcdce470eec7b3a77c00d9b0e419a0a7e3a9",
+          "created_at": "2026-11-11T09:37:30.264168200Z",
+          "metadata": {
+            "parent_hash": "65d88e4751fd447865cf917e7bc782b5a948c920b2792ed6b6c3ef0f99f759c6",
+            "operator": "HttpLlamaOperator",
+            "lineage_momentum": "Combine"
+          },
+          "interface_version": "ScorePolicyV1",
+          "policy_kind": "ScorePolicy",
+          "ast_fingerprint": {
+            "max_depth": 7,
+            "branch_count": 4,
+            "op_count": 25,
+            "statement_count": 22,
+            "ast_hash": "71ac16d92f33b4ea67615ecf5a413b773f49ddd657e0b4f15e8b93bf53dfd690"
+          },
+          "dependencies": [],
+          "validation": "PassedLevel2Computational",
+          "graft_manifest": null
+        },
+        "niche_coord": [
+          5,
+          5
+        ],
+        "behavior": {
+          "residual_variance": 12.43204365079365,
+          "new_bin_ratio": 0.1592,
+          "mean_fullness": 0.9658333333333333,
+          "dead_space_ratio": 0.11182539682539681
+        },
+        "fitness": {
+          "is_valid": true,
+          "total_bins": 398,
+          "total_theoretical_min_bins": 384,
+          "total_excess_bins": 14,
+          "mean_efficiency": 0.9658333333333333,
+          "total_fuel": 917251,
+          "solved_instances": 50,
+          "total_instances": 50,
+          "behavior": {
+            "residual_variance": 12.43204365079365,
+            "new_bin_ratio": 0.1592,
+            "mean_fullness": 0.9658333333333333,
+            "dead_space_ratio": 0.11182539682539681
+          },
+          "tldr_score": -0.1243204365079365,
+          "trajectory_metrics": null
+        },
+        "structural_fingerprint": {
+          "max_depth": 7,
+          "branch_count": 4,
+          "op_count": 25,
+          "statement_count": 22,
+          "ast_hash": "71ac16d92f33b4ea67615ecf5a413b773f49ddd657e0b4f15e8b93bf53dfd690"
+        },
+        "times_sampled": 9,
+        "times_replaced": 0
+      },
+      "6,6": {
+        "capsule": {
+          "id": "c3839f5dd9548bd3",
+          "name": "LLM-Seed-001",
+          "semantic_interface": "AST Seed synthesized by qwen2.5-coder:7b",
+          "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, _node_capacity_cpu: u32, _node_capacity_ram: u32, step_index: usize, total_jobs: usize, _active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = (node_residual_cpu as f64 - job_cpu as f64) / mean_cpu_residual;\n    let ram_norm = (node_residual_ram as f64 - job_ram as f64) / mean_ram_residual;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    let score = imbalance.powi(2); // Non-linear penalty for imbalance\n    score\n}",
+          "parent_ids": [],
+          "generation": 0,
+          "content_hash": "c3839f5dd9548bd30198406f8c999f7b6fa738a1cc6b7a689434ef45f9bd88c9",
+          "created_at": "2026-11-11T09:35:49.613978900Z",
+          "metadata": {
+            "seed": "17712111878484182906",
+            "operator": "HttpLlamaOperator"
+          },
+          "interface_version": "ScorePolicyV1",
+          "policy_kind": "ScorePolicy",
+          "ast_fingerprint": {
+            "max_depth": 5,
+            "branch_count": 0,
+            "op_count": 5,
+            "statement_count": 5,
+            "ast_hash": "da3ce70bceca09583f978e67f2a7fde48423c2da21eb10e684729febc2bb7228"
+          },
+          "dependencies": [],
+          "validation": "PassedLevel2Computational",
+          "graft_manifest": null
+        },
+        "niche_coord": [
+          6,
+          6
+        ],
+        "behavior": {
+          "residual_variance": 13.194723462301589,
+          "new_bin_ratio": 0.1588,
+          "mean_fullness": 0.9680555555555556,
+          "dead_space_ratio": 0.16305555555555556
+        },
+        "fitness": {
+          "is_valid": true,
+          "total_bins": 397,
+          "total_theoretical_min_bins": 384,
+          "total_excess_bins": 13,
+          "mean_efficiency": 0.9680555555555556,
+          "total_fuel": 305340,
+          "solved_instances": 50,
+          "total_instances": 50,
+          "behavior": {
+            "residual_variance": 13.194723462301589,
+            "new_bin_ratio": 0.1588,
+            "mean_fullness": 0.9680555555555556,
+            "dead_space_ratio": 0.16305555555555556
+          },
+          "tldr_score": -0.13194723462301589,
+          "trajectory_metrics": null
+        },
+        "structural_fingerprint": {
+          "max_depth": 5,
+          "branch_count": 0,
+          "op_count": 5,
+          "statement_count": 5,
+          "ast_hash": "da3ce70bceca09583f978e67f2a7fde48423c2da21eb10e684729febc2bb7228"
+        },
+        "times_sampled": 10,
+        "times_replaced": 1
+      },
+      "3,6": {
+        "capsule": {
+          "id": "d699ca9eeed35bd9",
+          "name": "LLM-Seed-005",
+          "semantic_interface": "AST Seed synthesized by qwen2.5-coder:7b",
+          "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_norm = node_residual_ram as f64 / node_capacity_ram as f64;\n    \n    // Dominant bottleneck heuristic\n    let dominant_bottleneck = if cpu_norm > ram_norm { cpu_norm } else { ram_norm };\n    \n    // Cross-product alignment heuristic\n    let cross_product_alignment = job_cpu as f64 * ram_norm + job_ram as f64 * cpu_norm;\n    \n    // Penalize resource imbalance\n    let imbalance_penalty = (cpu_norm - ram_norm).abs();\n    \n    // Dynamic horizon awareness\n    let step_factor = step_index as f64 / total_jobs as f64;\n    \n    // Lookahead awareness (k=2)\n    let next_job_dot_product = next_job_cpu as f64 * node_residual_ram as f64 + next_job_ram as f64 * node_residual_cpu as f64;\n    \n    // Combine all factors\n    let score = dominant_bottleneck - cross_product_alignment + imbalance_penalty + step_factor - next_job_dot_product;\n    \n    score\n}",
+          "parent_ids": [],
+          "generation": 0,
+          "content_hash": "d699ca9eeed35bd951fbcb7570a19b889baa488120d2ef810713419373adba77",
+          "created_at": "2026-11-11T09:36:02.253601700Z",
+          "metadata": {
+            "operator": "HttpLlamaOperator",
+            "seed": "1058332762207637520"
+          },
+          "interface_version": "ScorePolicyV1",
+          "policy_kind": "ScorePolicy",
+          "ast_fingerprint": {
+            "max_depth": 5,
+            "branch_count": 1,
+            "op_count": 15,
+            "statement_count": 11,
+            "ast_hash": "d5a894c8603c4f8c2bf4d0e3681086d956b82d6fca8785334edc74a949ca0e66"
+          },
+          "dependencies": [],
+          "validation": "PassedLevel2Computational",
+          "graft_manifest": null
+        },
+        "niche_coord": [
+          3,
+          6
+        ],
+        "behavior": {
+          "residual_variance": 15.595641121031745,
+          "new_bin_ratio": 0.164,
+          "mean_fullness": 0.9377777777777777,
+          "dead_space_ratio": 0.04702380952380952
+        },
+        "fitness": {
+          "is_valid": true,
+          "total_bins": 410,
+          "total_theoretical_min_bins": 384,
+          "total_excess_bins": 26,
+          "mean_efficiency": 0.9377777777777777,
+          "total_fuel": 602985,
+          "solved_instances": 50,
+          "total_instances": 50,
+          "behavior": {
+            "residual_variance": 15.595641121031745,
+            "new_bin_ratio": 0.164,
+            "mean_fullness": 0.9377777777777777,
+            "dead_space_ratio": 0.04702380952380952
+          },
+          "tldr_score": -0.15595641121031745,
+          "trajectory_metrics": null
+        },
+        "structural_fingerprint": {
+          "max_depth": 5,
+          "branch_count": 1,
+          "op_count": 15,
+          "statement_count": 11,
+          "ast_hash": "d5a894c8603c4f8c2bf4d0e3681086d956b82d6fca8785334edc74a949ca0e66"
+        },
+        "times_sampled": 9,
+        "times_replaced": 0
+      },
+      "7,6": {
+        "capsule": {
+          "id": "65d88e4751fd4478",
+          "name": "LLM-Seed-001-mut-g3",
+          "semantic_interface": "Mutated from parent c3839f5dd9548bd3 at gen 3",
+          "logic_code": "pub fn score_node(job_cpu: u32, job_ram: u32, node_residual_cpu: u32, node_residual_ram: u32, node_capacity_cpu: u32, node_capacity_ram: u32, step_index: usize, total_jobs: usize, active_nodes_count: usize, mean_cpu_residual: f64, mean_ram_residual: f64, next_job_cpu: u32, next_job_ram: u32) -> f64 {\n    let cpu_norm = (node_residual_cpu as f64 - job_cpu as f64) / mean_cpu_residual;\n    let ram_norm = (node_residual_ram as f64 - job_ram as f64) / mean_ram_residual;\n    let imbalance = (cpu_norm - ram_norm).abs();\n    \n    // Non-linear penalty for imbalance\n    let imbalance_penalty = imbalance.powi(2);\n    \n    // Lookahead packing bonus\n    let lookahead_bonus = if next_job_cpu <= node_capacity_cpu && next_job_ram <= node_capacity_ram { 0.1 } else { 0.0 };\n    \n    // Horizon-aware placement logic\n    let horizon_factor = step_index as f64 / total_jobs as f64;\n    let horizon_bonus = if horizon_factor < 0.25 { 0.5 } else if horizon_factor < 0.75 { 0.3 } else { 0.1 };\n    \n    // Node capacity utilization\n    let cpu_utilization = node_residual_cpu as f64 / node_capacity_cpu as f64;\n    let ram_utilization = node_residual_ram as f64 / node_capacity_ram as f64;\n    let capacity_bonus = if cpu_utilization < 0.5 && ram_utilization < 0.5 { 0.2 } else { 0.1 };\n    \n    // Final score calculation\n    let score = imbalance_penalty - lookahead_bonus + horizon_bonus - capacity_bonus;\n    score\n}",
+          "parent_ids": [
+            "c3839f5dd9548bd3"
+          ],
+          "generation": 3,
+          "content_hash": "65d88e4751fd447865cf917e7bc782b5a948c920b2792ed6b6c3ef0f99f759c6",
+          "created_at": "2026-11-11T09:37:25.064060100Z",
+          "metadata": {
+            "parent_hash": "c3839f5dd9548bd30198406f8c999f7b6fa738a1cc6b7a689434ef45f9bd88c9",
+            "operator": "HttpLlamaOperator"
+          },
+          "interface_version": "ScorePolicyV1",
+          "policy_kind": "ScorePolicy",
+          "ast_fingerprint": {
+            "max_depth": 5,
+            "branch_count": 4,
+            "op_count": 19,
+            "statement_count": 19,
+            "ast_hash": "cd25c95a42da23bf30ca1be0e04fc70e9b92e0fcca4f9657a26ad61ee0b9eedb"
+          },
+          "dependencies": [],
+          "validation": "PassedLevel2Computational",
+          "graft_manifest": null
+        },
+        "niche_coord": [
+          7,
+          6
+        ],
+        "behavior": {
+          "residual_variance": 12.864149305555559,
+          "new_bin_ratio": 0.1592,
+          "mean_fullness": 0.9655555555555556,
+          "dead_space_ratio": 0.175
+        },
+        "fitness": {
+          "is_valid": true,
+          "total_bins": 398,
+          "total_theoretical_min_bins": 384,
+          "total_excess_bins": 14,
+          "mean_efficiency": 0.9655555555555556,
+          "total_fuel": 661592,
+          "solved_instances": 50,
+          "total_instances": 50,
+          "behavior": {
+            "residual_variance": 12.864149305555559,
+            "new_bin_ratio": 0.1592,
+            "mean_fullness": 0.9655555555555556,
+            "dead_space_ratio": 0.175
+          },
+          "tldr_score": -0.12864149305555558,
+          "trajectory_metrics": null
+        },
+        "structural_fingerprint": {
+          "max_depth": 5,
+          "branch_count": 4,
+          "op_count": 19,
+          "statement_count": 19,
+          "ast_hash": "cd25c95a42da23bf30ca1be0e04fc70e9b92e0fcca4f9657a26ad61ee0b9eedb"
+        },
+        "times_sampled": 8,
+        "times_replaced": 0
+      }
+    },
+    "total_samples": 36,
+    "ucb_exploration_factor": 1.414,
+    "domain": "MultiResourceScheduling"
+  },
+  "crossover_attempts": 0,
+  "crossover_not_evaluable_count": 0,
+  "crossover_rejected_count": 0
+}
