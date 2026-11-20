@@ -1,5 +1,16 @@
 # Reprise du projet sur une autre machine
 
+## Phase close le 20 novembre 2026
+
+**La phase de preuve est terminée.** Bilan : [SYNTHESE_PREUVE.md](SYNTHESE_PREUVE.md).
+H1 et H2 sont établies sur Gemini et sur GLM, H3 sur Gemini seulement, et le croisement
+n'est pas démontré. Aucun nouveau protocole, banc ou tir n'est prévu sur cette branche.
+La grille fera l'objet d'un projet séparé, qui reprend les questions ouvertes de la
+synthèse. La suite de cette fiche est l'état au moment de la clôture, gardé pour mémoire :
+la liste « À faire ensuite » n'est plus suivie.
+
+---
+
 État au 18 novembre 2026 au soir, branche `weibull-benchmark`. Cette fiche sert à reprendre
 le travail sur un autre PC ou avec un autre assistant : elle résume où en est la preuve et ce
 qui reste à faire.
