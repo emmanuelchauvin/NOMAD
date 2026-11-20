@@ -9,11 +9,52 @@
 
 ---
 
+## Results of the proof phase (closed 20 November 2026)
+
+**Question.** At equal budget, does LLM-guided program evolution (NOMAD) beat drawing independent proposals from the same model, and does the gap grow with the budget? Problem: online bin packing, Weibull profile; effect measured on a held-out validation set as the share of the Best-Fit excess removed. Every protocol was written and committed **before** its runs; raw data were committed before being read. Test: exact two-sided paired Wilcoxon signed-rank over seeds (24 in general).
+
+- **H1**: at equal model calls, evolution beats the draw.
+- **H2**: at equal spend (dollars), it also does.
+- **H3**: the advantage is larger at 1,359 calls than at 340.
+
+| Protocol | Model | Calls | H1 | H2 | H3 |
+|---|---|---|---|---|---|
+| [Confirmation](docs/RESULTATS_GEMINI_CONFIRMATION.md) | gemini-3.1-flash-lite | 85 | established (p = 0.0075) | no (p = 0.21) | n/a |
+| [Scale](docs/RESULTATS_GEMINI_ECHELLE.md) | gemini-3.1-flash-lite | 340 | established (p = 0.0002) | established (p = 0.0016) | no (p = 0.40) |
+| [Curve](docs/RESULTATS_GEMINI_COURBE.md) | gemini-3.1-flash-lite | 1,359 | established (22/24 seeds, p < 0.0001) | established (p = 0.0012) | **established** (p = 0.0042) |
+| [GLM 340](docs/RESULTATS_GLM_340.md) | glm-5.3-flash | 344 | established (p = 0.0015) | no (cost ratio 4.36, p = 0.47) | n/a |
+| [GLM H2, pruning](docs/RESULTATS_GLM_H2.md) | glm-5.3-flash | 344 | established (20/24, p < 0.0001) | established (ratio 2.12, p = 0.014) | n/a |
+| [GLM H3](docs/RESULTATS_GLM_H3.md) | glm-5.3-flash | 1,359 | established (24/24, p < 0.0001) | established (p = 0.0065) | **no** (p = 0.60) |
+
+### Established
+1. Evolution beats the draw at equal calls, on two models from two vendors, at every budget tested (85 to 1,359 calls).
+2. It also wins at equal spend once the cost per call stays contained (on GLM, after pruning the champion brought the cost ratio from 4.4 to 2.1).
+3. On Gemini the advantage grows with the budget: the draw plateaus near 17 % while evolution keeps improving (56.0 % vs 17.7 % at 1,359 calls).
+
+### Not established
+1. **H3 on GLM.** The median advantage stays between 20 and 27 points from 85 to 1,359 calls, because the GLM draw keeps improving. Only consistency grows (17/24 seeds won at 344 calls, 24/24 at 1,359).
+2. **Crossover.** Tested once (12 seeds, 344 calls, p = 0.77), in an experiment that confounded crossover with pruning and used the pre-fix graft. None of the established results rests on crossover: the winning system is a population with rank selection, LLM-informed mutation and restarts.
+
+### Limits
+- A single problem (online bin packing, Weibull profile) and a single instance set.
+- Two small, inexpensive models; answers are not reproducible bit for bit. Engine tuning was done on Gemini.
+- Restarts are fresh proposals, so the evolution arm contains a share of draw.
+- Equal-spend point `k*` uses the run-average cost per call, which is unfavourable to evolution.
+- Pruning costs extra compute (free in calls, not in CPU time).
+- No comparison with published state of the art (FunSearch, EoH, ReEvo): different instances and metric.
+- Total spend: about 148 USD in API calls.
+
+**Full report:** [docs/SYNTHESE_PREUVE.md](docs/SYNTHESE_PREUVE.md) (in French). **Pre-registered protocols:** `docs/PROTOCOLE_*.md`. **Results per protocol:** `docs/RESULTATS_*.md`. **Handover and open questions:** [docs/REPRISE.md](docs/REPRISE.md). Citable snapshot: tag `v1.0-conclusions`.
+
+---
+
 ## 1. Overview & Scientific Purpose
 
-NOMAD (**DARWIN.RS**) is an evolutionary computing and artificial intelligence framework implemented in Rust. It establishes an experimental platform to rigorously demonstrate whether and how a decentralized population of autonomous LLM agents can produce **cumulative algorithmic intelligence** superior to isolated evolutionary selection, while eliminating false evolutionary discoveries (dead code, overfitting, and local convergence).
+NOMAD (**DARWIN.RS**) is an evolutionary computing and artificial intelligence framework implemented in Rust. It establishes an experimental platform to study whether and how a decentralized population of autonomous LLM agents can produce **cumulative algorithmic intelligence** superior to isolated evolutionary selection, while eliminating false evolutionary discoveries (dead code, overfitting, and local convergence).
 
-### Core Scientific Hypotheses
+### Earlier exploratory framework (V2 specification)
+
+The hypotheses below are the original V2 specification, tested only exploratorily (mostly single seed, local Ollama models). They are **distinct from** the H1/H2/H3 of the proof phase above, which are the results to cite.
 * **H1 (Cumulative Cultural Evolution):** Lineages with access to collective cultural heritage via cross-epoch transmission achieve higher Cumulative Improvement Factor ($CIF > 1.0$) and discover novel behavioral niches faster than Tabula Rasa lineages ($R_{\text{innov, A}} > R_{\text{innov, B}}$).
 * **H2 (Recombination Superiority & Parsimony):** Swarm horizontal recombination (**Swarm Crossover**) discovers bin packing heuristics that break seed inertia and achieve superior packing efficiency and computational parsimony compared to mutation-only selection (**Group C vs Group D**).
 * **H3 (Out-Of-Distribution Generalization):** Heuristics evolved via multi-trajectory dynamic evaluation generalize superior packing efficiency on Out-Of-Distribution datasets (scale shift $N=500$ and heavy-tailed Weibull distribution).
@@ -122,8 +163,8 @@ cargo run --release --bin nomad -- compare --domain scheduling --operator mock -
 
 ## 5. Scientific Validation & Testing
 
-NOMAD is verified by an automated test suite comprising **41 unit and integration tests** and empirical acceptance protocols:
-- `cargo test --workspace` (All 41 unit & integration tests pass deterministically)
+NOMAD is verified by an automated test suite comprising **103 unit and integration tests** and empirical acceptance protocols. The items below are **exploratory, single-seed observations** from the earlier V2 phase, not the proof-phase results above:
+- `cargo test --workspace` (All 103 unit & integration tests pass)
 - **Controlled Ablation Study (Group C vs Group D, 15 Generations) :** Recombinant champion `SwarmCross-g6-d6a1-8f9d-mut-g12-mut-g12` verified as `PassedLevel2Computational` (computational viability confirmed; behavioral causality of graft remains exploratory), achieving **28.96% fuel reduction** (Fuel: 703 568 vs 990 350, +40.76% extra fuel in Group D) and superior Quality-Diversity coverage (10 niches, QD-Score: 8.770 vs 9 niches, 7.873) over mutation-only baseline locked in single-lineage mode (`ablation_group_c.json` & `ablation_group_d.json`).
 - **Multi-Resource Cloud Scheduling :** Exploratory score of **391 servers** observed on a single seed ($CIF_{\text{perf}} = 1.071\text{x}$, $R_{\text{herit}} = 100\%$, OOD-2: 1 731 servers).
 - **Online 1D Bin Packing :** Lookahead $k=2$ + Dynamic Horizon with **98.56% OOD-2 efficiency** and $R_{\text{herit}} = 100\%$. Fair comparison against `BEST_FIT_LOOKAHEAD` baseline at equal $k=2$.
