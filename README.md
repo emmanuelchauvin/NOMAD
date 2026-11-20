@@ -4,7 +4,7 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![CI](https://github.com/emmanuelchauvin/NOMAD/actions/workflows/ci.yml/badge.svg)](https://github.com/emmanuelchauvin/NOMAD/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#6-license)
 [![Status](https://img.shields.io/badge/scientific_study-pre--registered_V2-green.svg)](SPECIFICATIONS.md)
 
 ---
@@ -138,5 +138,7 @@ See [TESTS.md](TESTS.md) for detailed experimental benchmarks and [SPECIFICATION
 ---
 
 ## 6. License
-Licensed under either Apache License, Version 2.0 or MIT License at your option.
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT License](LICENSE-MIT) at your option.
+
+Copyright (c) 2026 Emmanuel Chauvin.
 
