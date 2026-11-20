@@ -4,7 +4,6 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#6-license)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#6-license)
 [![Status](https://img.shields.io/badge/scientific_study-pre--registered_V2-green.svg)](SPECIFICATIONS.md)
 
 ---
